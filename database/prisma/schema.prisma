@@ -1,0 +1,379 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organization ────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]
+  devices      Device[]
+  policies     Policy[]
+  commands     Command[]
+  applications Application[]
+  alerts       Alert[]
+  auditLogs    AuditLog[]
+  agentTokens  AgentToken[]
+  deviceGroups DeviceGroup[]
+
+  @@map("organizations")
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           String   @default("VIEWER")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  auditLogs         AuditLog[]
+  requestedCommands Command[]    @relation("RequestedBy")
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("users")
+}
+
+// ─── Device ──────────────────────────────────────────────────────────────────
+
+model Device {
+  id             String    @id @default(uuid())
+  organizationId String
+  deviceName     String
+  hostname       String
+  serialNumber   String
+  manufacturer   String    @default("")
+  model          String    @default("")
+  os             String
+  osVersion      String
+  architecture   String
+  ipAddress      String    @default("")
+  agentVersion   String    @default("")
+  status         String    @default("PENDING")
+  lastSeenAt     DateTime?
+  registeredAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization      Organization        @relation(fields: [organizationId], references: [id])
+  hardware          DeviceHardware?
+  software          DeviceSoftware[]
+  heartbeats        DeviceHeartbeat[]
+  commands          Command[]
+  policies          PolicyAssignment[]
+  complianceResults ComplianceResult[]
+  alerts            Alert[]
+  agentTokens       AgentToken[]
+  deviceGroups      DeviceGroupMember[]
+
+  @@unique([organizationId, serialNumber])
+  @@index([organizationId])
+  @@index([status])
+  @@index([lastSeenAt])
+  @@map("devices")
+}
+
+// ─── Device Hardware ─────────────────────────────────────────────────────────
+
+model DeviceHardware {
+  id           String   @id @default(uuid())
+  deviceId     String   @unique
+  cpu          String
+  cpuCores     Int
+  ramBytes     BigInt
+  storageBytes BigInt
+  manufacturer String
+  model        String
+  serialNumber String
+  biosVersion  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("device_hardware")
+}
+
+// ─── Device Software ─────────────────────────────────────────────────────────
+
+model DeviceSoftware {
+  id           String    @id @default(uuid())
+  deviceId     String
+  name         String
+  version      String
+  publisher    String
+  installDate  DateTime?
+  architecture String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([name])
+  @@map("device_software")
+}
+
+// ─── Device Heartbeat ────────────────────────────────────────────────────────
+
+model DeviceHeartbeat {
+  id           String   @id @default(uuid())
+  deviceId     String
+  agentVersion String
+  timestamp    DateTime
+  status       String
+  createdAt    DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([createdAt])
+  @@map("device_heartbeats")
+}
+
+// ─── Device Group ────────────────────────────────────────────────────────────
+
+model DeviceGroup {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  devices      DeviceGroupMember[]
+  policies     PolicyAssignment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("device_groups")
+}
+
+model DeviceGroupMember {
+  id       String @id @default(uuid())
+  groupId  String
+  deviceId String
+
+  group  DeviceGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  device Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, deviceId])
+  @@map("device_group_members")
+}
+
+// ─── Policy ──────────────────────────────────────────────────────────────────
+
+model Policy {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  type           String
+  description    String   @default("")
+  settings       String   @default("{}")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  assignments  PolicyAssignment[]
+
+  @@index([organizationId])
+  @@map("policies")
+}
+
+// ─── Policy Assignment ───────────────────────────────────────────────────────
+
+model PolicyAssignment {
+  id        String   @id @default(uuid())
+  policyId  String
+  deviceId  String?
+  groupId   String?
+  priority  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  policy Policy       @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  device Device?      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  group  DeviceGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([policyId])
+  @@index([deviceId])
+  @@index([groupId])
+  @@map("policy_assignments")
+}
+
+// ─── Compliance ──────────────────────────────────────────────────────────────
+
+model ComplianceRule {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String   @default("")
+  ruleType       String
+  condition      String   @default("{}")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  results ComplianceResult[]
+
+  @@index([organizationId])
+  @@map("compliance_rules")
+}
+
+model ComplianceResult {
+  id          String   @id @default(uuid())
+  deviceId    String
+  ruleId      String?
+  status      String
+  reason      String   @default("")
+  evaluatedAt DateTime
+
+  device Device          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  rule   ComplianceRule? @relation(fields: [ruleId], references: [id])
+
+  @@index([deviceId])
+  @@index([evaluatedAt])
+  @@map("compliance_results")
+}
+
+// ─── Command ─────────────────────────────────────────────────────────────────
+
+model Command {
+  id             String    @id @default(uuid())
+  organizationId String
+  deviceId       String
+  type           String
+  status         String    @default("PENDING")
+  requestedBy    String?
+  createdAt      DateTime  @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  result         String?
+  errorMessage   String?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  requester    User?        @relation("RequestedBy", fields: [requestedBy], references: [id])
+
+  @@index([deviceId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("commands")
+}
+
+// ─── Application ─────────────────────────────────────────────────────────────
+
+model Application {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  version        String
+  description    String   @default("")
+  publisher      String   @default("")
+  installerUrl   String   @default("")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  deployments  Deployment[]
+
+  @@index([organizationId])
+  @@map("applications")
+}
+
+model Deployment {
+  id            String   @id @default(uuid())
+  applicationId String
+  deviceId      String
+  status        String   @default("PENDING")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("deployments")
+}
+
+// ─── Alert ───────────────────────────────────────────────────────────────────
+
+model Alert {
+  id             String    @id @default(uuid())
+  organizationId String
+  deviceId       String?
+  severity       String
+  title          String
+  message        String
+  status         String    @default("OPEN")
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  device       Device?      @relation(fields: [deviceId], references: [id])
+
+  @@index([organizationId])
+  @@index([deviceId])
+  @@index([severity])
+  @@index([status])
+  @@map("alerts")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  actorId        String
+  action         String
+  resource       String
+  resourceId     String
+  timestamp      DateTime @default(now())
+  ipAddress      String   @default("")
+  metadata       String?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  actor        User         @relation(fields: [actorId], references: [id])
+
+  @@index([organizationId])
+  @@index([actorId])
+  @@index([resource])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// ─── Agent Token ─────────────────────────────────────────────────────────────
+
+model AgentToken {
+  id             String    @id @default(uuid())
+  organizationId String
+  deviceId       String
+  tokenHash      String    @unique
+  isActive       Boolean   @default(true)
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([deviceId])
+  @@map("agent_tokens")
+}

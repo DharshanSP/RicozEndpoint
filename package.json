@@ -1,0 +1,32 @@
+{
+  "name": "ricoz-endpoint",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RicozEndpoint - Enterprise Endpoint Management Platform",
+  "scripts": {
+    "dev:web": "pnpm --filter @ricoz/web dev",
+    "dev:api": "pnpm --filter @ricoz/api dev",
+    "dev": "pnpm run dev:api & pnpm run dev:web",
+    "build": "pnpm -r build",
+    "build:types": "pnpm --filter @ricoz/shared-types build",
+    "build:validation": "pnpm --filter @ricoz/validation build",
+    "build:api": "pnpm --filter @ricoz/api build",
+    "build:web": "pnpm --filter @ricoz/web build",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @ricoz/database prisma migrate dev",
+    "db:generate": "pnpm --filter @ricoz/database prisma generate",
+    "db:seed": "pnpm --filter @ricoz/database prisma db seed",
+    "db:studio": "pnpm --filter @ricoz/database prisma studio",
+    "db:reset": "pnpm --filter @ricoz/database prisma migrate reset",
+    "clean": "pnpm -r exec rm -rf dist node_modules .turbo"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}
