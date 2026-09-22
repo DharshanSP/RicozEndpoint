@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye } from 'lucide-react';
@@ -12,7 +12,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
@@ -124,7 +124,7 @@ export function LoginPage() {
           {/* Quick Fill Demo Roles */}
           <div className="pt-4 border-t border-slate-800/80 space-y-3">
             <span className="block text-xs font-medium text-slate-500 text-center uppercase tracking-wider">
-              Quick Login Demo Accounts (Phase 3)
+              Quick Login Accounts (Demo Roles)
             </span>
             <div className="grid grid-cols-3 gap-2">
               <button
