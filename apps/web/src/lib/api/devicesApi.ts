@@ -60,6 +60,15 @@ async function requestBody<T>(endpoint: string): Promise<T> {
   return res.data as T;
 }
 
+/** Returns the full envelope (data + pagination) for paginated list endpoints. */
+async function requestBodyEnvelope<T>(endpoint: string): Promise<T> {
+  const res = await fetchApi<unknown>(endpoint);
+  if (!res.success || res.data === undefined) {
+    throw new Error(res.error?.message ?? 'Request failed');
+  }
+  return res as unknown as T;
+}
+
 /** Lists devices with pagination, search, status/OS filters and sorting. */
 export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceListResponse> {
   const params = new URLSearchParams();
@@ -73,7 +82,7 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
   if (query.sortOrder) params.set('sortOrder', query.sortOrder);
 
   const qs = params.toString();
-  return requestBody<DeviceListResponse>(`/devices${qs ? `?${qs}` : ''}`);
+  return requestBodyEnvelope<DeviceListResponse>(`/devices${qs ? `?${qs}` : ''}`);
 }
 
 /** Gets full device detail (overview + hardware, software, policies, compliance, commands, activity). */

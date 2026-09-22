@@ -14,6 +14,15 @@ async function requestBody<T>(endpoint: string, init?: RequestInit): Promise<T> 
   return res.data as T;
 }
 
+/** Returns the full envelope (data + pagination) for paginated list endpoints. */
+async function requestBodyEnvelope<T>(endpoint: string, init?: RequestInit): Promise<T> {
+  const res = await fetchApi<unknown>(endpoint, init);
+  if (!res.success || res.data === undefined) {
+    throw new Error(res.error?.message ?? 'Request failed');
+  }
+  return res as unknown as T;
+}
+
 /** Lists enrollment tokens for the caller organization. */
 export async function listEnrollmentTokens(query: EnrollmentTokenListQuery = {}): Promise<EnrollmentTokenListResponse> {
   const params = new URLSearchParams();
@@ -23,7 +32,7 @@ export async function listEnrollmentTokens(query: EnrollmentTokenListQuery = {})
   if (query.includeRevoked) params.set('includeRevoked', 'true');
 
   const qs = params.toString();
-  return requestBody<EnrollmentTokenListResponse>(`/enrollment-tokens${qs ? `?${qs}` : ''}`);
+  return requestBodyEnvelope<EnrollmentTokenListResponse>(`/enrollment-tokens${qs ? `?${qs}` : ''}`);
 }
 
 /** Creates an enrollment token and returns the single-use enrollment code. */
