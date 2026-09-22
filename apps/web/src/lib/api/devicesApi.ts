@@ -1,4 +1,5 @@
 import {
+  Device,
   DeviceFilterParams,
   DeviceListApiResponse,
   DeviceDetailApiResponse,
