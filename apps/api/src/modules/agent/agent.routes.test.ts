@@ -242,7 +242,7 @@ describe('Agent API (heartbeat, telemetry, commands)', () => {
     const hbBody = hb.json() as { data?: { pendingCommands?: { id: string; type: string }[] } };
     assert.equal(hb.statusCode, 200);
     assert.equal(hbBody.data?.pendingCommands?.length, 1);
-    assert.equal(hbBody.data?.pendingCommands?.[0].id, command.id);
+    assert.equal(hbBody.data?.pendingCommands?.[0]?.id, command.id);
 
     const result = await app.inject({
       method: 'POST',
