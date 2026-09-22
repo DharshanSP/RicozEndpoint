@@ -136,38 +136,38 @@ export function RootLayout() {
   const breadcrumbs = getBreadcrumbTitle();
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
+    <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar Navigation */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-slate-800/80 bg-slate-950 flex flex-col justify-between transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-slate-200 bg-white flex flex-col justify-between transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex flex-col h-full overflow-hidden">
           {/* Logo & Brand Header */}
-          <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-600/10 border border-blue-500/30 text-blue-400">
+              <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
                 <Shield className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
+                <h1 className="font-bold text-sm tracking-tight text-slate-900 flex items-center gap-1.5">
                   RicozEndpoint
                 </h1>
-                <span className="text-[11px] text-slate-400">Enterprise Admin Console</span>
+                <span className="text-[11px] text-slate-500 font-normal">Enterprise Admin Console</span>
               </div>
             </div>
             <button
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden text-slate-400 hover:text-white p-1 rounded-md"
+              className="lg:hidden text-slate-400 hover:text-slate-700 p-1 rounded-md"
             >
               <X className="w-5 h-5" />
             </button>
@@ -175,10 +175,10 @@ export function RootLayout() {
 
           {/* Org Selector Box */}
           <div className="px-3 pt-3 pb-1">
-            <div className="p-2.5 rounded-lg bg-slate-900/70 border border-slate-800/90 flex items-center justify-between text-xs">
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2 truncate">
-                <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                <span className="text-slate-300 font-medium truncate">
+                <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="text-slate-700 font-medium truncate">
                   {user?.organizationName || 'Ricoz Primary Organization'}
                 </span>
               </div>
@@ -213,8 +213,8 @@ export function RootLayout() {
                           className={({ isActive }) =>
                             `flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
                               isActive
-                                ? 'bg-slate-900 text-blue-400 font-semibold border border-slate-800 shadow-sm'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                                ? 'bg-blue-50 text-blue-600 font-semibold border border-blue-100 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`
                           }
                         >
@@ -223,7 +223,7 @@ export function RootLayout() {
                             <span>{item.name}</span>
                           </div>
                           {item.badge && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200">
                               {item.badge}
                             </span>
                           )}
@@ -237,25 +237,25 @@ export function RootLayout() {
           </nav>
 
           {/* User Profile & Footer Section */}
-          <div className="p-3 border-t border-slate-800/80 bg-slate-950/90 space-y-2.5">
+          <div className="p-3 border-t border-slate-200 bg-slate-50/70 space-y-2.5">
             {user && (
-              <div className="p-2 rounded-lg bg-slate-900/50 border border-slate-800/80 space-y-2">
+              <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-xs space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 pr-2">
-                    <p className="text-xs font-semibold text-slate-200 truncate">{user.name}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                    <p className="text-xs font-semibold text-slate-900 truncate">{user.name}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
                   </div>
                   <button
                     onClick={handleLogout}
                     title="Sign Out"
-                    className="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                    className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
                   >
                     <LogOut className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800/50">
-                  <span className="text-[10px] text-slate-400">Role</span>
+                <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                  <span className="text-[10px] text-slate-400 font-medium">Role</span>
                   <Badge variant={getRoleBadgeVariant(user.role)} className="text-[10px] px-1.5 py-0 font-medium">
                     <UserCheck className="w-3 h-3 mr-1" />
                     {user.role}
@@ -270,48 +270,48 @@ export function RootLayout() {
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden text-slate-400 hover:text-white p-1.5 rounded-md hover:bg-slate-900"
+              className="lg:hidden text-slate-500 hover:text-slate-800 p-1.5 rounded-md hover:bg-slate-100"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             {/* Breadcrumb Trail */}
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="font-medium text-slate-400">{breadcrumbs.section}</span>
-              <span className="text-slate-600">/</span>
-              <span className="font-semibold text-slate-200">{breadcrumbs.page}</span>
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="font-medium text-slate-500">{breadcrumbs.section}</span>
+              <span className="text-slate-300">/</span>
+              <span className="font-semibold text-slate-900">{breadcrumbs.page}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             {/* Search Trigger Mockup */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-400 w-64 justify-between">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-500 w-64 justify-between">
               <div className="flex items-center gap-2">
                 <Search className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-slate-400 truncate">Search endpoints, policies...</span>
+                <span className="text-slate-500 truncate">Search endpoints, policies...</span>
               </div>
-              <kbd className="px-1.5 py-0.5 text-[10px] bg-slate-950 border border-slate-800 rounded text-slate-400">
+              <kbd className="px-1.5 py-0.5 text-[10px] bg-white border border-slate-200 rounded text-slate-500 shadow-xs">
                 Ctrl+K
               </kbd>
             </div>
 
             {/* Environment Telemetry Status Indicator */}
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600" />
               </span>
-              <span className="text-[11px] text-slate-300 font-medium">Preview Mode</span>
+              <span className="text-[11px] text-blue-700 font-medium">Preview Mode</span>
             </div>
 
             {/* Org Badge */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300">
-              <Building2 className="w-3.5 h-3.5 text-blue-400" />
-              <span className="text-slate-300 font-medium text-xs max-w-[130px] truncate">
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+              <span className="text-slate-700 font-medium text-xs max-w-[130px] truncate">
                 {user?.organizationName || 'Default Org'}
               </span>
             </div>
@@ -319,7 +319,7 @@ export function RootLayout() {
         </header>
 
         {/* Page Content Body */}
-        <main className="flex-1 p-6 lg:p-8 bg-slate-950 overflow-x-hidden">
+        <main className="flex-1 p-6 lg:p-8 bg-slate-50/70 overflow-x-hidden">
           <Outlet />
         </main>
       </div>
