@@ -1,58 +1,8 @@
 export * from './auth.schema';
+export * from './inventory.schema';
+export * from './agent.schema';
+export * from './enrollment.schema';
 import { z } from 'zod';
-
-export const registerDeviceSchema = z.object({
-  enrollmentToken: z.string().min(1, 'Enrollment token is required'),
-  hostname: z.string().min(1, 'Hostname is required'),
-  serialNumber: z.string().min(1, 'Serial number is required'),
-  os: z.string().min(1, 'OS is required'),
-  osVersion: z.string().min(1, 'OS version is required'),
-  agentVersion: z.string().min(1, 'Agent version is required'),
-  manufacturer: z.string().optional(),
-  model: z.string().optional(),
-});
-
-export type RegisterDeviceInput = z.infer<typeof registerDeviceSchema>;
-
-export const heartbeatSchema = z.object({
-  deviceId: z.string().uuid(),
-  agentVersion: z.string(),
-  timestamp: z.string().datetime(),
-  status: z.enum(['ONLINE', 'OFFLINE', 'UNKNOWN']),
-});
-
-export type HeartbeatInput = z.infer<typeof heartbeatSchema>;
-
-export const hardwareInventorySchema = z.object({
-  hostname: z.string(),
-  cpu: z.string(),
-  cpuCores: z.number().int().positive(),
-  ramBytes: z.number().int().positive(),
-  storageBytes: z.number().int().positive(),
-  manufacturer: z.string(),
-  model: z.string(),
-  serialNumber: z.string(),
-  biosVersion: z.string(),
-  os: z.string(),
-  osVersion: z.string(),
-  architecture: z.string(),
-});
-
-export type HardwareInventoryInput = z.infer<typeof hardwareInventorySchema>;
-
-export const softwareItemSchema = z.object({
-  name: z.string(),
-  version: z.string(),
-  publisher: z.string(),
-  installDate: z.string().nullable(),
-  architecture: z.string(),
-});
-
-export const softwareInventorySchema = z.object({
-  items: z.array(softwareItemSchema),
-});
-
-export type SoftwareInventoryInput = z.infer<typeof softwareInventorySchema>;
 
 export const createPolicySchema = z.object({
   name: z.string().min(1).max(255),
@@ -85,3 +35,56 @@ export const paginationSchema = z.object({
 });
 
 export type PaginationInput = z.infer<typeof paginationSchema>;
+
+export const deviceStatusEnum = z.enum([
+  'ONLINE',
+  'OFFLINE',
+  'UNKNOWN',
+  'PENDING',
+  'NON_COMPLIANT',
+]);
+
+export type DeviceStatusType = z.infer<typeof deviceStatusEnum>;
+
+export const deviceSortByEnum = z.enum([
+  'deviceName',
+  'hostname',
+  'serialNumber',
+  'manufacturer',
+  'model',
+  'os',
+  'osVersion',
+  'ipAddress',
+  'agentVersion',
+  'status',
+  'lastSeenAt',
+  'registeredAt',
+  'createdAt',
+  'updatedAt',
+]);
+
+export type DeviceSortByType = z.infer<typeof deviceSortByEnum>;
+
+export const deviceListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional(),
+  status: deviceStatusEnum.optional(),
+  os: z.string().optional(),
+  sortBy: deviceSortByEnum.default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+});
+
+export type DeviceListQueryInput = z.infer<typeof deviceListQuerySchema>;
+
+export const deviceParamsSchema = z.object({
+  id: z.string().uuid('Invalid device id'),
+});
+
+export type DeviceParamsInput = z.infer<typeof deviceParamsSchema>;
+
+export const deviceActivityQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type DeviceActivityQueryInput = z.infer<typeof deviceActivityQuerySchema>;
