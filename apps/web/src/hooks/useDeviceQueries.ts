@@ -15,24 +15,16 @@ import type {
   DeviceSoftwareItem,
 } from '../types/device';
 
-function unwrap<T>(res: { data?: T; error?: { code: string; message: string } }): T {
-  if (res.data === undefined) {
-    throw new Error(res.error?.message ?? 'Request failed');
-  }
-  return res.data;
-}
-
 /** Paginated, filterable device list. */
 export function useDeviceList(query: DeviceListQuery) {
   return useQuery({
     queryKey: ['devices', 'list', query],
     queryFn: async (): Promise<DeviceListData> => {
       const res = await listDevices(query);
-      const devices = unwrap(res);
-      if (!res.pagination) {
-        throw new Error('Invalid device list response: missing pagination');
+      if (!res.success || !res.data || !res.pagination) {
+        throw new Error(res.error?.message ?? 'Invalid device list response: missing pagination');
       }
-      return { devices, pagination: res.pagination };
+      return { devices: res.data, pagination: res.pagination };
     },
   });
 }
@@ -41,7 +33,7 @@ export function useDeviceList(query: DeviceListQuery) {
 export function useDeviceDetail(id: string | undefined) {
   return useQuery({
     queryKey: ['devices', 'detail', id],
-    queryFn: async (): Promise<DeviceDetail> => unwrap(await getDevice(id ?? '')),
+    queryFn: async (): Promise<DeviceDetail> => getDevice(id ?? ''),
     enabled: !!id,
   });
 }
@@ -50,7 +42,7 @@ export function useDeviceDetail(id: string | undefined) {
 export function useDeviceHardware(id: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ['devices', 'hardware', id],
-    queryFn: async (): Promise<DeviceHardware | null> => unwrap(await getDeviceHardware(id ?? '')),
+    queryFn: async (): Promise<DeviceHardware | null> => getDeviceHardware(id ?? ''),
     enabled: enabled && !!id,
   });
 }
@@ -59,7 +51,7 @@ export function useDeviceHardware(id: string | undefined, enabled: boolean) {
 export function useDeviceSoftware(id: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ['devices', 'software', id],
-    queryFn: async (): Promise<DeviceSoftwareItem[]> => unwrap(await getDeviceSoftware(id ?? '')),
+    queryFn: async (): Promise<DeviceSoftwareItem[]> => getDeviceSoftware(id ?? ''),
     enabled: enabled && !!id,
   });
 }
@@ -68,7 +60,7 @@ export function useDeviceSoftware(id: string | undefined, enabled: boolean) {
 export function useDeviceActivity(id: string | undefined, enabled: boolean, limit = 20) {
   return useQuery({
     queryKey: ['devices', 'activity', id, limit],
-    queryFn: async (): Promise<ActivityEvent[]> => unwrap(await getDeviceActivity(id ?? '', limit)),
+    queryFn: async (): Promise<ActivityEvent[]> => getDeviceActivity(id ?? '', limit),
     enabled: enabled && !!id,
   });
 }

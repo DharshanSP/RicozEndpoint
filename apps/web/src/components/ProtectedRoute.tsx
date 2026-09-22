@@ -14,11 +14,11 @@ export const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, allowedRoles
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-100 gap-4">
-        <div className="p-3 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 shadow-lg shadow-blue-500/30 animate-pulse">
-          <Shield className="w-8 h-8 text-white" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 gap-4">
+        <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 shadow-sm animate-pulse">
+          <Shield className="w-8 h-8" />
         </div>
-        <p className="text-sm font-medium text-slate-400">Verifying security session...</p>
+        <p className="text-sm font-medium text-slate-500">Verifying security session...</p>
       </div>
     );
   }
@@ -29,13 +29,13 @@ export const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, allowedRoles
 
   if (allowedRoles && allowedRoles.length > 0 && !hasRole(allowedRoles)) {
     return (
-      <div className="p-8 max-w-lg mx-auto my-12 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-4">
-        <div className="inline-flex p-3 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+      <div className="p-8 max-w-lg mx-auto my-12 rounded-xl bg-white border border-slate-200 text-center space-y-4 shadow-sm">
+        <div className="inline-flex p-3 rounded-full bg-red-50 text-red-600 border border-red-200">
           <Shield className="w-6 h-6" />
         </div>
-        <h3 className="text-lg font-bold text-white">Access Restricted</h3>
-        <p className="text-sm text-slate-400">
-          Your role (<span className="text-slate-200 font-semibold">{user?.role}</span>) does not have permission to view this section.
+        <h3 className="text-lg font-bold text-slate-900">Access Restricted</h3>
+        <p className="text-sm text-slate-500">
+          Your role (<span className="text-slate-800 font-semibold">{user?.role}</span>) does not have permission to view this section.
         </p>
       </div>
     );

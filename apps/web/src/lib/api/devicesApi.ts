@@ -1,10 +1,10 @@
 import { fetchApi } from '../api';
 import type {
-  DeviceActivityResponse,
-  DeviceDetailResponse,
-  DeviceHardwareResponse,
+  ActivityEvent,
+  DeviceDetail,
+  DeviceHardware,
   DeviceListResponse,
-  DeviceSoftwareResponse,
+  DeviceSoftwareItem,
   DeviceSortField,
   DeviceSortOrder,
   DeviceStatus,
@@ -40,9 +40,11 @@ import type {
 export interface DeviceListQuery {
   page?: number;
   limit?: number;
+  pageSize?: number;
   search?: string;
-  status?: DeviceStatus | '';
+  status?: DeviceStatus | string;
   os?: string;
+  manufacturer?: string;
   sortBy?: DeviceSortField;
   sortOrder?: DeviceSortOrder;
 }
@@ -74,10 +76,12 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
   const params = new URLSearchParams();
 
   if (query.page) params.set('page', String(query.page));
-  if (query.limit) params.set('limit', String(query.limit));
+  const limit = query.limit ?? query.pageSize;
+  if (limit) params.set('limit', String(limit));
   if (query.search) params.set('search', query.search);
-  if (query.status) params.set('status', query.status);
-  if (query.os) params.set('os', query.os);
+  if (query.status && query.status !== 'ALL') params.set('status', query.status);
+  if (query.os && query.os !== 'ALL') params.set('os', query.os);
+  if (query.manufacturer && query.manufacturer !== 'ALL') params.set('manufacturer', query.manufacturer);
   if (query.sortBy) params.set('sortBy', query.sortBy);
   if (query.sortOrder) params.set('sortOrder', query.sortOrder);
 
@@ -86,23 +90,27 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
 }
 
 /** Gets full device detail (overview + hardware, software, policies, compliance, commands, activity). */
-export async function getDevice(id: string): Promise<DeviceDetailResponse> {
-  return requestBody<DeviceDetailResponse>(`/devices/${encodeURIComponent(id)}`);
+export async function getDevice(id: string): Promise<DeviceDetail> {
+  return requestBody<DeviceDetail>(`/devices/${encodeURIComponent(id)}`);
 }
 
 /** Gets a device hardware inventory record (null when the agent has not reported hardware). */
-export async function getDeviceHardware(id: string): Promise<DeviceHardwareResponse> {
-  return requestBody<DeviceHardwareResponse>(`/devices/${encodeURIComponent(id)}/hardware`);
+export async function getDeviceHardware(id: string): Promise<DeviceHardware | null> {
+  return requestBody<DeviceHardware | null>(`/devices/${encodeURIComponent(id)}/hardware`);
 }
 
 /** Gets the installed software inventory for a device. */
-export async function getDeviceSoftware(id: string): Promise<DeviceSoftwareResponse> {
-  return requestBody<DeviceSoftwareResponse>(`/devices/${encodeURIComponent(id)}/software`);
+export async function getDeviceSoftware(id: string): Promise<DeviceSoftwareItem[]> {
+  return requestBody<DeviceSoftwareItem[]>(`/devices/${encodeURIComponent(id)}/software`);
 }
 
 /** Gets the merged activity feed (heartbeats, commands, alerts) for a device. */
-export async function getDeviceActivity(id: string, limit: number = 20): Promise<DeviceActivityResponse> {
-  return requestBody<DeviceActivityResponse>(
+export async function getDeviceActivity(id: string, limit: number = 20): Promise<ActivityEvent[]> {
+  return requestBody<ActivityEvent[]>(
     `/devices/${encodeURIComponent(id)}/activity?limit=${limit}`,
   );
 }
+
+/** Compatibility aliases for Devices UI hooks and components */
+export const getDevices = listDevices;
+export const getDeviceById = getDevice;
