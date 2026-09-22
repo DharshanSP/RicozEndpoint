@@ -266,7 +266,7 @@ export interface Device {
   model: string;
   os: string;
   osVersion: string;
-  architecture?: string;
+  architecture?: string | null;
   ipAddress: string;
   agentVersion: string;
   status: DeviceStatus | string;

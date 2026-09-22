@@ -28,11 +28,19 @@ export function useDeviceDetail(deviceId: string | undefined): UseDeviceDetailRe
     setError(null);
 
     try {
-      const res = await getDeviceById(deviceId);
-      if (res.success && res.data) {
-        setDevice(res.data);
+      const detail = await getDeviceById(deviceId);
+      if (detail && detail.overview) {
+        setDevice({
+          ...detail.overview,
+          organizationId: (detail.overview as unknown as { organizationId?: string }).organizationId ?? '',
+          hardware: detail.hardware,
+          software: detail.software,
+          policies: detail.policies,
+          complianceResults: detail.compliance,
+          commands: detail.commands,
+        });
       } else {
-        setError(res.error?.message || `Device '${deviceId}' not found.`);
+        setError(`Device '${deviceId}' not found.`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error loading device details.');

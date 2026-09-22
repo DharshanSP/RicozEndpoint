@@ -39,6 +39,7 @@ interface UseDevicesResult {
 
 const DEFAULT_PAGINATION: DevicePagination = {
   page: 1,
+  limit: 10,
   pageSize: 10,
   total: 0,
   totalPages: 1,
@@ -90,9 +91,21 @@ export function useDevices(initialParams: DeviceFilterParams = {}): UseDevicesRe
       });
 
       if (res.success && res.data) {
-        setDevices(res.data.devices);
-        setPagination(res.data.pagination);
-        setMetrics(res.data.metrics);
+        const rawDevices = Array.isArray(res.data) ? res.data : [];
+        setDevices(rawDevices as unknown as Device[]);
+        if (res.pagination) {
+          setPagination(res.pagination);
+        }
+        const total = res.pagination?.total ?? rawDevices.length;
+        const online = rawDevices.filter((d) => d.status === 'ONLINE').length;
+        const offline = rawDevices.filter((d) => d.status === 'OFFLINE').length;
+        const pending = rawDevices.filter((d) => d.status !== 'ONLINE' && d.status !== 'OFFLINE').length;
+        setMetrics({
+          totalDevices: total,
+          onlineDevices: online,
+          offlineDevices: offline,
+          pendingDevices: pending,
+        });
       } else {
         setError(res.error?.message || 'Failed to retrieve endpoint inventory.');
       }
