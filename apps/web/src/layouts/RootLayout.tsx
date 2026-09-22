@@ -119,6 +119,7 @@ export function RootLayout() {
     const path = location.pathname;
     if (path === '/' || path === '') return { section: 'Overview', page: 'Dashboard' };
     if (path.startsWith('/devices/groups')) return { section: 'Devices', page: 'Device Groups' };
+    if (path !== '/devices' && path.startsWith('/devices/')) return { section: 'Devices', page: 'Device Details' };
     if (path.startsWith('/devices')) return { section: 'Devices', page: 'Fleet Devices' };
     if (path.startsWith('/policies')) return { section: 'Management', page: 'Policies' };
     if (path.startsWith('/software')) return { section: 'Management', page: 'Software Catalog' };

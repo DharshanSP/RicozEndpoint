@@ -1,11 +1,12 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { RootLayout } from '../layouts/RootLayout';
 import { DashboardPage } from '../pages/DashboardPage';
+import { DevicesPage } from '../pages/DevicesPage';
+import { DeviceDetailsPage } from '../pages/DeviceDetailsPage';
 import { LoginPage } from '../pages/LoginPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import {
-  Laptop,
   Layers,
   ShieldCheck,
   Package,
@@ -37,21 +38,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'devices',
-        element: (
-          <PlaceholderPage
-            title="Fleet Endpoints"
-            section="DEVICES"
-            icon={Laptop}
-            description="Centralized inventory and real-time health telemetry across enrolled organization devices."
-            plannedFeatures={[
-              'Real-time operating system and hardware telemetry',
-              'Software inventory query and running process discovery',
-              'Remote quarantine and instant device isolation',
-              'Command dispatch (reboot, lock, sync inventory)',
-            ]}
-            schemaEntities={['Device', 'DeviceHardware', 'DeviceSoftware', 'DeviceHeartbeat']}
-          />
-        ),
+        element: <DevicesPage />,
+      },
+      {
+        path: 'devices/:deviceId',
+        element: <DeviceDetailsPage />,
       },
       {
         path: 'devices/groups',
