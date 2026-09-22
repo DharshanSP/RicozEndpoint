@@ -10,7 +10,6 @@ import {
   Package,
   RefreshCw,
   Server,
-  ShieldAlert,
   ShieldCheck,
   Terminal,
   type LucideIcon,
@@ -20,6 +19,7 @@ import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { ErrorState } from '../components/ErrorState';
 import type {
   ActivityEvent,
   ActivityType,
@@ -149,21 +149,12 @@ function EmptyTab({ icon: Icon, title, description }: { icon: LucideIcon; title:
 
 function TabError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="p-8 rounded-xl bg-white border border-red-200 text-center space-y-4 shadow-xs">
-      <div className="inline-flex p-3 rounded-full bg-red-50 text-red-600 border border-red-200">
-        <ShieldAlert className="w-6 h-6" />
-      </div>
-      <p className="text-xs text-slate-600 max-w-md mx-auto">{message}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRetry}
-        className="text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5"
-      >
-        <RefreshCw className="w-3.5 h-3.5" />
-        <span>Retry</span>
-      </Button>
-    </div>
+    <ErrorState
+      title="Endpoint Data Notice"
+      message={message}
+      onRetry={onRetry}
+      retryLabel="Retry"
+    />
   );
 }
 
