@@ -2,7 +2,8 @@ import { createBrowserRouter } from 'react-router-dom';
 import { RootLayout } from '../layouts/RootLayout';
 import { DashboardPage } from '../pages/DashboardPage';
 import { DevicesPage } from '../pages/DevicesPage';
-import { DeviceDetailsPage } from '../pages/DeviceDetailsPage';
+import { DeviceDetailPage } from '../pages/DeviceDetailPage';
+import { EnrollmentTokensPage } from '../pages/EnrollmentTokensPage';
 import { LoginPage } from '../pages/LoginPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
@@ -41,10 +42,6 @@ export const router = createBrowserRouter([
         element: <DevicesPage />,
       },
       {
-        path: 'devices/:deviceId',
-        element: <DeviceDetailsPage />,
-      },
-      {
         path: 'devices/groups',
         element: (
           <PlaceholderPage
@@ -60,6 +57,14 @@ export const router = createBrowserRouter([
             schemaEntities={['DeviceGroup', 'DeviceGroupMember', 'PolicyAssignment']}
           />
         ),
+      },
+      {
+        path: 'devices/:id',
+        element: <DeviceDetailPage />,
+      },
+      {
+        path: 'enrollment-tokens',
+        element: <EnrollmentTokensPage />,
       },
       {
         path: 'policies',

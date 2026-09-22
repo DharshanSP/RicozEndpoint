@@ -5,6 +5,7 @@ import {
   Shield,
   LayoutDashboard,
   Laptop,
+  KeyRound,
   Layers,
   ShieldCheck,
   Package,
@@ -75,6 +76,12 @@ export function RootLayout() {
       title: 'DEVICES',
       items: [
         { name: 'Devices', to: '/devices', icon: Laptop },
+        {
+          name: 'Enrollment Tokens',
+          to: '/enrollment-tokens',
+          icon: KeyRound,
+          roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN'],
+        },
         { name: 'Device Groups', to: '/devices/groups', icon: Layers },
       ],
     },
@@ -120,6 +127,7 @@ export function RootLayout() {
     if (path === '/' || path === '') return { section: 'Overview', page: 'Dashboard' };
     if (path.startsWith('/devices/groups')) return { section: 'Devices', page: 'Device Groups' };
     if (path !== '/devices' && path.startsWith('/devices/')) return { section: 'Devices', page: 'Device Details' };
+    if (path.startsWith('/enrollment-tokens')) return { section: 'Devices', page: 'Enrollment Tokens' };
     if (path.startsWith('/devices')) return { section: 'Devices', page: 'Fleet Devices' };
     if (path.startsWith('/policies')) return { section: 'Management', page: 'Policies' };
     if (path.startsWith('/software')) return { section: 'Management', page: 'Software Catalog' };

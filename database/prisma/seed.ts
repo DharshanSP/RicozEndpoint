@@ -181,17 +181,101 @@ async function main() {
 
   console.log(`Created policy: ${policy.name}`);
 
-  await prisma.auditLog.create({
-    data: {
-      organizationId: organization.id,
-      actorId: adminUser.id,
-      action: 'SEED_COMPLETE',
-      resource: 'SYSTEM',
-      resourceId: organization.id,
-      ipAddress: '127.0.0.1',
-      metadata: JSON.stringify({ message: 'Database seeded successfully' }),
-    },
+  const complianceRulesData = [
+    { name: 'Disk Encryption (BitLocker / FileVault)', ruleType: 'ENCRYPTION', condition: JSON.stringify({ encrypted: true }) },
+    { name: 'Host Firewall Active', ruleType: 'FIREWALL', condition: JSON.stringify({ firewallEnabled: true }) },
+    { name: 'EDR Agent Running', ruleType: 'PROCESS', condition: JSON.stringify({ processName: 'edr-agent' }) },
+    { name: 'Critical Security Patches Up-to-Date', ruleType: 'PATCH', condition: JSON.stringify({ criticalPatches: 0 }) },
+    { name: 'Antivirus Real-Time Protection', ruleType: 'PROCESS', condition: JSON.stringify({ realTimeProtection: true }) },
+    { name: 'Auto-Lock Timeout Configured', ruleType: 'CONFIGURATION', condition: JSON.stringify({ autoLockTimeout: 900 }) },
+  ];
+
+  const complianceRules = [];
+  for (const ruleData of complianceRulesData) {
+    const rule = await prisma.complianceRule.create({
+      data: {
+        organizationId: organization.id,
+        name: ruleData.name,
+        description: `${ruleData.name} compliance evaluation`,
+        ruleType: ruleData.ruleType,
+        condition: ruleData.condition,
+      },
+    });
+    complianceRules.push(rule);
+
+    for (const device of await prisma.device.findMany({ where: { organizationId: organization.id } })) {
+      const isCompliant = device.status === 'ONLINE' || device.status === 'OFFLINE';
+      await prisma.complianceResult.create({
+        data: {
+          deviceId: device.id,
+          ruleId: rule.id,
+          status: isCompliant ? 'COMPLIANT' : 'NON_COMPLIANT',
+          reason: isCompliant ? 'Rule condition satisfied' : 'Rule condition not satisfied',
+          evaluatedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  console.log(`Created ${complianceRules.length} compliance rules with results`);
+
+  const alertSeeds = [
+    { severity: 'CRITICAL', title: 'EDR Agent Terminated Unexpectedly', message: 'Endpoint protection agent stopped responding on device', status: 'OPEN', timeOffset: 12 * 60_000 },
+    { severity: 'WARNING', title: 'Pending OS Security Update > 14 Days', message: 'Critical operating system update is overdue on device', status: 'OPEN', timeOffset: 3 * 60 * 60_000 },
+    { severity: 'WARNING', title: 'Firewall Configuration Drift Detected', message: 'Host firewall rules deviate from organizational baseline', status: 'OPEN', timeOffset: 26 * 60_000 },
+    { severity: 'INFO', title: 'Software Inventory Stale', message: 'Software inventory collection has not reported for 24 hours', status: 'OPEN', timeOffset: 5 * 60 * 60_000 },
+  ];
+
+  const seededDevices = await prisma.device.findMany({
+    where: { organizationId: organization.id, status: { not: 'PENDING' } },
+    orderBy: { registeredAt: 'asc' },
   });
+
+  const alerts = [];
+  for (let i = 0; i < alertSeeds.length; i++) {
+    const seed = alertSeeds[i];
+    const device = seededDevices[i % seededDevices.length];
+    const alert = await prisma.alert.create({
+      data: {
+        organizationId: organization.id,
+        deviceId: device?.id ?? null,
+        severity: seed.severity,
+        title: seed.title,
+        message: seed.message,
+        status: seed.status,
+        createdAt: new Date(Date.now() - seed.timeOffset),
+      },
+    });
+    alerts.push(alert);
+  }
+
+  console.log(`Created ${alerts.length} security alerts`);
+
+  const auditEvents = [
+    { action: 'DEVICE_ENROLLED', resource: 'DEVICE', resourceId: 'fleet', ipAddress: '127.0.0.1', metadata: { count: 5 }, timeOffset: 2 * 60 * 60_000 },
+    { action: 'POLICY_CREATED', resource: 'POLICY', resourceId: 'corporate-security', ipAddress: '127.0.0.1', metadata: { name: 'Corporate Security Baseline' }, timeOffset: 4 * 60 * 60_000 },
+    { action: 'USER_LOGIN', resource: 'AUTH', resourceId: 'system', ipAddress: '127.0.0.1', metadata: { email: 'admin@ricoz.local' }, timeOffset: 6 * 60 * 60_000 },
+    { action: 'COMPLIANCE_EVALUATED', resource: 'COMPLIANCE', resourceId: 'fleet', ipAddress: '127.0.0.1', metadata: { scope: 'organization' }, timeOffset: 8 * 60 * 60_000 },
+    { action: 'ALERT_ACKNOWLEDGED', resource: 'ALERT', resourceId: 'triage', ipAddress: '127.0.0.1', metadata: { count: 1 }, timeOffset: 10 * 60 * 60_000 },
+    { action: 'SEED_COMPLETE', resource: 'SYSTEM', resourceId: organization.id, ipAddress: '127.0.0.1', metadata: { message: 'Database seeded successfully' }, timeOffset: 12 * 60 * 60_000 },
+  ];
+
+  for (const event of auditEvents) {
+    await prisma.auditLog.create({
+      data: {
+        organizationId: organization.id,
+        actorId: adminUser.id,
+        action: event.action,
+        resource: event.resource,
+        resourceId: event.resourceId,
+        ipAddress: event.ipAddress,
+        metadata: JSON.stringify(event.metadata),
+        timestamp: new Date(Date.now() - event.timeOffset),
+      },
+    });
+  }
+
+  console.log(`Created ${auditEvents.length} audit log entries`);
 
   console.log('Database seeding complete!');
 }

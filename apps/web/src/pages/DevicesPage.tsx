@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDevices } from '../hooks/useDevices';
-import { DeviceSortField } from '../types/device';
+import { useDeviceList } from '../hooks/useDeviceQueries';
+import { formatRelativeTime } from '../lib/format';
+import type { DeviceSortField, DeviceSortOrder, DeviceStatus } from '../types/device';
 import {
   Laptop,
   Search,
@@ -22,30 +23,16 @@ import {
   Server,
   SlidersHorizontal,
   XCircle,
+  KeyRound,
+  ShieldAlert,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 
-// Helper to format human-readable relative time
-function formatRelativeTime(isoString: string | null): string {
-  if (!isoString) return 'Never (Pending)';
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffSec < 60) return 'Just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
-
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
-  const osLower = os.toLowerCase();
+  const osLower = (os || '').toLowerCase();
   if (osLower.includes('win')) {
     return {
       label: 'Windows',
@@ -64,45 +51,119 @@ function getOsVisual(os: string) {
   };
 }
 
+function getStatusBadge(devStatus: string) {
+  const s = (devStatus || '').toUpperCase();
+  if (s === 'ONLINE') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-emerald-200 bg-emerald-50 text-emerald-700">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+        </span>
+        Online
+      </span>
+    );
+  }
+  if (s === 'OFFLINE') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-amber-200 bg-amber-50 text-amber-700">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        Offline
+      </span>
+    );
+  }
+  if (s === 'NON_COMPLIANT') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-rose-200 bg-rose-50 text-rose-700">
+        <ShieldAlert className="w-3 h-3 text-rose-600" />
+        Non-Compliant
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-blue-200 bg-blue-50 text-blue-700">
+      <Clock className="w-3 h-3 text-blue-600" />
+      Pending
+    </span>
+  );
+}
+
 export function DevicesPage() {
   const navigate = useNavigate();
-  const {
-    devices,
-    pagination,
-    metrics,
-    loading,
-    error,
-    search,
-    status,
-    os,
-    manufacturer,
-    sortBy,
-    sortOrder,
+
+  // Filter & pagination state
+  const [search, setSearch] = useState<string>('');
+  const [status, setStatus] = useState<string>('ALL');
+  const [os, setOs] = useState<string>('ALL');
+  const [manufacturer, setManufacturer] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
+  const [sortOrder, setSortOrder] = useState<DeviceSortOrder>('desc');
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // UI state
+  const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);
+  const [showMoreFilters, setShowMoreFilters] = useState<boolean>(false);
+
+  // Query parameters for real TanStack Query backend hook
+  const query = useMemo(
+    () => ({
+      page,
+      limit: pageSize,
+      search: search.trim() || undefined,
+      status: status !== 'ALL' ? (status as DeviceStatus) : undefined,
+      os: os !== 'ALL' ? os : undefined,
+      manufacturer: manufacturer !== 'ALL' ? manufacturer : undefined,
+      sortBy,
+      sortOrder,
+    }),
+    [page, pageSize, search, status, os, manufacturer, sortBy, sortOrder]
+  );
+
+  const { data, isLoading, isFetching, error, refetch } = useDeviceList(query);
+
+  const rawDevices = data?.devices ?? [];
+  const pagination = data?.pagination ?? {
     page,
-    pageSize,
-    hasActiveFilters,
-    setSearch,
-    setStatus,
-    setOs,
-    setManufacturer,
-    setSort,
-    setPage,
-    setPageSize,
-    clearFilters,
-    refresh,
-  } = useDevices();
+    limit: pageSize,
+    total: rawDevices.length,
+    totalPages: Math.max(1, Math.ceil(rawDevices.length / pageSize)),
+  };
 
-  const [showEnrollModal, setShowEnrollModal] = useState(false);
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  // Client-side manufacturer filtering fallback if needed
+  const devices = useMemo(() => {
+    if (manufacturer === 'ALL') return rawDevices;
+    return rawDevices.filter((d) =>
+      (d.manufacturer || '').toLowerCase().includes(manufacturer.toLowerCase())
+    );
+  }, [rawDevices, manufacturer]);
 
-  // Available manufacturers extracted dynamically from known dataset
+  // Derived KPI metrics
+  const metrics = useMemo(() => {
+    return {
+      totalDevices: pagination.total,
+      onlineDevices: rawDevices.filter((d) => d.status?.toUpperCase() === 'ONLINE').length,
+      offlineDevices: rawDevices.filter((d) => d.status?.toUpperCase() === 'OFFLINE').length,
+      pendingDevices: rawDevices.filter((d) => d.status?.toUpperCase() === 'PENDING').length,
+    };
+  }, [pagination.total, rawDevices]);
+
+  const hasActiveFilters =
+    search.trim() !== '' || status !== 'ALL' || os !== 'ALL' || manufacturer !== 'ALL';
+
   const manufacturerOptions = useMemo(
     () => ['ALL', 'Dell Inc.', 'Apple', 'Lenovo', 'HP Inc.', 'Framework', 'Microsoft Corporation'],
     []
   );
 
   const handleSortClick = (field: DeviceSortField) => {
-    setSort(field);
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortOrder(field === 'lastSeenAt' || field === 'registeredAt' ? 'desc' : 'asc');
+    }
+    setPage(1);
   };
 
   const renderSortIndicator = (field: DeviceSortField) => {
@@ -116,34 +177,40 @@ export function DevicesPage() {
     );
   };
 
-  const getStatusBadge = (devStatus: string) => {
-    const s = devStatus.toUpperCase();
-    if (s === 'ONLINE') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-emerald-200 bg-emerald-50 text-emerald-700">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-          </span>
-          Online
-        </span>
-      );
-    }
-    if (s === 'OFFLINE') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-amber-200 bg-amber-50 text-amber-700">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          Offline
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-blue-200 bg-blue-50 text-blue-700">
-        <Clock className="w-3 h-3 text-blue-600" />
-        Pending
-      </span>
-    );
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setPage(1);
   };
+
+  const handleStatusChange = (val: string) => {
+    setStatus(val);
+    setPage(1);
+  };
+
+  const handleOsChange = (val: string) => {
+    setOs(val);
+    setPage(1);
+  };
+
+  const handleManufacturerChange = (val: string) => {
+    setManufacturer(val);
+    setPage(1);
+  };
+
+  const handlePageSizeChange = (val: number) => {
+    setPageSize(val);
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setStatus('ALL');
+    setOs('ALL');
+    setManufacturer('ALL');
+    setPage(1);
+  };
+
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -167,13 +234,13 @@ export function DevicesPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={refresh}
-            disabled={loading}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5"
             title="Refresh Fleet Data"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
-            <span>Sync</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-blue-600' : ''}`} />
+            <span>{isFetching ? 'Syncing...' : 'Sync'}</span>
           </Button>
 
           <Button
@@ -186,7 +253,7 @@ export function DevicesPage() {
         </div>
       </div>
 
-      {/* Fleet KPI Metric Bar (Derived dynamically from data) */}
+      {/* Fleet KPI Metric Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {/* Total */}
         <Card className="border-slate-200 bg-white shadow-xs">
@@ -207,7 +274,7 @@ export function DevicesPage() {
 
         {/* Online */}
         <Card
-          onClick={() => setStatus(status === 'ONLINE' ? 'ALL' : 'ONLINE')}
+          onClick={() => handleStatusChange(status === 'ONLINE' ? 'ALL' : 'ONLINE')}
           className={`cursor-pointer transition-all border-slate-200 bg-white shadow-xs hover:bg-slate-50 ${
             status === 'ONLINE' ? 'ring-1 ring-emerald-500 bg-emerald-50/50' : ''
           }`}
@@ -229,7 +296,7 @@ export function DevicesPage() {
 
         {/* Offline */}
         <Card
-          onClick={() => setStatus(status === 'OFFLINE' ? 'ALL' : 'OFFLINE')}
+          onClick={() => handleStatusChange(status === 'OFFLINE' ? 'ALL' : 'OFFLINE')}
           className={`cursor-pointer transition-all border-slate-200 bg-white shadow-xs hover:bg-slate-50 ${
             status === 'OFFLINE' ? 'ring-1 ring-amber-500 bg-amber-50/50' : ''
           }`}
@@ -251,7 +318,7 @@ export function DevicesPage() {
 
         {/* Pending */}
         <Card
-          onClick={() => setStatus(status === 'PENDING' ? 'ALL' : 'PENDING')}
+          onClick={() => handleStatusChange(status === 'PENDING' ? 'ALL' : 'PENDING')}
           className={`cursor-pointer transition-all border-slate-200 bg-white shadow-xs hover:bg-slate-50 ${
             status === 'PENDING' ? 'ring-1 ring-blue-500 bg-blue-50/50' : ''
           }`}
@@ -282,13 +349,13 @@ export function DevicesPage() {
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search by device name, hostname, serial number, IP..."
                 className="w-full pl-9 pr-8 py-2 text-xs rounded-md bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               />
               {search && (
                 <button
-                  onClick={() => setSearch('')}
+                  onClick={() => handleSearchChange('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -303,13 +370,14 @@ export function DevicesPage() {
                 <span className="text-slate-500 text-[11px] font-medium">Status:</span>
                 <select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value)}
+                  onChange={(e) => handleStatusChange(e.target.value)}
                   className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="ONLINE">Online</option>
                   <option value="OFFLINE">Offline</option>
                   <option value="PENDING">Pending</option>
+                  <option value="NON_COMPLIANT">Non-Compliant</option>
                 </select>
               </div>
 
@@ -318,7 +386,7 @@ export function DevicesPage() {
                 <span className="text-slate-500 text-[11px] font-medium">OS:</span>
                 <select
                   value={os}
-                  onChange={(e) => setOs(e.target.value)}
+                  onChange={(e) => handleOsChange(e.target.value)}
                   className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
                 >
                   <option value="ALL">All OS</option>
@@ -334,7 +402,9 @@ export function DevicesPage() {
                 size="sm"
                 onClick={() => setShowMoreFilters(!showMoreFilters)}
                 className={`h-8 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 ${
-                  manufacturer !== 'ALL' || showMoreFilters ? 'border-blue-300 text-blue-700 bg-blue-50/50' : ''
+                  manufacturer !== 'ALL' || showMoreFilters
+                    ? 'border-blue-300 text-blue-700 bg-blue-50/50'
+                    : ''
                 }`}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -346,14 +416,14 @@ export function DevicesPage() {
             </div>
           </div>
 
-          {/* Expandable Secondary Filters (e.g. Manufacturer & Sort Order) */}
+          {/* Expandable Secondary Filters */}
           {showMoreFilters && (
             <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-slate-500 text-[11px] font-medium">Manufacturer:</span>
                 <select
                   value={manufacturer}
-                  onChange={(e) => setManufacturer(e.target.value)}
+                  onChange={(e) => handleManufacturerChange(e.target.value)}
                   className="bg-white border border-slate-200 rounded-md px-2.5 py-1 text-slate-800 text-xs focus:outline-none cursor-pointer"
                 >
                   {manufacturerOptions.map((mfr) => (
@@ -368,11 +438,15 @@ export function DevicesPage() {
                 <span className="text-slate-500 text-[11px] font-medium">Sort By:</span>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSort(e.target.value as DeviceSortField)}
+                  onChange={(e) => {
+                    setSortBy(e.target.value as DeviceSortField);
+                    setPage(1);
+                  }}
                   className="bg-white border border-slate-200 rounded-md px-2.5 py-1 text-slate-800 text-xs focus:outline-none cursor-pointer"
                 >
                   <option value="lastSeenAt">Last Seen</option>
                   <option value="deviceName">Device Name</option>
+                  <option value="hostname">Hostname</option>
                   <option value="status">Status</option>
                   <option value="os">Operating System</option>
                   <option value="registeredAt">Registered Date</option>
@@ -381,7 +455,10 @@ export function DevicesPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSort(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
+                  onClick={() => {
+                    setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+                    setPage(1);
+                  }}
                   className="h-7 px-2 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1"
                 >
                   {sortOrder === 'asc' ? (
@@ -411,7 +488,7 @@ export function DevicesPage() {
               {search && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
                   Search: &quot;{search}&quot;
-                  <button onClick={() => setSearch('')} className="hover:text-red-600">
+                  <button onClick={() => handleSearchChange('')} className="hover:text-red-600">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -420,7 +497,7 @@ export function DevicesPage() {
               {status !== 'ALL' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
                   Status: {status}
-                  <button onClick={() => setStatus('ALL')} className="hover:text-red-600">
+                  <button onClick={() => handleStatusChange('ALL')} className="hover:text-red-600">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -429,7 +506,7 @@ export function DevicesPage() {
               {os !== 'ALL' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
                   OS: {os}
-                  <button onClick={() => setOs('ALL')} className="hover:text-red-600">
+                  <button onClick={() => handleOsChange('ALL')} className="hover:text-red-600">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -438,7 +515,7 @@ export function DevicesPage() {
               {manufacturer !== 'ALL' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
                   Mfr: {manufacturer}
-                  <button onClick={() => setManufacturer('ALL')} className="hover:text-red-600">
+                  <button onClick={() => handleManufacturerChange('ALL')} className="hover:text-red-600">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -456,18 +533,18 @@ export function DevicesPage() {
       </Card>
 
       {/* Error State */}
-      {error && !loading && (
+      {errorMessage && !isLoading && (
         <Card className="border-red-200 bg-red-50/50 shadow-xs">
           <CardContent className="p-8 text-center space-y-3">
             <div className="inline-flex p-3 rounded-full bg-red-100 text-red-600 border border-red-200">
               <XCircle className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-slate-900">Unable to load devices</h3>
-            <p className="text-xs text-slate-600 max-w-md mx-auto">{error}</p>
+            <p className="text-xs text-slate-600 max-w-md mx-auto">{errorMessage}</p>
             <Button
               variant="outline"
               size="sm"
-              onClick={refresh}
+              onClick={() => refetch()}
               className="text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -478,7 +555,7 @@ export function DevicesPage() {
       )}
 
       {/* Loading Skeleton */}
-      {loading && (
+      {isLoading && (
         <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
           <div className="p-4 border-b border-slate-100 animate-pulse">
             <div className="h-4 w-48 bg-slate-200 rounded" />
@@ -505,7 +582,7 @@ export function DevicesPage() {
       )}
 
       {/* Empty State */}
-      {!loading && !error && devices.length === 0 && (
+      {!isLoading && !errorMessage && devices.length === 0 && (
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-12 text-center space-y-3">
             <div className="inline-flex p-3 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
@@ -533,7 +610,7 @@ export function DevicesPage() {
       )}
 
       {/* Data Table */}
-      {!loading && !error && devices.length > 0 && (
+      {!isLoading && !errorMessage && devices.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -664,7 +741,10 @@ export function DevicesPage() {
                           </span>
                           {device.lastSeenAt && (
                             <span className="text-[10px] text-slate-400 font-mono block">
-                              {new Date(device.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(device.lastSeenAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
                             </span>
                           )}
                         </div>
@@ -673,7 +753,7 @@ export function DevicesPage() {
                       {/* Agent Version */}
                       <td className="py-3 px-4 hidden lg:table-cell">
                         <span className="font-mono text-[11px] text-slate-500">
-                          {device.agentVersion || '—'}
+                          {device.agentVersion ? `v${device.agentVersion.replace(/^v/, '')}` : '—'}
                         </span>
                       </td>
 
@@ -702,11 +782,13 @@ export function DevicesPage() {
             <div className="text-slate-500">
               Showing{' '}
               <span className="font-semibold text-slate-800">
-                {Math.min((pagination.page - 1) * pagination.pageSize + 1, pagination.total)}
+                {pagination.total === 0
+                  ? 0
+                  : Math.min((pagination.page - 1) * pagination.limit + 1, pagination.total)}
               </span>
               –
               <span className="font-semibold text-slate-800">
-                {Math.min(pagination.page * pagination.pageSize, pagination.total)}
+                {Math.min(pagination.page * pagination.limit, pagination.total)}
               </span>{' '}
               of <span className="font-semibold text-slate-800">{pagination.total}</span> endpoints
             </div>
@@ -718,7 +800,7 @@ export function DevicesPage() {
                 <span>Per page:</span>
                 <select
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
                   className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-800 focus:outline-none"
                 >
                   <option value={10}>10</option>
@@ -731,7 +813,7 @@ export function DevicesPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setPage(page - 1)}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
                 className="h-7 px-2 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40"
               >
@@ -741,7 +823,7 @@ export function DevicesPage() {
 
               {/* Page number buttons */}
               <div className="flex items-center gap-1">
-                {[...Array(pagination.totalPages)].map((_, i) => {
+                {[...Array(Math.min(pagination.totalPages, 5))].map((_, i) => {
                   const pNum = i + 1;
                   return (
                     <button
@@ -763,7 +845,7 @@ export function DevicesPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setPage(page + 1)}
+                onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                 disabled={page >= pagination.totalPages}
                 className="h-7 px-2 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40"
               >
@@ -775,7 +857,7 @@ export function DevicesPage() {
         </div>
       )}
 
-      {/* Enroll Device Modal Dialog (Staged UX Placeholder) */}
+      {/* Enroll Device Modal Dialog */}
       {showEnrollModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-lg bg-white border border-slate-200 rounded-xl shadow-xl p-6 space-y-4">
@@ -799,11 +881,11 @@ export function DevicesPage() {
 
             <div className="p-3.5 rounded-lg bg-blue-50/70 border border-blue-100 text-xs text-slate-700 space-y-1.5">
               <div className="flex items-center gap-2 font-semibold text-blue-700">
-                <Clock className="w-4 h-4" />
-                <span>Agent Enrollment Pipeline (Staged)</span>
+                <KeyRound className="w-4 h-4" />
+                <span>Agent Enrollment Tokens & Installers</span>
               </div>
               <p className="text-slate-600 leading-relaxed">
-                The agent token generator and automated bootstrap installers for Windows (MSI), macOS (PKG), and Linux (Bash/systemd daemon) are currently being staged in the backend pipeline.
+                Generate tokenized enrollment keys and deploy pre-configured agent installers for Windows (.msi / .ps1), macOS (.pkg / mobileconfig), and Linux (deb / systemd daemon).
               </p>
             </div>
 
@@ -827,7 +909,20 @@ export function DevicesPage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-slate-200">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowEnrollModal(false);
+                  navigate('/enrollment-tokens');
+                }}
+                className="text-xs border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 gap-1.5 font-medium"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Manage Enrollment Tokens</span>
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"

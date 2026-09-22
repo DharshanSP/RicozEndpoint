@@ -21,9 +21,10 @@ model Organization {
   commands     Command[]
   applications Application[]
   alerts       Alert[]
-  auditLogs    AuditLog[]
-  agentTokens  AgentToken[]
-  deviceGroups DeviceGroup[]
+  auditLogs          AuditLog[]
+  agentTokens        AgentToken[]
+  deviceGroups       DeviceGroup[]
+  enrollmentTokens   EnrollmentToken[]
 
   @@map("organizations")
 }
@@ -41,9 +42,10 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization      Organization @relation(fields: [organizationId], references: [id])
-  auditLogs         AuditLog[]
-  requestedCommands Command[]    @relation("RequestedBy")
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  auditLogs             AuditLog[]
+  requestedCommands     Command[]    @relation("RequestedBy")
+  createdEnrollmentTokens EnrollmentToken[] @relation("CreatedEnrollmentTokens")
 
   @@index([organizationId])
   @@index([email])
@@ -81,6 +83,7 @@ model Device {
   alerts            Alert[]
   agentTokens       AgentToken[]
   deviceGroups      DeviceGroupMember[]
+  enrollmentTokens  EnrollmentToken[]
 
   @@unique([organizationId, serialNumber])
   @@index([organizationId])
@@ -357,6 +360,31 @@ model AuditLog {
   @@index([resource])
   @@index([timestamp])
   @@map("audit_logs")
+}
+
+// ─── Enrollment Token ────────────────────────────────────────────────────────
+
+model EnrollmentToken {
+  id             String    @id @default(uuid())
+  organizationId String
+  tokenHash      String    @unique
+  label          String    @default("")
+  createdById    String?
+  deviceId       String?
+  expiresAt      DateTime?
+  maxUses        Int       @default(1)
+  uses           Int       @default(0)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User?        @relation("CreatedEnrollmentTokens", fields: [createdById], references: [id])
+  device       Device?      @relation(fields: [deviceId], references: [id])
+
+  @@index([organizationId])
+  @@index([tokenHash])
+  @@map("enrollment_tokens")
 }
 
 // ─── Agent Token ─────────────────────────────────────────────────────────────
