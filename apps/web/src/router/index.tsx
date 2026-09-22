@@ -7,6 +7,7 @@ import { EnrollmentTokensPage } from '../pages/EnrollmentTokensPage';
 import { LoginPage } from '../pages/LoginPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
+import { RouteErrorBoundary } from '../components/ErrorBoundary';
 import {
   Layers,
   ShieldCheck,
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/',
@@ -32,6 +34,7 @@ export const router = createBrowserRouter([
         <RootLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         index: true,

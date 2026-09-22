@@ -22,13 +22,13 @@ import {
   X,
   Server,
   SlidersHorizontal,
-  XCircle,
   KeyRound,
   ShieldAlert,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { ErrorState } from '../components/ErrorState';
 
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
@@ -534,24 +534,13 @@ export function DevicesPage() {
 
       {/* Error State */}
       {errorMessage && !isLoading && (
-        <Card className="border-red-200 bg-red-50/50 shadow-xs">
-          <CardContent className="p-8 text-center space-y-3">
-            <div className="inline-flex p-3 rounded-full bg-red-100 text-red-600 border border-red-200">
-              <XCircle className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900">Unable to load devices</h3>
-            <p className="text-xs text-slate-600 max-w-md mx-auto">{errorMessage}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              className="text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Retry Connection</span>
-            </Button>
-          </CardContent>
-        </Card>
+        <ErrorState
+          title="Unable to load devices"
+          message={errorMessage}
+          onRetry={() => refetch()}
+          retryLabel="Retry Connection"
+          isRetrying={isFetching}
+        />
       )}
 
       {/* Loading Skeleton */}

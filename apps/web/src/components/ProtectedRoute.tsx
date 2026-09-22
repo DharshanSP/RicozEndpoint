@@ -1,6 +1,7 @@
 import type { FC, ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
+import { LoadingPage } from './LoadingPage';
 import { Shield } from 'lucide-react';
 
 interface ProtectedRouteProps {
@@ -13,14 +14,7 @@ export const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, allowedRoles
   const location = useLocation();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 gap-4">
-        <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 shadow-sm animate-pulse">
-          <Shield className="w-8 h-8" />
-        </div>
-        <p className="text-sm font-medium text-slate-500">Verifying security session...</p>
-      </div>
-    );
+    return <LoadingPage message="Verifying security session..." subtext="Validating authentication tokens..." />;
   }
 
   if (!isAuthenticated) {

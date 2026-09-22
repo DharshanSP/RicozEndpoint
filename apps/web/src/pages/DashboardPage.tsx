@@ -19,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { ErrorState } from '../components/ErrorState';
 import { Link } from 'react-router-dom';
 
 export function DashboardPage() {
@@ -35,21 +36,13 @@ export function DashboardPage() {
   // Error state for unexpected data service failure
   if (error && !telemetryData) {
     return (
-      <div className="max-w-7xl mx-auto p-8 rounded-xl bg-white border border-slate-200 text-center space-y-4 shadow-sm">
-        <div className="inline-flex p-3 rounded-full bg-red-50 text-red-600 border border-red-200">
-          <ShieldAlert className="w-6 h-6" />
-        </div>
-        <h2 className="text-lg font-bold text-slate-900">Telemetry Ingestion Error</h2>
-        <p className="text-xs text-slate-500 max-w-md mx-auto">{error}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          className="text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Retry Connection</span>
-        </Button>
+      <div className="max-w-7xl mx-auto">
+        <ErrorState
+          title="Telemetry Ingestion Error"
+          message={error}
+          onRetry={handleRefresh}
+          retryLabel="Retry Connection"
+        />
       </div>
     );
   }
