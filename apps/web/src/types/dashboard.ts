@@ -41,9 +41,12 @@ export interface DashboardTelemetryData {
   offlineDevices: number;
   pendingEnrollment: number;
   complianceScore: number;
+  compliantDevices: number;
+  nonCompliantDevices: number;
   openAlertsCount: number;
   criticalAlertsCount: number;
   warningAlertsCount: number;
+  failedActionsCount: number;
   osDistribution: OsDistributionItem[];
   complianceControls: ComplianceControlItem[];
   activeAlerts: DashboardAlertItem[];

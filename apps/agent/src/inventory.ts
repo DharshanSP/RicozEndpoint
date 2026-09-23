@@ -24,6 +24,11 @@ export interface SoftwareItem {
   architecture: string;
 }
 
+export interface SecurityState {
+  firewallEnabled: boolean;
+  antivirusEnabled: boolean;
+}
+
 function runPowerShell(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -111,4 +116,40 @@ $items = foreach ($p in $paths) {
   }
   const parsed = JSON.parse(raw) as SoftwareItem[] | SoftwareItem;
   return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+/**
+ * Collect endpoint security posture: firewall domain/public/private profile
+ * state and registered antivirus product detection status.
+ */
+export async function collectSecurityState(): Promise<SecurityState> {
+  const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+$fw = @(Get-NetFirewallProfile -PolicyStore ActiveStore 2>$null)
+$fwEnabled = $true
+if ($fw.Count -gt 0) {
+  $disabled = @($fw | Where-Object { $_.Enabled -eq $false })
+  $fwEnabled = $disabled.Count -eq 0
+}
+$av = @(Get-CimInstance -Namespace 'root\\SecurityCenter2' -ClassName AntiVirusProduct 2>$null)
+$avEnabled = $false
+foreach ($p in $av) {
+  try {
+    $ts = [int]$p.productState
+    $bits = ($ts -band 0x1000) -shr 12
+    if ($bits -eq 3 -or $bits -eq 1) { $avEnabled = $true; break }
+  } catch { }
+}
+[pscustomobject]@{
+  firewallEnabled = [bool]$fwEnabled
+  antivirusEnabled = [bool]$avEnabled
+} | ConvertTo-Json -Compress
+`;
+
+  const raw = await runPowerShell(script);
+  try {
+    return JSON.parse(raw) as SecurityState;
+  } catch {
+    return { firewallEnabled: false, antivirusEnabled: false };
+  }
 }

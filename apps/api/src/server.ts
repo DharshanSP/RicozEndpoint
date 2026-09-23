@@ -12,6 +12,9 @@ import { healthRoutes } from './modules/health/health.routes';
 import { usersRoutes } from './modules/users/users.routes';
 import { enrollmentRoutes } from './modules/enrollment/enrollment.routes';
 import { agentRoutes } from './modules/agent/agent.routes';
+import { policiesRoutes } from './modules/policies/policies.routes';
+import { commandsRoutes } from './modules/commands/commands.routes';
+import { alertsRoutes } from './modules/alerts/alerts.routes';
 
 const config = loadConfig();
 
@@ -60,6 +63,9 @@ export async function buildApp() {
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(enrollmentRoutes, { prefix: '/api' });
   await app.register(agentRoutes, { prefix: '/api/agent' });
+  await app.register(policiesRoutes, { prefix: '/api/policies' });
+  await app.register(commandsRoutes, { prefix: '/api/commands' });
+  await app.register(alertsRoutes, { prefix: '/api/alerts' });
 
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = (error as { statusCode?: number }).statusCode ?? 500;

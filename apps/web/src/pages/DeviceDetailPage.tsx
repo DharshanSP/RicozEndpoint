@@ -7,19 +7,26 @@ import {
   CheckSquare,
   Clock,
   Cpu,
+  Lock,
   Package,
+  PowerOff,
   RefreshCw,
+  RotateCcw,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Terminal,
   type LucideIcon,
 } from 'lucide-react';
 import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware } from '../hooks/useDeviceQueries';
+import { useCreateCommand } from '../hooks/useCommands';
+import { useAuth } from '../context/AuthContext';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
+import type { CommandType } from '../types/command';
 import type {
   ActivityEvent,
   ActivityType,
@@ -40,6 +47,7 @@ const TABS = [
   { value: 'policies', label: 'Policies' },
   { value: 'compliance', label: 'Compliance' },
   { value: 'commands', label: 'Commands' },
+  { value: 'actions', label: 'Actions' },
   { value: 'activity', label: 'Activity' },
 ] as const;
 
@@ -361,6 +369,11 @@ export function DeviceDetailPage() {
           )}
         </TabsContent>
 
+        {/* Actions */}
+        <TabsContent value="actions">
+          <ActionsTab deviceId={overview.id} />
+        </TabsContent>
+
         {/* Activity */}
         <TabsContent value="activity">
           {activity.isLoading ? (
@@ -547,6 +560,183 @@ function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
               {formatRelativeTime(event.timestamp)}
             </p>
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface CommandAction {
+  type: CommandType;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  destructive: boolean;
+}
+
+const COMMAND_ACTIONS: CommandAction[] = [
+  {
+    type: 'REFRESH_INVENTORY',
+    label: 'Refresh Inventory',
+    description: 'Ask the agent to re-collect hardware and software inventory.',
+    icon: RefreshCw,
+    destructive: false,
+  },
+  {
+    type: 'SYNC_POLICY',
+    label: 'Sync Policy',
+    description: 'Force the agent to re-fetch and apply its effective policies immediately.',
+    icon: ShieldCheck,
+    destructive: false,
+  },
+  {
+    type: 'LOCK_DEVICE',
+    label: 'Lock Device',
+    description: 'Immediately lock the workstation session. Requires confirmation.',
+    icon: Lock,
+    destructive: true,
+  },
+  {
+    type: 'RESTART_DEVICE',
+    label: 'Restart Device',
+    description: 'Force a system restart of the endpoint. Requires confirmation.',
+    icon: RotateCcw,
+    destructive: true,
+  },
+  {
+    type: 'SHUTDOWN_DEVICE',
+    label: 'Shutdown Device',
+    description: 'Power the endpoint down. Requires confirmation.',
+    icon: PowerOff,
+    destructive: true,
+  },
+];
+
+function ActionsTab({ deviceId }: { deviceId: string }) {
+  const { hasRole } = useAuth();
+  const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const createCommand = useCreateCommand(deviceId);
+  const [pendingType, setPendingType] = useState<CommandType | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+
+  if (!canManage) {
+    return (
+      <EmptyTab
+        icon={ShieldAlert}
+        title="Read-only access"
+        description="Your role does not permit issuing remote commands. This requires IT_ADMIN or above."
+      />
+    );
+  }
+
+  const pendingAction = COMMAND_ACTIONS.find((action) => action.type === pendingType) ?? null;
+
+  const dispatch = (type: CommandType) => {
+    setConfirmed(false);
+    const action = COMMAND_ACTIONS.find((a) => a.type === type)!;
+    const destructive = action.destructive;
+    if (destructive) {
+      setPendingType(type);
+      return;
+    }
+    createCommand.mutate({ deviceId, type, confirmed: false });
+  };
+
+  const confirmDispatch = () => {
+    if (!pendingAction || !confirmed) return;
+    createCommand.mutate(
+      { deviceId, type: pendingAction.type, confirmed: true },
+      {
+        onSuccess: () => {
+          setPendingType(null);
+          setConfirmed(false);
+        },
+      },
+    );
+  };
+
+  const running = createCommand.isPending;
+
+  return (
+    <div className="space-y-3">
+      {createCommand.isError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+          {(createCommand.error as Error).message}
+        </div>
+      )}
+      {createCommand.isSuccess && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
+          Command {String((createCommand.data as { data?: { type?: string } }).data?.type ?? '')} queued for this device.
+        </div>
+      )}
+
+      {pendingAction && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <pendingAction.icon className="w-4 h-4 text-amber-600" />
+            <span className="text-sm font-bold text-slate-900">
+              Confirm {pendingAction.label} ({pendingAction.type})
+            </span>
+          </div>
+          <p className="text-xs text-slate-700">{pendingAction.description}.</p>
+          <p className="text-[11px] text-amber-700">
+            This action is destructive and irreversible once the agent executes it. The server will reject it without an explicit confirmation.
+          </p>
+          <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+            />
+            I understand the consequences and confirm this action.
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPendingType(null)} disabled={running}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmDispatch}
+              disabled={running || !confirmed}
+            >
+              {running ? 'Confirming...' : 'Confirm & Send'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {COMMAND_ACTIONS.map((action) => (
+        <div key={action.type} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className={`p-2 rounded-md border shrink-0 ${action.destructive ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-blue-50 border-blue-200 text-blue-600'}`}>
+              <action.icon className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-900">{action.label}</span>
+                <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                  {action.type}
+                </span>
+                {action.destructive && (
+                  <Badge variant="destructive" className="text-[10px] font-medium">
+                    Destructive
+                  </Badge>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">{action.description}</p>
+            </div>
+          </div>
+          <Button
+            variant={action.destructive ? 'outline' : 'default'}
+            size="sm"
+            className={action.destructive ? 'text-rose-700 border-rose-300 hover:bg-rose-50' : ''}
+            onClick={() => dispatch(action.type)}
+            disabled={running}
+          >
+            {action.destructive ? 'Request...' : 'Run'}
+          </Button>
         </div>
       ))}
     </div>

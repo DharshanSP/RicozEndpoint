@@ -46,6 +46,7 @@ model User {
   auditLogs             AuditLog[]
   requestedCommands     Command[]    @relation("RequestedBy")
   createdEnrollmentTokens EnrollmentToken[] @relation("CreatedEnrollmentTokens")
+  createdPolicies       Policy[]
 
   @@index([organizationId])
   @@index([email])
@@ -72,6 +73,8 @@ model Device {
   registeredAt   DateTime  @default(now())
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  firewallEnabled Boolean?
+  antivirusEnabled Boolean?
 
   organization      Organization        @relation(fields: [organizationId], references: [id])
   hardware          DeviceHardware?
@@ -191,13 +194,16 @@ model Policy {
   description    String   @default("")
   settings       String   @default("{}")
   isActive       Boolean  @default(true)
+  createdById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization       @relation(fields: [organizationId], references: [id])
+  createdBy    User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
   assignments  PolicyAssignment[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("policies")
 }
 
@@ -322,6 +328,7 @@ model Alert {
   id             String    @id @default(uuid())
   organizationId String
   deviceId       String?
+  type           String    @default("")
   severity       String
   title          String
   message        String

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authenticateAgent, AgentDevicePayload } from '../../middleware/agent-auth.middleware';
 import { agentHeartbeatSchema, commandResultSchema, deviceParamsSchema } from '@ricoz/validation';
+import { evaluateDeviceCompliance } from '../compliance/compliance.service';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -23,6 +24,13 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           agentVersion: { type: 'string' },
           timestamp: { type: 'string' },
           status: { type: 'string', enum: ['ONLINE', 'OFFLINE', 'UNKNOWN'] },
+          security: {
+            type: 'object',
+            properties: {
+              firewallEnabled: { type: 'boolean' },
+              antivirusEnabled: { type: 'boolean' },
+            },
+          },
         },
       },
     },
@@ -40,7 +48,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const { deviceId, agentVersion, timestamp, status, hardware, software } = parsed.data;
+      const { deviceId, agentVersion, timestamp, status, hardware, software, security } = parsed.data;
 
       if (deviceId !== agentDevice.id) {
         return reply.status(403).send({
@@ -63,6 +71,12 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             lastSeenAt: now,
             agentVersion: agentVersion || undefined,
             ipAddress: request.ip,
+            ...(security
+              ? {
+                  firewallEnabled: security.firewallEnabled ?? undefined,
+                  antivirusEnabled: security.antivirusEnabled ?? undefined,
+                }
+              : {}),
           },
           select: { id: true, deviceName: true, hostname: true, status: true, lastSeenAt: true },
         }),
@@ -70,6 +84,18 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           data: { deviceId: agentDevice.id, agentVersion, timestamp: heartbeatTime, status },
         }),
       ]);
+
+      // Re-evaluate compliance against assigned policies using latest security telemetry.
+      if (security && (typeof security.firewallEnabled === 'boolean' || typeof security.antivirusEnabled === 'boolean')) {
+        await evaluateDeviceCompliance(
+          app.prisma,
+          agentDevice.id,
+          { firewallEnabled: security.firewallEnabled, antivirusEnabled: security.antivirusEnabled },
+          agentDevice.organizationId
+        ).catch((error) => {
+          app.log.error({ error, context: 'compliance_evaluation' }, 'Compliance evaluation failed');
+        });
+      }
 
       if (hardware) {
         await app.prisma.deviceHardware.upsert({
@@ -279,6 +305,81 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             type: command.type,
             createdAt: command.createdAt.toISOString(),
           })),
+        },
+      });
+    },
+  });
+
+  // ─── Agent: list effective assigned policies (for SYNC_POLICY) ─────────────
+  app.get('/policies', {
+    preHandler: [authenticateAgent(app)],
+    schema: {
+      description: 'Return the effective, active policies assigned to the authenticated device (direct + via groups)',
+      tags: ['Agent'],
+      response: { 200: { type: 'object', additionalProperties: true } },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const agentDevice = request.agentDevice as AgentDevicePayload;
+
+      const memberGroups = await app.prisma.deviceGroupMember.findMany({
+        where: { deviceId: agentDevice.id },
+        select: { groupId: true },
+      });
+      const groupIds = memberGroups.map((m) => m.groupId);
+
+      const assignments = await app.prisma.policyAssignment.findMany({
+        where: {
+          policy: { isActive: true },
+          OR: [{ deviceId: agentDevice.id }, ...(groupIds.length ? [{ groupId: { in: groupIds } }] : [])],
+        },
+        orderBy: { priority: 'asc' },
+        select: {
+          priority: true,
+          policy: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              description: true,
+              settings: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      // Deduplicate (policy may be assigned directly and via a group).
+      const seen = new Set<string>();
+      const policies: Array<Record<string, unknown>> = [];
+      for (const assignment of assignments) {
+        const policy = assignment.policy;
+        if (seen.has(policy.id)) continue;
+        seen.add(policy.id);
+        let settings: unknown = {};
+        try {
+          settings = JSON.parse(policy.settings ?? '{}');
+        } catch {
+          settings = {};
+        }
+        policies.push({
+          id: policy.id,
+          name: policy.name,
+          type: policy.type,
+          description: policy.description,
+          settings,
+          priority: assignment.priority,
+          updatedAt: policy.updatedAt.toISOString(),
+        });
+      }
+
+      const contentHash = JSON.stringify(policies);
+
+      return reply.send({
+        success: true,
+        data: {
+          policies,
+          contentHash,
+          appliedAt: new Date().toISOString(),
         },
       });
     },

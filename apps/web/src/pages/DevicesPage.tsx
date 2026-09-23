@@ -122,7 +122,7 @@ export function DevicesPage() {
 
   const { data, isLoading, isFetching, error, refetch } = useDeviceList(query);
 
-  const rawDevices = data?.devices ?? [];
+  const rawDevices = useMemo(() => data?.devices ?? [], [data]);
   const pagination = data?.pagination ?? {
     page,
     limit: pageSize,

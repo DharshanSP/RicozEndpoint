@@ -30,9 +30,17 @@ export const heartbeatSchema = z.object({
 
 export type HeartbeatInput = z.infer<typeof heartbeatSchema>;
 
+export const deviceSecuritySchema = z.object({
+  firewallEnabled: z.boolean().optional(),
+  antivirusEnabled: z.boolean().optional(),
+});
+
+export type DeviceSecurityInput = z.infer<typeof deviceSecuritySchema>;
+
 export const agentHeartbeatSchema = heartbeatSchema.extend({
   hardware: hardwareInventorySchema.optional(),
   software: softwareInventorySchema.optional(),
+  security: deviceSecuritySchema.optional(),
 });
 
 export type AgentHeartbeatInput = z.infer<typeof agentHeartbeatSchema>;

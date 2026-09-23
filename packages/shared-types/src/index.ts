@@ -41,7 +41,20 @@ export enum PolicyType {
 export enum ComplianceStatus {
   COMPLIANT = 'COMPLIANT',
   NON_COMPLIANT = 'NON_COMPLIANT',
+  UNKNOWN = 'UNKNOWN',
   NOT_EVALUATED = 'NOT_EVALUATED',
+}
+
+/** Event types recorded against a device in its activity feed. */
+export type DeviceActivityType = 'HEARTBEAT' | 'COMMAND' | 'ALERT' | 'POLICY' | 'COMPLIANCE';
+
+export interface DeviceActivityEvent {
+  id: string;
+  type: DeviceActivityType;
+  timestamp: string;
+  status?: string;
+  severity?: string;
+  description: string;
 }
 
 export enum AlertSeverity {

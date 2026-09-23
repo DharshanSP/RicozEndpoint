@@ -4,17 +4,17 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { DeviceDetailPage } from '../pages/DeviceDetailPage';
 import { EnrollmentTokensPage } from '../pages/EnrollmentTokensPage';
+import { PoliciesPage } from '../pages/PoliciesPage';
+import { AlertsPage } from '../pages/AlertsPage';
+import { CompliancePage } from '../pages/CompliancePage';
 import { LoginPage } from '../pages/LoginPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { RouteErrorBoundary } from '../components/ErrorBoundary';
 import {
   Layers,
-  ShieldCheck,
   Package,
   Wrench,
-  CheckSquare,
-  Bell,
   BarChart3,
   History,
   Users,
@@ -71,21 +71,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'policies',
-        element: (
-          <PlaceholderPage
-            title="Configuration Policies"
-            section="MANAGEMENT"
-            icon={ShieldCheck}
-            description="Create, assign, and enforce endpoint configuration profiles and security baselines."
-            plannedFeatures={[
-              'Disk encryption enforcement (BitLocker, FileVault)',
-              'Host firewall rules and network port filtering',
-              'Removable USB storage security controls',
-              'OS auto-update and telemetry schedules',
-            ]}
-            schemaEntities={['Policy', 'PolicyAssignment']}
-          />
-        ),
+        element: <PoliciesPage />,
       },
       {
         path: 'software',
@@ -124,37 +110,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'compliance',
-        element: (
-          <PlaceholderPage
-            title="Compliance Rules & Audits"
-            section="SECURITY"
-            icon={CheckSquare}
-            description="Audit and enforce organizational security standards and CIS benchmark compliance."
-            plannedFeatures={[
-              'Standard compliance profiles (CIS, NIST, SOC2)',
-              'Continuous drift detection and violation reporting',
-              'Automated non-compliance remediation triggers',
-            ]}
-            schemaEntities={['ComplianceRule', 'ComplianceResult']}
-          />
-        ),
+        element: <CompliancePage />,
       },
       {
         path: 'alerts',
-        element: (
-          <PlaceholderPage
-            title="Security & Operational Alerts"
-            section="SECURITY"
-            icon={Bell}
-            description="Real-time incident detection, threshold alerts, and administrative triage workflows."
-            plannedFeatures={[
-              'Multi-channel alert dispatch (Email, Slack, Webhooks, PagerDuty)',
-              'Severity classification (Critical, Warning, Informational)',
-              'Administrator triage notes and incident resolution workflows',
-            ]}
-            schemaEntities={['Alert']}
-          />
-        ),
+        element: <AlertsPage />,
       },
       {
         path: 'reports',

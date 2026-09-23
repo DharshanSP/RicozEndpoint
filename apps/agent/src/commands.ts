@@ -1,6 +1,11 @@
 import { execFile } from 'node:child_process';
+import { fetchPolicies } from './api';
 
 export type CommandOutcome = { status: 'COMPLETED'; result: string } | { status: 'FAILED'; errorMessage: string };
+
+export interface CommandExecutionContext {
+  agentToken?: string;
+}
 
 function runProgram(program: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -19,12 +24,26 @@ function runProgram(program: string, args: string[]): Promise<void> {
  * Lightweight commands run inline; heavier ones (restart, shutdown) are
  * scheduled via the Windows shutdown utility.
  */
-export async function executeCommand(commandType: string): Promise<CommandOutcome> {
+export async function executeCommand(commandType: string, context: CommandExecutionContext = {}): Promise<CommandOutcome> {
   switch (commandType) {
     case 'REFRESH_INVENTORY':
       return { status: 'COMPLETED', result: 'Inventory refresh queued for next heartbeat' };
     case 'SYNC_POLICY':
-      return { status: 'COMPLETED', result: 'Policy sync handled by platform' };
+      if (!context.agentToken) {
+        return { status: 'FAILED', errorMessage: 'Policy sync requires an authenticated agent session' };
+      }
+      try {
+        const sync = await fetchPolicies(context.agentToken);
+        const summary = sync.policies
+          .map((policy) => `${policy.name}(${policy.type})`)
+          .join(', ');
+        return {
+          status: 'COMPLETED',
+          result: `Synced ${sync.policies.length} policies (hash ${sync.contentHash.slice(0, 12)}...)${summary ? `: ${summary}` : ''}`,
+        };
+      } catch (error) {
+        return { status: 'FAILED', errorMessage: `Policy sync failed: ${(error as Error).message}` };
+      }
     case 'LOCK_DEVICE':
       try {
         await runProgram('rundll32.exe', ['user32.dll,LockWorkStation']);

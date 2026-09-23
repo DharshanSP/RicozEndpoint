@@ -2,29 +2,10 @@ export * from './auth.schema';
 export * from './inventory.schema';
 export * from './agent.schema';
 export * from './enrollment.schema';
+export * from './policy.schema';
+export * from './command.schema';
+export * from './alert.schema';
 import { z } from 'zod';
-
-export const createPolicySchema = z.object({
-  name: z.string().min(1).max(255),
-  type: z.enum(['SECURITY', 'CONFIGURATION', 'COMPLIANCE']),
-  description: z.string().max(1000).optional().default(''),
-  settings: z.record(z.unknown()),
-});
-
-export type CreatePolicyInput = z.infer<typeof createPolicySchema>;
-
-export const createCommandSchema = z.object({
-  deviceId: z.string().uuid(),
-  type: z.enum([
-    'REFRESH_INVENTORY',
-    'SYNC_POLICY',
-    'LOCK_DEVICE',
-    'RESTART_DEVICE',
-    'SHUTDOWN_DEVICE',
-  ]),
-});
-
-export type CreateCommandInput = z.infer<typeof createCommandSchema>;
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
