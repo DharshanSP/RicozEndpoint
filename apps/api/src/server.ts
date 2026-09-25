@@ -15,8 +15,17 @@ import { agentRoutes } from './modules/agent/agent.routes';
 import { policiesRoutes } from './modules/policies/policies.routes';
 import { commandsRoutes } from './modules/commands/commands.routes';
 import { alertsRoutes } from './modules/alerts/alerts.routes';
+import { deviceGroupsRoutes } from './modules/device-groups/device-groups.routes';
+import { auditLogsRoutes } from './modules/audit-logs/audit-logs.routes';
+import { softwareCatalogRoutes } from './modules/software-catalog/software-catalog.routes';
+import { organizationSettingsRoutes } from './modules/organization-settings/organization-settings.routes';
 
 const config = loadConfig();
+
+// Allow BigInt serialization in JSON responses
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+  return this.toString();
+};
 
 export async function buildApp() {
   const app = Fastify({
@@ -66,6 +75,10 @@ export async function buildApp() {
   await app.register(policiesRoutes, { prefix: '/api/policies' });
   await app.register(commandsRoutes, { prefix: '/api/commands' });
   await app.register(alertsRoutes, { prefix: '/api/alerts' });
+  await app.register(deviceGroupsRoutes, { prefix: '/api/device-groups' });
+  await app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
+  await app.register(softwareCatalogRoutes, { prefix: '/api/software' });
+  await app.register(organizationSettingsRoutes, { prefix: '/api/settings' });
 
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
@@ -74,10 +87,13 @@ export async function buildApp() {
 
     app.log.error(error);
 
+    // Map Fastify schema validation errors to VALIDATION_ERROR
+    const isValidationError = errCode === 'FST_ERR_VALIDATION';
+
     reply.status(statusCode).send({
       success: false,
       error: {
-        code: errCode ?? 'INTERNAL_ERROR',
+        code: isValidationError ? 'VALIDATION_ERROR' : (errCode ?? 'INTERNAL_ERROR'),
         message: statusCode === 500 ? 'Internal server error' : message,
       },
     });

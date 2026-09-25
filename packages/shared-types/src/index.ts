@@ -72,8 +72,26 @@ export enum AlertStatus {
 export interface Organization {
   id: string;
   name: string;
+  settings?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface DeviceGroup {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrganizationSettings {
+  agentHeartbeatIntervalSeconds: number;
+  offlineTimeoutMinutes: number;
+  alertRetentionDays: number;
+  auditRetentionDays: number;
+  defaultPolicyPriority: number;
 }
 
 export interface User {

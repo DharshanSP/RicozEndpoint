@@ -387,4 +387,49 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
       });
     },
   });
+
+  // ─── Get active organization token snippet ─────────────────────────────────
+  app.get('/token', {
+    preHandler: [authenticate, requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Get organization enrollment token and agent installation snippets',
+      tags: ['Enrollment'],
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const orgId = jwtUser.organizationId;
+
+      const org = await app.prisma.organization.findUnique({
+        where: { id: orgId },
+      });
+
+      if (!org) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Organization not found' },
+        });
+      }
+
+      const activeToken = await app.prisma.enrollmentToken.findFirst({
+        where: { organizationId: orgId, isActive: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const tokenValue = activeToken ? activeToken.tokenHash : `RICOZ-ENROLL-${orgId.slice(0, 8).toUpperCase()}`;
+      const apiBaseUrl = `http://localhost:3001/api`;
+      const powershellCommand = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:RICOZ_ENROLL_TOKEN="${tokenValue}"; $env:RICOZ_API_URL="${apiBaseUrl}"; iwr -useb "${apiBaseUrl}/agent/install.ps1" | iex`;
+
+      return reply.send({
+        success: true,
+        data: {
+          organizationId: org.id,
+          organizationName: org.name,
+          enrollmentToken: tokenValue,
+          apiBaseUrl,
+          powershellInstallCommand: powershellCommand,
+          enrollmentUrl: `${apiBaseUrl}/devices/enroll`,
+        },
+      });
+    },
+  });
 }

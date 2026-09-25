@@ -111,6 +111,9 @@ export async function getDeviceActivity(id: string, limit: number = 20): Promise
   );
 }
 
+export type { Device, DeviceSummary } from '../../types/device';
+
 /** Compatibility aliases for Devices UI hooks and components */
 export const getDevices = listDevices;
 export const getDeviceById = getDevice;
+

@@ -1,35 +1,54 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { hashToken } from '../utils/tokens';
+import { FastifyRequest, FastifyReply } from 'fastify';
+import crypto from 'crypto';
 
-export interface AgentDevicePayload {
-  id: string;
+export interface AgentContext {
+  deviceId: string;
   organizationId: string;
-  serialNumber: string;
-  status: string;
+  agentTokenId: string;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
-    agentDevice?: AgentDevicePayload;
+    agent?: AgentContext;
   }
 }
 
 /**
- * Authenticate a device agent using its per-device agent token.
- * The raw token travels in the `X-Agent-Token` header and is stored hashed.
+ * Computes SHA-256 hash of a raw agent token.
  */
-export function authenticateAgent(app: FastifyInstance) {
-  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const headerValue = request.headers['x-agent-token'];
-    if (!headerValue || typeof headerValue !== 'string') {
-      return reply.status(401).send({
-        success: false,
-        error: { code: 'AGENT_TOKEN_REQUIRED', message: 'X-Agent-Token header is required' },
-      });
-    }
+export function hashAgentToken(rawToken: string): string {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
 
-    const tokenHash = hashToken(headerValue);
-    const agentToken = await app.prisma.agentToken.findUnique({
+/**
+ * Fastify preHandler hook to verify AgentToken for endpoint agents.
+ */
+export async function authenticateAgent(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const authHeader = request.headers.authorization;
+  const customHeader = request.headers['x-agent-token'] as string | undefined;
+
+  let rawToken: string | undefined;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    rawToken = authHeader.substring(7).trim();
+  } else if (customHeader) {
+    rawToken = customHeader.trim();
+  }
+
+  if (!rawToken) {
+    return reply.status(401).send({
+      success: false,
+      error: {
+        code: 'AGENT_TOKEN_REQUIRED',
+        message: 'Missing agent authorization token (Bearer token or X-Agent-Token header required)',
+      },
+    });
+  }
+
+  const tokenHash = hashAgentToken(rawToken);
+
+  try {
+    const agentToken = await request.server.prisma.agentToken.findUnique({
       where: { tokenHash },
       include: { device: true },
     });
@@ -37,22 +56,36 @@ export function authenticateAgent(app: FastifyInstance) {
     if (!agentToken || !agentToken.isActive) {
       return reply.status(401).send({
         success: false,
-        error: { code: 'INVALID_AGENT_TOKEN', message: 'Agent token is invalid or revoked' },
+        error: {
+          code: 'INVALID_AGENT_TOKEN',
+          message: 'Agent token is invalid, revoked, or inactive',
+        },
       });
     }
 
-    if (agentToken.expiresAt && agentToken.expiresAt.getTime() < Date.now()) {
+    if (agentToken.expiresAt && new Date() > agentToken.expiresAt) {
       return reply.status(401).send({
         success: false,
-        error: { code: 'AGENT_TOKEN_EXPIRED', message: 'Agent token has expired' },
+        error: {
+          code: 'EXPIRED_AGENT_TOKEN',
+          message: 'Agent token has expired',
+        },
       });
     }
 
-    request.agentDevice = {
-      id: agentToken.device.id,
-      organizationId: agentToken.device.organizationId,
-      serialNumber: agentToken.device.serialNumber,
-      status: agentToken.device.status,
+    request.agent = {
+      deviceId: agentToken.deviceId,
+      organizationId: agentToken.organizationId,
+      agentTokenId: agentToken.id,
     };
-  };
+  } catch (err) {
+    request.log.error(err, 'Failed to authenticate agent token');
+    return reply.status(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to verify agent authorization',
+      },
+    });
+  }
 }

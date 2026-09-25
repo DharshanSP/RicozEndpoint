@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { authenticateAgent, AgentDevicePayload } from '../../middleware/agent-auth.middleware';
+import { authenticateAgent } from '../../middleware/agent-auth.middleware';
 import { agentHeartbeatSchema, commandResultSchema, deviceParamsSchema } from '@ricoz/validation';
 import { evaluateDeviceCompliance } from '../compliance/compliance.service';
 
@@ -12,7 +12,7 @@ const PENDING_COMMAND_TAKE = 20;
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // ─── Agent heartbeat + inventory telemetry ───────────────────────────────────
   app.post('/heartbeat', {
-    preHandler: [authenticateAgent(app)],
+    preHandler: [authenticateAgent],
     schema: {
       description: 'Report agent heartbeat with optional hardware/software inventory telemetry',
       tags: ['Agent'],
@@ -35,7 +35,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
-      const agentDevice = request.agentDevice as AgentDevicePayload;
+      const agentDevice = { id: request.agent!.deviceId, organizationId: request.agent!.organizationId };
       const parsed = agentHeartbeatSchema.safeParse(request.body);
 
       if (!parsed.success) {
@@ -177,7 +177,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── Agent: report command execution result ──────────────────────────────────
   app.post('/commands/:id/result', {
-    preHandler: [authenticateAgent(app)],
+    preHandler: [authenticateAgent],
     schema: {
       description: 'Report the result of an executed command back to the platform',
       tags: ['Agent'],
@@ -197,7 +197,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
-      const agentDevice = request.agentDevice as AgentDevicePayload;
+      const agentDevice = { id: request.agent!.deviceId, organizationId: request.agent!.organizationId };
       const params = deviceParamsSchema.safeParse(request.params);
       const body = commandResultSchema.safeParse(request.body);
 
@@ -275,7 +275,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── Agent: list pending commands (explicit pull) ────────────────────────────
   app.get('/commands/pending', {
-    preHandler: [authenticateAgent(app)],
+    preHandler: [authenticateAgent],
     schema: {
       description: 'List commands queued for the authenticated device agent',
       tags: ['Agent'],
@@ -288,7 +288,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
-      const agentDevice = request.agentDevice as AgentDevicePayload;
+      const agentDevice = { id: request.agent!.deviceId, organizationId: request.agent!.organizationId };
 
       const commands = await app.prisma.command.findMany({
         where: { deviceId: agentDevice.id, status: 'PENDING' },
@@ -312,14 +312,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── Agent: list effective assigned policies (for SYNC_POLICY) ─────────────
   app.get('/policies', {
-    preHandler: [authenticateAgent(app)],
+    preHandler: [authenticateAgent],
     schema: {
       description: 'Return the effective, active policies assigned to the authenticated device (direct + via groups)',
       tags: ['Agent'],
       response: { 200: { type: 'object', additionalProperties: true } },
     },
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
-      const agentDevice = request.agentDevice as AgentDevicePayload;
+      const agentDevice = { id: request.agent!.deviceId, organizationId: request.agent!.organizationId };
 
       const memberGroups = await app.prisma.deviceGroupMember.findMany({
         where: { deviceId: agentDevice.id },
