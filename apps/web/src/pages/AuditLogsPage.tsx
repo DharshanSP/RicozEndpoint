@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   History,
   Search,
@@ -20,7 +20,7 @@ export function AuditLogsPage() {
   const [total, setTotal] = useState(0);
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     const res = await getAuditLogs({
       page,
@@ -34,11 +34,11 @@ export function AuditLogsPage() {
       setTotal(res.data.total);
     }
     setLoading(false);
-  };
+  }, [page, search, actionFilter]);
 
   useEffect(() => {
     fetchLogs();
-  }, [page, search, actionFilter]);
+  }, [fetchLogs]);
 
   const parseMetadata = (meta?: string | null) => {
     if (!meta) return null;

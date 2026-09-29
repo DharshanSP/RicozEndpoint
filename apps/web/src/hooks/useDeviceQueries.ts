@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getDevice,
   getDeviceActivity,
   getDeviceHardware,
   getDeviceSoftware,
   listDevices,
+  deleteDevice,
   type DeviceListQuery,
 } from '../lib/api/devicesApi';
 import type {
@@ -62,5 +63,16 @@ export function useDeviceActivity(id: string | undefined, enabled: boolean, limi
     queryKey: ['devices', 'activity', id, limit],
     queryFn: async (): Promise<ActivityEvent[]> => getDeviceActivity(id ?? '', limit),
     enabled: enabled && !!id,
+  });
+}
+
+/** Mutation to delete a device. Invalidates the device list on success. */
+export function useDeleteDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteDevice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices', 'list'] });
+    },
   });
 }

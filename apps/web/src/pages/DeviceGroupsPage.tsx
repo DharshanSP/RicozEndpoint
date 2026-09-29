@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Layers,
   Search,
@@ -43,7 +43,7 @@ export function DeviceGroupsPage() {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchGroups = async () => {
+  const fetchGroups = useCallback(async () => {
     setLoading(true);
     setError(null);
     const res = await getDeviceGroups({ search });
@@ -53,20 +53,20 @@ export function DeviceGroupsPage() {
       setError(res.error?.message || 'Failed to load device groups');
     }
     setLoading(false);
-  };
+  }, [search]);
 
-  const fetchFleetDevices = async () => {
+  const fetchFleetDevices = useCallback(async () => {
     const res = await getDevices({ limit: 100 });
     if (res.success && res.data) {
-      const itemList = Array.isArray(res.data) ? res.data : (res.data as any).items || [];
-      setAllDevices(itemList);
+      const itemList = Array.isArray(res.data) ? res.data : (res.data as { items?: Device[] }).items || [];
+      setAllDevices(itemList as Device[]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchGroups();
     fetchFleetDevices();
-  }, [search]);
+  }, [fetchGroups, fetchFleetDevices]);
 
   const loadDetail = async (id: string) => {
     setDetailLoading(true);

@@ -68,7 +68,10 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
           orderBy: { createdAt: 'desc' },
           skip: (page - 1) * limit,
           take: limit,
-          include: { device: { select: { id: true, deviceName: true, hostname: true } } },
+          include: {
+            device: { select: { id: true, deviceName: true, hostname: true, serialNumber: true, status: true } },
+            createdBy: { select: { id: true, email: true, name: true } },
+          },
         }),
       ]);
 
@@ -78,12 +81,23 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
           id: token.id,
           label: token.label,
           device: token.device
-            ? { id: token.device.id, deviceName: token.device.deviceName, hostname: token.device.hostname }
+            ? {
+                id: token.device.id,
+                deviceName: token.device.deviceName,
+                hostname: token.device.hostname,
+                serialNumber: token.device.serialNumber,
+                status: token.device.status,
+              }
+            : null,
+          createdBy: token.createdBy
+            ? { id: token.createdBy.id, email: token.createdBy.email, name: token.createdBy.name }
             : null,
           expiresAt: toIso(token.expiresAt),
           maxUses: token.maxUses,
           uses: token.uses,
+          remainingUses: Math.max(0, token.maxUses - token.uses),
           isActive: token.isActive,
+          lastUsedAt: toIso(token.lastUsedAt),
           createdAt: toIso(token.createdAt),
         })),
         pagination: {
@@ -92,6 +106,74 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
           total,
           totalPages: Math.ceil(total / limit),
         },
+      });
+    },
+  });
+
+  // ─── Enrollment history ─────────────────────────────────────────────────────
+  app.get('/enrollment-history', {
+    preHandler: [authenticate, requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Chronological enrollment history derived from issued agent tokens',
+      tags: ['Enrollment'],
+      querystring: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          page: { type: 'string' },
+          limit: { type: 'string' },
+        },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const parsed = enrollmentTokenListQuerySchema.safeParse(request.query);
+      const { page, limit } = parsed.success
+        ? parsed.data
+        : { page: 1, limit: 25 };
+
+      const orgFilter: Prisma.AgentTokenWhereInput =
+        jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId };
+
+      const [total, agentTokens] = await Promise.all([
+        app.prisma.agentToken.count({ where: orgFilter }),
+        app.prisma.agentToken.findMany({
+          where: orgFilter,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            deviceId: true,
+            isActive: true,
+            expiresAt: true,
+            createdAt: true,
+            device: {
+              select: {
+                id: true,
+                deviceName: true,
+                hostname: true,
+                serialNumber: true,
+                os: true,
+                osVersion: true,
+                agentVersion: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      return reply.send({
+        success: true,
+        data: agentTokens.map((entry) => ({
+          id: entry.id,
+          device: entry.device,
+          isCurrent: entry.isActive,
+          isRevoked: !entry.isActive,
+          expiresAt: toIso(entry.expiresAt),
+          enrolledAt: toIso(entry.createdAt),
+        })),
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
     },
   });
@@ -370,9 +452,39 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      const usedAt = new Date();
       await app.prisma.enrollmentToken.update({
         where: { id: token.id },
-        data: { uses: { increment: 1 }, isActive: token.uses + 1 >= token.maxUses ? false : true },
+        data: {
+          uses: { increment: 1 },
+          isActive: token.uses + 1 >= token.maxUses ? false : true,
+          lastUsedAt: usedAt,
+          // Pin the token to the device it enrolled so usage history is traceable.
+          deviceId: device.id,
+        },
+      });
+
+      // Enrollment is a security-relevant event: record it against the org.
+      await app.prisma.auditLog.create({
+        data: {
+          organizationId,
+          actorId: null,
+          action: 'DEVICE_ENROLLED',
+          resource: 'DEVICE',
+          resourceId: device.id,
+          ipAddress: ipAddress ?? '',
+          metadata: JSON.stringify({
+            deviceName,
+            hostname,
+            serialNumber,
+            agentVersion,
+            os,
+            tokenId: token.id,
+            tokenLabel: token.label,
+            reEnrollment: Boolean(existingDevice),
+          }),
+          timestamp: usedAt,
+        },
       });
 
       return reply.status(201).send({

@@ -247,7 +247,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         id: log.id.slice(0, 8).toUpperCase(),
         type: humanize(log.resource),
         description: `${humanize(log.action)} — ${log.resourceId.slice(0, 8)}`,
-        actor: log.actor.name,
+        actor: log.actor?.name ?? 'System',
         time: formatTimeAgo(log.timestamp),
         status: eventStatusFromAction(log.action),
       }));

@@ -24,11 +24,14 @@ import {
   SlidersHorizontal,
   KeyRound,
   ShieldAlert,
+  Trash2,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
+import { useAuth } from '../context/AuthContext';
+import { useDeleteDevice } from '../hooks/useDeviceQueries';
 
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
@@ -90,6 +93,9 @@ function getStatusBadge(devStatus: string) {
 
 export function DevicesPage() {
   const navigate = useNavigate();
+  const { hasRole } = useAuth();
+  const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const deleteDevice = useDeleteDevice();
 
   // Filter & pagination state
   const [search, setSearch] = useState<string>('');
@@ -243,13 +249,15 @@ export function DevicesPage() {
             <span>{isFetching ? 'Syncing...' : 'Sync'}</span>
           </Button>
 
-          <Button
-            onClick={() => setShowEnrollModal(true)}
-            className="h-9 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Enroll Device</span>
-          </Button>
+          {canManageDevices && (
+            <Button
+              onClick={() => setShowEnrollModal(true)}
+              className="h-9 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Enroll Device</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -748,15 +756,29 @@ export function DevicesPage() {
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/devices/${device.id}`)}
-                          className="h-7 px-2.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
-                        >
-                          <span>Details</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/devices/${device.id}`)}
+                            className="h-7 px-2.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
+                          >
+                            <span>Details</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </Button>
+                          {canManageDevices && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteDevice.mutate(device.id)}
+                              disabled={deleteDevice.isPending}
+                              className="h-7 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1"
+                              title="Delete Device"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

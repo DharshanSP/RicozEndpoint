@@ -1,9 +1,14 @@
 import { useState } from 'react';
-import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X } from 'lucide-react';
+import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, History } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { useCreateEnrollmentToken, useEnrollmentTokenList, useRevokeEnrollmentToken } from '../hooks/useEnrollmentTokens';
+import {
+  useCreateEnrollmentToken,
+  useEnrollmentHistory,
+  useEnrollmentTokenList,
+  useRevokeEnrollmentToken,
+} from '../hooks/useEnrollmentTokens';
 import type { EnrollmentTokenSummary } from '../types/enrollment';
 
 const inputClass =
@@ -225,7 +230,8 @@ export function EnrollmentTokensPage() {
                     <th className="pb-2 pr-4 font-semibold">Uses</th>
                     <th className="pb-2 pr-4 font-semibold">Expires</th>
                     <th className="pb-2 pr-4 font-semibold">Status</th>
-                    <th className="pb-2 pr-4 font-semibold">Created</th>
+                    <th className="pb-2 pr-4 font-semibold">Last Used</th>
+                    <th className="pb-2 pr-4 font-semibold">Created By</th>
                     <th className="pb-2 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
@@ -251,7 +257,17 @@ export function EnrollmentTokensPage() {
                             {badge.label}
                           </Badge>
                         </td>
-                        <td className="py-2.5 pr-4 text-slate-400">{formatDate(token.createdAt)}</td>
+                        <td className="py-2.5 pr-4">
+                          <div className="text-slate-300">
+                            <div>{formatDate(token.lastUsedAt)}</div>
+                            <div className="text-xs text-slate-500">
+                              {formatDate(token.createdAt)}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 pr-4 text-slate-400 text-xs">
+                          {token.createdBy?.name ?? token.createdBy?.email ?? 'System'}
+                        </td>
                         <td className="py-2.5 text-right">
                           {token.isActive && (
                             <Button
@@ -275,6 +291,103 @@ export function EnrollmentTokensPage() {
           )}
         </CardContent>
       </Card>
+
+      <EnrollmentHistoryCard />
     </div>
+  );
+}
+
+/**
+ * Enrollment history derived from issued agent tokens. A device that re-enrolls
+ * receives a new agent token, so a repeated serial number here is expected and
+ * means a re-enrollment occurred.
+ */
+function EnrollmentHistoryCard() {
+  const historyQuery = useEnrollmentHistory(25);
+  const entries = historyQuery.data ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-white text-base">Enrollment History</CardTitle>
+        <CardDescription>
+          Every agent credential ever issued. Repeated devices indicate re-enrollment.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {historyQuery.isLoading && (
+          <div className="space-y-3">
+            {[0, 1].map((row) => (
+              <div key={row} className="h-10 rounded-md bg-slate-800/50 animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {historyQuery.isError && (
+          <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+            <p className="text-sm text-rose-300">
+              {(historyQuery.error as Error).message}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void historyQuery.refetch()}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Retry
+            </Button>
+          </div>
+        )}
+
+        {historyQuery.isSuccess && entries.length === 0 && (
+          <div className="py-8 text-center">
+            <History className="w-8 h-8 mx-auto text-slate-600 mb-2" />
+            <p className="text-sm text-slate-400">No devices have enrolled yet.</p>
+          </div>
+        )}
+
+        {historyQuery.isSuccess && entries.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700/70 text-left text-xs uppercase tracking-wider text-slate-400">
+                  <th className="pb-2 pr-4 font-semibold">Device</th>
+                  <th className="pb-2 pr-4 font-semibold">Serial</th>
+                  <th className="pb-2 pr-4 font-semibold">OS</th>
+                  <th className="pb-2 pr-4 font-semibold">Enrolled</th>
+                  <th className="pb-2 font-semibold text-right">Credential</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="border-b border-slate-800/70">
+                    <td className="py-2.5 pr-4">
+                      <div className="text-slate-100 font-medium">
+                        {entry.device.deviceName}
+                      </div>
+                      <div className="text-xs text-slate-500 font-mono">
+                        {entry.device.hostname}
+                      </div>
+                    </td>
+                    <td className="py-2.5 pr-4 text-slate-300 font-mono text-xs">
+                      {entry.device.serialNumber}
+                    </td>
+                    <td className="py-2.5 pr-4 text-slate-300 text-xs">
+                      {entry.device.os} {entry.device.osVersion}
+                    </td>
+                    <td className="py-2.5 pr-4 text-slate-400 text-xs">
+                      {formatDate(entry.enrolledAt)}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <Badge
+                        variant={entry.isCurrent ? 'success' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {entry.isCurrent ? 'Current' : 'Revoked'}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

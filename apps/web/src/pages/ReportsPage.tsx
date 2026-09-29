@@ -35,8 +35,8 @@ export function ReportsPage() {
     ]);
 
     if (devRes.success && devRes.data) {
-      const dList = Array.isArray(devRes.data) ? devRes.data : (devRes.data as any).items || [];
-      setDevices(dList);
+      const dList = Array.isArray(devRes.data) ? devRes.data : (devRes.data as { items?: Device[] }).items || [];
+      setDevices(dList as Device[]);
     }
     if (swRes.success && swRes.data) setSoftware(swRes.data.items || []);
     if (auditRes.success && auditRes.data) setAuditLogs(auditRes.data.items || []);

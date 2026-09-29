@@ -2,6 +2,7 @@ import { fetchApi } from '../api';
 import type {
   CreateEnrollmentTokenPayload,
   CreatedEnrollmentToken,
+  EnrollmentHistoryEntry,
   EnrollmentTokenListQuery,
   EnrollmentTokenListResponse,
 } from '../../types/enrollment';
@@ -48,4 +49,15 @@ export async function revokeEnrollmentToken(id: string): Promise<{ id: string; i
   return requestBody<{ id: string; isActive: boolean }>(`/enrollment-tokens/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
+}
+
+/** Chronological enrollment history, derived from issued agent tokens. */
+export async function listEnrollmentHistory(
+  query: { page?: number; limit?: number } = {}
+): Promise<EnrollmentHistoryEntry[]> {
+  const params = new URLSearchParams();
+  if (query.page) params.set('page', String(query.page));
+  if (query.limit) params.set('limit', String(query.limit));
+  const qs = params.toString();
+  return requestBody<EnrollmentHistoryEntry[]>(`/enrollment-history${qs ? `?${qs}` : ''}`);
 }

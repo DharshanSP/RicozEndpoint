@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ExternalLink,
   CheckCircle2,
+  KeyRound,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -287,6 +288,128 @@ export function SettingsPage() {
           </div>
         </form>
       )}
+
+      <PasswordSection />
     </div>
+  );
+}
+
+/**
+ * Self-service password management. Visible to every signed-in user because
+ * changing your own password is not an administrative action.
+ */
+function PasswordSection() {
+  const { user, changePassword } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+  const tooShort = newPassword.length > 0 && newPassword.length < 8;
+  const canSubmit =
+    currentPassword.length > 0 && newPassword.length >= 8 && !mismatch && !submitting;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+
+    setSubmitting(true);
+    setFeedback(null);
+
+    const res = await changePassword(currentPassword, newPassword);
+
+    if (res.success) {
+      setFeedback({ tone: 'ok', text: 'Password updated. Your session stays active.' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } else {
+      setFeedback({ tone: 'error', text: res.message ?? 'Failed to change password.' });
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <Card className="border-slate-200 bg-white shadow-xs">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <KeyRound className="w-4 h-4 text-blue-600" />
+          Change Password
+        </CardTitle>
+        <p className="text-xs text-slate-500">
+          Signed in as {user?.email}. You will stay signed in after the change.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-3 max-w-md">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Current Password
+            </label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              New Password
+            </label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {tooShort && (
+              <p className="text-[11px] text-rose-600 mt-1">Use at least 8 characters.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {mismatch && (
+              <p className="text-[11px] text-rose-600 mt-1">Passwords do not match.</p>
+            )}
+          </div>
+
+          {feedback && (
+            <div
+              className={`rounded-md border p-2.5 text-xs ${
+                feedback.tone === 'ok'
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-rose-300 bg-rose-50 text-rose-700'
+              }`}
+            >
+              {feedback.text}
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            disabled={!canSubmit}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+          >
+            {submitting ? 'Updating...' : 'Update Password'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

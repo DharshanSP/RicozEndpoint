@@ -299,7 +299,7 @@ export function UsersPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Role</label>
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as any)}
+                  onChange={(e) => setRole(e.target.value as 'SUPER_ADMIN' | 'ORG_ADMIN' | 'IT_ADMIN' | 'OPERATOR' | 'VIEWER')}
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="ORG_ADMIN">ORG_ADMIN (Full Organization Access)</option>
@@ -352,7 +352,7 @@ export function UsersPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Role</label>
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as any)}
+                  onChange={(e) => setRole(e.target.value as 'SUPER_ADMIN' | 'ORG_ADMIN' | 'IT_ADMIN' | 'OPERATOR' | 'VIEWER')}
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="ORG_ADMIN">ORG_ADMIN</option>

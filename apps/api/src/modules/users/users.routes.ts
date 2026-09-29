@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMinRole, JwtPayload } from '../../middleware/rbac.middleware';
 import { hashPassword } from '../../utils/password';
+import { writeAudit } from '../../utils/audit';
 import { UserRole } from '@ricoz/shared-types';
+import { adminResetPasswordSchema } from '@ricoz/validation';
 
 export async function usersRoutes(app: FastifyInstance): Promise<void> {
   // List users in organization
@@ -168,6 +170,77 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({
         success: true,
         data: updatedUser,
+      });
+    },
+  });
+
+  // ─── Admin password reset ───────────────────────────────────────────────────
+  app.post('/:id/reset-password', {
+    preHandler: [requireMinRole(UserRole.ORG_ADMIN)],
+    schema: {
+      description: 'Administratively reset another user password (user is not asked for their current one)',
+      tags: ['Users'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string' } },
+      },
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+      const parsed = adminResetPasswordSchema.safeParse(request.body);
+
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid password payload',
+          },
+        });
+      }
+
+      const target = await app.prisma.user.findUnique({ where: { id } });
+      if (!target) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'User not found' },
+        });
+      }
+
+      // Tenant isolation: only SUPER_ADMIN may reset across organizations.
+      if (jwtUser.role !== 'SUPER_ADMIN' && target.organizationId !== jwtUser.organizationId) {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Cannot reset password for a user in another organization' },
+        });
+      }
+
+      // An org admin cannot escalate by resetting a SUPER_ADMIN.
+      if (target.role === 'SUPER_ADMIN' && jwtUser.role !== 'SUPER_ADMIN') {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Cannot reset password for a super administrator' },
+        });
+      }
+
+      const passwordHash = await hashPassword(parsed.data.newPassword);
+      await app.prisma.user.update({ where: { id }, data: { passwordHash } });
+
+      await writeAudit(
+        app.prisma,
+        jwtUser,
+        'PASSWORD_RESET_BY_ADMIN',
+        'USER',
+        target.id,
+        { email: target.email },
+        request
+      );
+
+      return reply.send({
+        success: true,
+        data: { id: target.id, resetAt: new Date().toISOString() },
       });
     },
   });

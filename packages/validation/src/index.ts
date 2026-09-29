@@ -9,6 +9,7 @@ export * from './device-group.schema';
 export * from './organization-settings.schema';
 export * from './audit-log.schema';
 export * from './software.schema';
+export * from './organization.schema';
 import { z } from 'zod';
 
 export const paginationSchema = z.object({

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Package,
   Search,
@@ -39,7 +39,7 @@ export function SoftwarePage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchCatalog = async () => {
+  const fetchCatalog = useCallback(async () => {
     setLoading(true);
     setError(null);
     const res = await getSoftwareCatalog({ search });
@@ -49,9 +49,9 @@ export function SoftwarePage() {
       setError(res.error?.message || 'Failed to fetch software catalog');
     }
     setLoading(false);
-  };
+  }, [search]);
 
-  const fetchTargets = async () => {
+  const fetchTargets = useCallback(async () => {
     const [groupsRes, devRes] = await Promise.all([
       getDeviceGroups({ limit: 100 }),
       getDevices({ limit: 100 }),
@@ -63,15 +63,15 @@ export function SoftwarePage() {
       if (gList.length > 0 && gList[0]) setTargetId(gList[0].id);
     }
     if (devRes.success && devRes.data) {
-      const dList = Array.isArray(devRes.data) ? devRes.data : (devRes.data as any).items || [];
-      setDevices(dList);
+      const dList = Array.isArray(devRes.data) ? devRes.data : (devRes.data as { items?: Device[] }).items || [];
+      setDevices(dList as Device[]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchCatalog();
     fetchTargets();
-  }, [search]);
+  }, [fetchCatalog, fetchTargets]);
 
   const handleDeploy = async (e: React.FormEvent) => {
     e.preventDefault();

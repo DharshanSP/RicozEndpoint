@@ -19,6 +19,7 @@ import { deviceGroupsRoutes } from './modules/device-groups/device-groups.routes
 import { auditLogsRoutes } from './modules/audit-logs/audit-logs.routes';
 import { softwareCatalogRoutes } from './modules/software-catalog/software-catalog.routes';
 import { organizationSettingsRoutes } from './modules/organization-settings/organization-settings.routes';
+import { organizationsRoutes } from './modules/organizations/organizations.routes';
 
 const config = loadConfig();
 
@@ -67,6 +68,7 @@ export async function buildApp() {
 
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(usersRoutes, { prefix: '/api/users' });
+  await app.register(organizationsRoutes, { prefix: '/api/organizations' });
   await app.register(devicesRoutes, { prefix: '/api/devices' });
   await app.register(dashboardRoutes, { prefix: '/api' });
   await app.register(healthRoutes, { prefix: '/api' });

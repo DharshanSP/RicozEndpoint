@@ -9,7 +9,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding database...');
+  console.log('Seeding database (minimal)...');
+
+  const skipDemo = process.env.SKIP_DEMO_SEED === 'true';
 
   let organization = await prisma.organization.findUnique({
     where: { name: 'Ricoz Demo Organization' },
@@ -26,8 +28,6 @@ async function main() {
   console.log(`Using organization: ${organization.name} (${organization.id})`);
 
   const adminPasswordHash = await bcrypt.hash('admin123', 10);
-  const operatorPasswordHash = await bcrypt.hash('operator123', 10);
-  const viewerPasswordHash = await bcrypt.hash('viewer123', 10);
 
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@ricoz.local' },
@@ -41,7 +41,18 @@ async function main() {
     },
   });
 
-  const operatorUser = await prisma.user.upsert({
+  console.log(`Upserted admin user: ${adminUser.email}`);
+
+  if (skipDemo) {
+    console.log('SKIP_DEMO_SEED=true — skipping demo devices, policies, and audit logs');
+    console.log('Database minimal seeding complete!');
+    return;
+  }
+
+  const operatorPasswordHash = await bcrypt.hash('operator123', 10);
+  const viewerPasswordHash = await bcrypt.hash('viewer123', 10);
+
+  await prisma.user.upsert({
     where: { email: 'operator@ricoz.local' },
     update: { passwordHash: operatorPasswordHash, role: 'OPERATOR' },
     create: {
@@ -65,7 +76,7 @@ async function main() {
     },
   });
 
-  console.log(`Upserted users: ${adminUser.email}, operator@ricoz.local, viewer@ricoz.local`);
+  console.log('Upserted demo users: operator@ricoz.local, viewer@ricoz.local');
 
   const demoDevices = [
     {
@@ -148,13 +159,8 @@ async function main() {
           serialNumber: deviceData.serialNumber,
         },
       },
-      update: {
-        ...deviceData,
-      },
-      create: {
-        organizationId: organization.id,
-        ...deviceData,
-      },
+      update: { ...deviceData },
+      create: { organizationId: organization.id, ...deviceData },
     });
 
     await prisma.deviceHardware.upsert({
@@ -190,18 +196,14 @@ async function main() {
     ];
 
     for (const sw of swItems) {
-      const existingSw = await prisma.deviceSoftware.findFirst({
-        where: { deviceId: device.id, name: sw.name },
-      });
+      const existingSw = await prisma.deviceSoftware.findFirst({ where: { deviceId: device.id, name: sw.name } });
       if (!existingSw) {
-        await prisma.deviceSoftware.create({
-          data: { deviceId: device.id, ...sw },
-        });
+        await prisma.deviceSoftware.create({ data: { deviceId: device.id, ...sw } });
       }
     }
   }
 
-  console.log(`Seeded demo devices with hardware and software`);
+  console.log(`Seeded ${demoDevices.length} demo devices with hardware and software`);
 
   const existingPolicy = await prisma.policy.findFirst({
     where: { organizationId: organization.id, name: 'Corporate Security Baseline' },
@@ -225,7 +227,8 @@ async function main() {
     });
   }
 
-  // Seed audit logs for the organization (tied to admin user)
+  console.log('Seeded demo policy: Corporate Security Baseline');
+
   const auditLogCount = await prisma.auditLog.count({
     where: { organizationId: organization.id, actorId: adminUser.id },
   });

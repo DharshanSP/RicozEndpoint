@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Root as TabsRoot, List as TabsList, Trigger as TabsTrigger, Content as TabsContent } from '@radix-ui/react-tabs';
 import {
   ArrowLeft,
@@ -16,9 +16,10 @@ import {
   ShieldAlert,
   ShieldCheck,
   Terminal,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware } from '../hooks/useDeviceQueries';
+import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware, useDeleteDevice } from '../hooks/useDeviceQueries';
 import { useCreateCommand } from '../hooks/useCommands';
 import { useAuth } from '../context/AuthContext';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
@@ -615,9 +616,13 @@ const COMMAND_ACTIONS: CommandAction[] = [
 function ActionsTab({ deviceId }: { deviceId: string }) {
   const { hasRole } = useAuth();
   const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const navigate = useNavigate();
   const createCommand = useCreateCommand(deviceId);
+  const deleteDevice = useDeleteDevice();
   const [pendingType, setPendingType] = useState<CommandType | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
 
   if (!canManage) {
     return (
@@ -655,7 +660,22 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
     );
   };
 
-  const running = createCommand.isPending;
+  const handleDeleteClick = () => {
+    setPendingDelete(true);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteConfirmed) return;
+    deleteDevice.mutate(deviceId, {
+      onSuccess: () => {
+        setPendingDelete(false);
+        setDeleteConfirmed(false);
+        navigate('/devices');
+      },
+    });
+  };
+
+  const running = createCommand.isPending || deleteDevice.isPending;
 
   return (
     <div className="space-y-3">
@@ -667,6 +687,11 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
       {createCommand.isSuccess && (
         <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
           Command {String((createCommand.data as { data?: { type?: string } }).data?.type ?? '')} queued for this device.
+        </div>
+      )}
+      {deleteDevice.isError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+          {(deleteDevice.error as Error).message}
         </div>
       )}
 
@@ -707,6 +732,41 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
         </div>
       )}
 
+      {pendingDelete && (
+        <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span className="text-sm font-bold text-slate-900">Confirm Device Deletion</span>
+          </div>
+          <p className="text-xs text-slate-700">
+            This will permanently delete the device and all its related data (hardware, software inventory, policies, compliance results, commands, and audit logs).
+          </p>
+          <p className="text-[11px] text-rose-700">This action is irreversible.</p>
+          <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              checked={deleteConfirmed}
+              onChange={(e) => setDeleteConfirmed(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+            />
+            I understand this cannot be undone and confirm deletion.
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPendingDelete(false)} disabled={running}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmDelete}
+              disabled={running || !deleteConfirmed}
+            >
+              {running ? 'Deleting...' : 'Confirm & Delete'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {COMMAND_ACTIONS.map((action) => (
         <div key={action.type} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -739,6 +799,35 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
           </Button>
         </div>
       ))}
+
+      <div className="p-4 rounded-lg bg-white border border-rose-200 shadow-xs flex items-center justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="p-2 rounded-md border shrink-0 bg-rose-50 border-rose-200 text-rose-600">
+            <Trash2 className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-slate-900">Delete Device</span>
+              <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                DELETE_DEVICE
+              </span>
+              <Badge variant="destructive" className="text-[10px] font-medium">Destructive</Badge>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Permanently remove this device and all its data from the organization. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-rose-700 border-rose-300 hover:bg-rose-50"
+          onClick={handleDeleteClick}
+          disabled={running}
+        >
+          Delete Device
+        </Button>
+      </div>
     </div>
   );
 }

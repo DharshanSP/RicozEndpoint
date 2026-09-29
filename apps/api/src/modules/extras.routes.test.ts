@@ -277,7 +277,6 @@ describe('Organization Settings API', () => {
 describe('Audit Logs API', () => {
   let app: FastifyInstance;
   let adminToken: string;
-  const runId = Date.now();
 
   before(async () => {
     app = await buildApp();
@@ -364,8 +363,10 @@ describe('Software Catalog API', () => {
       latestVersion: string;
     }>;
     assert.ok(chrome.length > 0);
-    assert.ok(chrome[0].versions.length > 0);
-    assert.ok(chrome[0].latestVersion);
+    const first = chrome[0];
+    assert.ok(first);
+    assert.ok(first.versions.length > 0);
+    assert.ok(first.latestVersion);
   });
 
   it('searches the catalog by name', async () => {
