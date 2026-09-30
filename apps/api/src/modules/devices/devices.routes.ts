@@ -4,6 +4,7 @@ import { authenticateAgent, hashAgentToken } from '../../middleware/agent-auth.m
 import { UserRole } from '@ricoz/shared-types';
 import crypto from 'crypto';
 import { z } from 'zod';
+import { verifyPassword } from '../../utils/password';
 
 const deviceListQuerySchema = z.object({
   search: z.string().optional(),
@@ -568,10 +569,41 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       description: 'Unenroll and remove a device from the organization',
       tags: ['Devices'],
+      body: {
+        type: 'object',
+        required: ['password'],
+        properties: {
+          password: { type: 'string' }
+        }
+      }
     },
     handler: async (request, reply) => {
       const jwtUser = request.user as JwtPayload;
       const { id } = request.params as { id: string };
+      const { password } = (request.body as { password?: string }) || {};
+
+      if (!password) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Admin password is required to delete a device' },
+        });
+      }
+
+      const user = await app.prisma.user.findUnique({ where: { id: jwtUser.sub } });
+      if (!user) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'User not found' },
+        });
+      }
+
+      const isValid = await verifyPassword(password, user.passwordHash);
+      if (!isValid) {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Invalid admin password' },
+        });
+      }
 
       const device = await app.prisma.device.findUnique({ where: { id } });
       if (!device) {
@@ -587,6 +619,13 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
           error: { code: 'NOT_FOUND', message: 'Device not found' },
         });
       }
+
+      // Manually handle relations that don't have onDelete: Cascade in the schema
+      await app.prisma.alert.deleteMany({ where: { deviceId: id } });
+      await app.prisma.enrollmentToken.updateMany({
+        where: { deviceId: id },
+        data: { deviceId: null },
+      });
 
       await app.prisma.device.delete({ where: { id } });
 

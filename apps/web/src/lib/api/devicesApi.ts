@@ -112,9 +112,10 @@ export async function getDeviceActivity(id: string, limit: number = 20): Promise
 }
 
 /** Deletes a device and all its related data. Requires IT_ADMIN+. */
-export async function deleteDevice(id: string): Promise<void> {
+export async function deleteDevice({ id, password }: { id: string; password?: string }): Promise<void> {
   const res = await fetchApi<unknown>(`/devices/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    body: JSON.stringify({ password }),
   });
   if (!res.success) {
     throw new Error(res.error?.message ?? 'Failed to delete device');

@@ -42,8 +42,9 @@ export async function buildApp() {
   });
 
   await app.register(cors, {
-    origin: config.CORS_ORIGIN,
+    origin: true, // allow any origin in dev
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
   await app.register(jwt, {

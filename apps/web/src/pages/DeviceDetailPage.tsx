@@ -827,6 +827,7 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
   const [confirmed, setConfirmed] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
 
   if (!canManage) {
     return (
@@ -869,11 +870,12 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
   };
 
   const confirmDelete = () => {
-    if (!deleteConfirmed) return;
-    deleteDevice.mutate(deviceId, {
+    if (!deleteConfirmed || !deletePassword) return;
+    deleteDevice.mutate({ id: deviceId, password: deletePassword }, {
       onSuccess: () => {
         setPendingDelete(false);
         setDeleteConfirmed(false);
+        setDeletePassword('');
         navigate('/devices');
       },
     });
@@ -946,15 +948,26 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
             This will permanently delete the device and all its related data (hardware, software inventory, policies, compliance results, commands, and audit logs).
           </p>
           <p className="text-[11px] text-rose-700">This action is irreversible.</p>
-          <label className="flex items-center gap-2 text-sm text-slate-800">
-            <input
-              type="checkbox"
-              checked={deleteConfirmed}
-              onChange={(e) => setDeleteConfirmed(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
-            />
-            I understand this cannot be undone and confirm deletion.
-          </label>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-800">
+              <input
+                type="checkbox"
+                checked={deleteConfirmed}
+                onChange={(e) => setDeleteConfirmed(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              I understand this cannot be undone and confirm deletion.
+            </label>
+            {deleteConfirmed && (
+              <input
+                type="password"
+                placeholder="Enter admin password to confirm"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm rounded-md border border-slate-300 focus:ring-1 focus:ring-rose-500 focus:border-rose-500"
+              />
+            )}
+          </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setPendingDelete(false)} disabled={running}>
               Cancel
@@ -963,7 +976,7 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
               variant="destructive"
               size="sm"
               onClick={confirmDelete}
-              disabled={running || !deleteConfirmed}
+              disabled={running || !deleteConfirmed || !deletePassword}
             >
               {running ? 'Deleting...' : 'Confirm & Delete'}
             </Button>
