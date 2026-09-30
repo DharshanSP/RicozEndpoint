@@ -120,12 +120,24 @@ Organize devices for bulk policy assignment.
 3. **Assign Policy** — in Policy detail, choose group(s) under "Assign to Groups"
 4. Groups show **member count** and **policy count** on list
 
-### 4.4 Software Catalog
-Aggregated view of all software across the fleet.
+### 4.4 Software Catalog & Deployment
+Aggregated view of all software across the fleet, plus the remote deployment engine.
 - **Name, Publisher, Device Count, Versions, Latest Version**
 - Search by name/publisher
-- Click a row → see which devices have it, versions distribution
-- **Deploy** button → push install/uninstall to device or group (IT_ADMIN+)
+- **Deploy** button → push install/uninstall to a device or device group (IT_ADMIN+)
+- **New Deployment** → free-form application (name / version / publisher + installer URL)
+- The deployment form captures the **installer URL** and optional **silent install
+  arguments** for `INSTALL`, and the exact registered product name for `UNINSTALL`
+- **Recent Deployments** table shows application, action, target device, requester and
+  live status (`PENDING` → `COMPLETED` / `FAILED`)
+- Targets are org-scoped: a tenant admin cannot deploy to another tenant's devices
+- Each request creates one `Deployment` row plus a linked `QUEUED` command per target
+  (`INSTALL_APPLICATION` / `UNINSTALL_APPLICATION`); devices with the same action already
+  in flight are skipped and reported back
+- The agent downloads the package to `%TEMP%\ricoz-deploy` and installs it silently, or
+  matches the product's registered `DisplayName` and runs its uninstaller; the outcome
+  updates the deployment status when the agent reports the command result
+- Requests are written to the audit log as `SOFTWARE_DEPLOY_REQUESTED`
 
 ### 4.5 Patch Management
 Tracks missing OS/security patches per device (populated by agent scans).
@@ -232,7 +244,7 @@ log_level = "info"
 | Patches | `/api/patches` | `GET /`, `GET /:id`, `GET /device/:id`, `POST /`, `PATCH /:id`, `POST /:id/deploy` |
 | Alerts | `/api/alerts` | `GET /`, `PATCH /:id/acknowledge`, `PATCH /:id/resolve` |
 | Commands | `/api/commands` | `GET /`, `POST /` (create), `GET /:id` |
-| Software | `/api/software` | `GET /` (catalog), `POST /deploy` |
+| Software | `/api/software` | `GET /` (catalog), `GET /deployments`, `POST /deploy` |
 | Audit Logs | `/api/audit-logs` | `GET /` (filters: page, limit, action, search, from, to) |
 | Settings | `/api/settings` | `GET /`, `PUT /` |
 | Users | `/api/users` | `GET /`, `POST /`, `PATCH /:id` |

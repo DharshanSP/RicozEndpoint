@@ -37,6 +37,26 @@ Register ──▶ Authenticate ──▶ Loop
 4. **Commands**: `GET /api/agent/commands` polls for pending commands; each executed command
    reports back via `POST /api/agent/commands/:id/result`.
 
+## Commands
+
+Commands are delivered on the heartbeat (`pendingCommands`) or pulled from
+`GET /api/agent/commands/pending`; the agent reports each outcome to
+`POST /api/agent/commands/:id/result`.
+
+| Command | Required `params` | Behaviour |
+| ------- | ----------------- | --------- |
+| `REFRESH_INVENTORY` | – | Forces a full telemetry collection on the next cycle |
+| `SYNC_POLICY` | – | Re-fetches the device's effective policies |
+| `INSTALL_PATCH` | `kbNumber` (`KB1234567`) | Downloads/installs the matching Windows Update via the WUA COM API; never forces a reboot |
+| `INSTALL_APPLICATION` | `installerUrl` (http/https) | Downloads the package to `%TEMP%\ricoz-deploy` and installs silently (`.msi` → `msiexec /qn /norestart`, `.msu` → `wusa`, `.exe` → `silentArgs`) |
+| `UNINSTALL_APPLICATION` | `name` (registered `DisplayName`) | Finds the product under the Uninstall registry keys and removes it via `msiexec /x` (MSI) or its `UninstallString` |
+| `LOCK_DEVICE` | – | Locks the interactive workstation |
+| `RESTART_DEVICE` / `SHUTDOWN_DEVICE` | – | Schedules a restart/shutdown in 10 seconds |
+
+`INSTALL_APPLICATION` and `UNINSTALL_APPLICATION` also accept optional `silentArgs`,
+`name`, `version` and `publisher`. Unsupported package types (for example `.zip`) fail
+with an explicit message rather than executing anything.
+
 ## Configuration
 
 Configuration is provided via environment variables:

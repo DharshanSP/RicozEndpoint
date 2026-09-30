@@ -9,19 +9,45 @@ import {
   CheckCircle2,
   X,
   Sparkles,
+  History,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { useAuth } from '../context/AuthContext';
 import {
   getSoftwareCatalog,
   deployApplication,
+  getDeployments,
   SoftwareItem,
+  DeploymentItem,
 } from '../lib/api/softwareApi';
 import { getDeviceGroups, DeviceGroup } from '../lib/api/deviceGroupsApi';
 import { getDevices, Device } from '../lib/api/devicesApi';
 
+const DEPLOY_STATUS_STYLES: Record<DeploymentItem['status'], string> = {
+  PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
+  COMPLETED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  FAILED: 'bg-red-50 text-red-700 border-red-200',
+  CANCELLED: 'bg-slate-100 text-slate-600 border-slate-200',
+};
+
+function formatWhen(iso: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function SoftwarePage() {
+  const { hasRole } = useAuth();
+  const canDeploy = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+
   const [catalog, setCatalog] = useState<SoftwareItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -34,6 +60,12 @@ export function SoftwarePage() {
   const [targetType, setTargetType] = useState<'GROUP' | 'DEVICE'>('GROUP');
   const [targetId, setTargetId] = useState('');
   const [deployAction, setDeployAction] = useState<'INSTALL' | 'UNINSTALL'>('INSTALL');
+  const [installerUrl, setInstallerUrl] = useState('');
+  const [silentArgs, setSilentArgs] = useState('');
+
+  // Feedback
+  const [banner, setBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [deployments, setDeployments] = useState<DeploymentItem[]>([]);
 
   const [groups, setGroups] = useState<DeviceGroup[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -50,6 +82,13 @@ export function SoftwarePage() {
     }
     setLoading(false);
   }, [search]);
+
+  const fetchDeployments = useCallback(async () => {
+    const res = await getDeployments({ limit: 8 });
+    if (res.success && res.data) {
+      setDeployments(res.data.items || []);
+    }
+  }, []);
 
   const fetchTargets = useCallback(async () => {
     const [groupsRes, devRes] = await Promise.all([
@@ -71,7 +110,17 @@ export function SoftwarePage() {
   useEffect(() => {
     fetchCatalog();
     fetchTargets();
-  }, [fetchCatalog, fetchTargets]);
+    fetchDeployments();
+  }, [fetchCatalog, fetchTargets, fetchDeployments]);
+
+  const openDeployModal = (app: SoftwareItem | null) => {
+    setSelectedApp(app);
+    setInstallerUrl(app?.installerUrl ?? '');
+    setSilentArgs('');
+    setDeployAction('INSTALL');
+    setBanner(null);
+    setShowDeployModal(true);
+  };
 
   const handleDeploy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,28 +128,44 @@ export function SoftwarePage() {
     const appVersion = selectedApp ? selectedApp.latestVersion : '1.0.0';
 
     if (!appName || !targetId) {
-      alert('Please specify an application name and target');
+      setBanner({ kind: 'error', text: 'Specify an application name and a deployment target.' });
       return;
     }
 
     setSubmitting(true);
+    setBanner(null);
+
     const res = await deployApplication({
       name: appName,
-      version: appVersion,
+      version: appVersion || '1.0.0',
       publisher: selectedApp?.publisher || 'Managed Admin',
+      installerUrl: deployAction === 'INSTALL' ? installerUrl.trim() : undefined,
+      silentArgs: deployAction === 'INSTALL' && silentArgs.trim() ? silentArgs.trim() : undefined,
       targetType,
       targetId,
       action: deployAction,
     });
 
-    if (res.success) {
-      alert(`Deployment created successfully! Status: ${res.data?.status}`);
+    if (res.success && res.data) {
+      const { queued, skippedInFlight, action } = res.data;
+      const verb = action === 'INSTALL' ? 'installation' : 'uninstallation';
+      setBanner({
+        kind: 'success',
+        text:
+          queued > 0
+            ? `Queued ${verb} of ${appName} on ${queued} device${queued === 1 ? '' : 's'}` +
+              (skippedInFlight > 0 ? ` – ${skippedInFlight} already in flight` : '')
+            : `Every target device already has a ${verb} of ${appName} in flight.`,
+      });
       setShowDeployModal(false);
       setSelectedApp(null);
       setCustomAppName('');
+      setInstallerUrl('');
+      setSilentArgs('');
       fetchCatalog();
+      fetchDeployments();
     } else {
-      alert(res.error?.message || 'Failed to deploy application');
+      setBanner({ kind: 'error', text: res.error?.message || 'Failed to deploy application' });
     }
     setSubmitting(false);
   };
@@ -132,17 +197,42 @@ export function SoftwarePage() {
           </Button>
           <Button
             size="sm"
-            onClick={() => {
-              setSelectedApp(null);
-              setShowDeployModal(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            onClick={() => openDeployModal(null)}
+            disabled={!canDeploy}
+            title={canDeploy ? undefined : 'Only IT administrators can deploy software'}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
           >
             <Send className="w-4 h-4 mr-2" />
             New Deployment
           </Button>
         </div>
       </div>
+
+      {/* Feedback banner */}
+      {banner && (
+        <div
+          className={`flex items-start gap-3 rounded-xl border p-4 text-sm shadow-xs ${
+            banner.kind === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.kind === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          )}
+          <p className="flex-1">{banner.text}</p>
+          <button
+            type="button"
+            onClick={() => setBanner(null)}
+            className="text-current/60 hover:text-current"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Top Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -266,11 +356,10 @@ export function SoftwarePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setSelectedApp(app);
-                      setShowDeployModal(true);
-                    }}
-                    className="text-blue-600 hover:bg-blue-50 border-blue-200 text-xs px-2.5 py-1"
+                    onClick={() => openDeployModal(app)}
+                    disabled={!canDeploy}
+                    title={canDeploy ? undefined : 'Only IT administrators can deploy software'}
+                    className="text-blue-600 hover:bg-blue-50 border-blue-200 text-xs px-2.5 py-1 disabled:opacity-50"
                   >
                     <Send className="w-3.5 h-3.5 mr-1" />
                     Deploy
@@ -281,6 +370,81 @@ export function SoftwarePage() {
           ))}
         </div>
       )}
+
+      {/* Recent deployments */}
+      <Card className="border-slate-200 bg-white">
+        <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-slate-500" />
+            <CardTitle className="text-base font-bold text-slate-900">Recent Deployments</CardTitle>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchDeployments}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {deployments.length === 0 ? (
+            <p className="p-6 text-center text-sm text-slate-500">
+              No deployment requests yet. Deploy an application to see its rollout status here.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <th className="px-4 py-3">Application</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Target</th>
+                    <th className="px-4 py-3">Requested by</th>
+                    <th className="px-4 py-3">Requested</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deployments.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-100 last:border-0">
+                      <td className="px-4 py-3 font-medium text-slate-800">
+                        {row.application.name}
+                        <span className="ml-2 text-xs text-slate-400">v{row.application.version}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant="secondary"
+                          className={
+                            row.action === 'INSTALL'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : 'bg-red-50 text-red-700 border border-red-200'
+                          }
+                        >
+                          {row.action}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {row.device.deviceName}
+                        <span className="ml-2 text-xs text-slate-400">{row.device.hostname}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {row.requester?.name ?? 'System'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{formatWhen(row.createdAt)}</td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant="secondary"
+                          className={`font-semibold ${DEPLOY_STATUS_STYLES[row.status]}`}
+                          title={row.errorMessage ?? undefined}
+                        >
+                          {row.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Modal: New Deployment */}
       {showDeployModal && (
@@ -351,7 +515,55 @@ export function SoftwarePage() {
                     Uninstall Application
                   </button>
                 </div>
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  {deployAction === 'INSTALL'
+                    ? 'The agent downloads the package and installs it silently on each target.'
+                    : 'The agent matches the registered product name exactly and runs its uninstaller.'}
+                </p>
               </div>
+
+              {deployAction === 'INSTALL' ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Installer URL <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://example.com/packages/setup.msi"
+                      value={installerUrl}
+                      onChange={(e) => setInstallerUrl(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Direct http(s) link to an .msi, .exe or .msu package.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Silent install arguments <span className="text-slate-400 font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/S /quiet"
+                      value={silentArgs}
+                      onChange={(e) => setSilentArgs(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Product name <span className="text-red-500">*</span>
+                  </label>
+                  <p className="px-3 py-2 text-sm bg-slate-100 border border-slate-200 rounded-lg font-medium text-slate-800">
+                    {selectedApp ? selectedApp.name : customAppName.trim() || '—'}
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">

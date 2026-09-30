@@ -120,9 +120,11 @@ version), `CONFIGURATION` (policy JSON delivered to agent). See [compliance.md](
 | GET | /api/commands/:id | Get command details | VIEWER |
 
 Command creation body: `{ deviceId, type, confirmed?, params? }`. Types:
-`REFRESH_INVENTORY`, `SYNC_POLICY`, `INSTALL_PATCH`, `LOCK_DEVICE`, `RESTART_DEVICE`,
-`SHUTDOWN_DEVICE`. Destructive types (`LOCK_DEVICE`, `RESTART_DEVICE`, `SHUTDOWN_DEVICE`)
-**require `confirmed: true`** and fail with a validation error otherwise.
+`REFRESH_INVENTORY`, `SYNC_POLICY`, `INSTALL_PATCH`, `INSTALL_APPLICATION`,
+`UNINSTALL_APPLICATION`, `LOCK_DEVICE`, `RESTART_DEVICE`, `SHUTDOWN_DEVICE`. Destructive
+types (`LOCK_DEVICE`, `RESTART_DEVICE`, `SHUTDOWN_DEVICE`) **require `confirmed: true`**
+and fail with a validation error otherwise. `INSTALL_APPLICATION` **requires
+`params.installerUrl`** and `UNINSTALL_APPLICATION` **requires `params.name`**.
 
 Commands are created with status `QUEUED`; the agent receives them (together with their
 `params`) on its next heartbeat or via `GET /api/agent/commands/pending`, and reports back
@@ -150,6 +152,58 @@ install in flight, are skipped and counted in the response.
 
 Agents report installed KBs on every telemetry heartbeat, which upserts the catalog
 (`PATCH_CREATED` implicitly) and the device's `INSTALLED` / `MISSING` state.
+
+## Software
+
+| Method | Endpoint | Description | Min. role |
+|--------|----------|-------------|-----------|
+| GET | /api/software | Aggregate software catalog (filter: search, sortBy, sortOrder, page, limit) | VIEWER |
+| GET | /api/software/deployments | Deployment history with application, device and requester (filter: status, action, applicationId, deviceId, page, limit) | VIEWER |
+| POST | /api/software/deploy | Queue an install or uninstall on a device or device group | IT_ADMIN |
+
+Catalog items carry `id`, `name`, `publisher`, `deviceCount`, `versions[]`,
+`latestVersion` and `installerUrl`. `installerUrl` is the package registered for the
+managed application of that name (empty until a deployment has stored one); `id` is the
+managed application id when it exists, otherwise a stable `name::publisher` key.
+
+Deploy body:
+
+```json
+{
+  "name": "7-Zip",
+  "version": "24.08",
+  "publisher": "Igor Pavlov",
+  "installerUrl": "https://example.com/7z2408-x64.msi",
+  "silentArgs": "/S",
+  "targetType": "DEVICE",
+  "targetId": "<device-uuid>",
+  "action": "INSTALL",
+  "confirmed": true
+}
+```
+
+- **`confirmed: true` is required.**
+- `targetType` is `DEVICE` or `GROUP`; `targetId` is the device or group id. A group with
+  no members is rejected with `400`.
+- `action` is `INSTALL` or `UNINSTALL`.
+- For `INSTALL`, `installerUrl` must be an `http(s)` URL unless the managed application
+  already stores one; it is required to bootstrap a new application.
+- The managed `Application` row is matched by name inside the target organization (or by
+  `applicationId`) and created/updated as part of the request.
+- One `Deployment` row and one linked `QUEUED` command (`INSTALL_APPLICATION` or
+  `UNINSTALL_APPLICATION`) are created per target device. Devices that already have the
+  same action for the same application in flight are skipped and reported as
+  `skippedInFlight`.
+- The command `params` carry `installerUrl` (install only), `name`, `version`,
+  `silentArgs`, `publisher`, `deploymentId` and `applicationId`.
+- When the agent reports the command result, the linked deployment moves to `COMPLETED`
+  or `FAILED` (with `errorMessage`). Requests are audited as `SOFTWARE_DEPLOY_REQUESTED`.
+
+Agent behaviour: `INSTALL_APPLICATION` downloads the package to `%TEMP%\ricoz-deploy` and
+runs it silently (`.msi` via `msiexec /qn /norestart`, `.msu` via `wusa`, `.exe` with the
+supplied `silentArgs`); other package types fail with a clear message.
+`UNINSTALL_APPLICATION` looks the product up by its registered `DisplayName` and removes
+it through `msiexec /x` (MSI) or its registered `UninstallString`.
 
 ## Alerts
 

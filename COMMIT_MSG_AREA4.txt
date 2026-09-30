@@ -1,0 +1,16 @@
+feat: software deployment backend (Area 4)
+
+- Prisma schema: Deployment model + Command.deploymentId relation + indexes
+- Migration 20260930064012_software_deployment_backend applied
+- packages/shared-types: CommandType adds INSTALL_APPLICATION, UNINSTALL_APPLICATION; DeploymentAction/DeploymentStatus enums
+- packages/validation: command.schema & software.schema rewritten with type-safe params, installerUrl guards, confirmed flag
+- apps/api: software-catalog.routes.ts with GET / (catalog), GET /deployments (VIEWER-filtered), POST /deploy (IT_ADMIN transactional)
+- apps/api: agent.routes.ts result handler now updates linked Deployment in transaction
+- apps/api: commands.routes.ts extended with INSTALL_APPLICATION, UNINSTALL_APPLICATION inline enums
+- apps/agent: commands.ts installApplication/uninstallApplication + switch cases
+- apps/web: SoftwarePage.tsx with deploy modal, installerUrl + silent args, recent deployments card; softwareApi.ts with deployApplication/getDeployments; command.ts union fixed
+
+Verification:
+- typecheck: api 0, agent 0, web 0
+- lint: api 0, agent 0, web 0
+- full test suite: 146/146 pass (run twice)

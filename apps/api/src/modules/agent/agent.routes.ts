@@ -328,15 +328,31 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const now = new Date();
-      const updated = await app.prisma.command.update({
-        where: { id: existing.id },
-        data: {
-          status: body.data.status,
-          startedAt: existing.startedAt ?? now,
-          completedAt: now,
-          result: body.data.result ?? null,
-          errorMessage: body.data.errorMessage ?? null,
-        },
+      const updated = await app.prisma.$transaction(async (tx) => {
+        const command = await tx.command.update({
+          where: { id: existing.id },
+          data: {
+            status: body.data.status,
+            startedAt: existing.startedAt ?? now,
+            completedAt: now,
+            result: body.data.result ?? null,
+            errorMessage: body.data.errorMessage ?? null,
+          },
+        });
+
+        // Software deployments mirror the outcome of the command that drives them.
+        if (existing.deploymentId) {
+          await tx.deployment.updateMany({
+            where: { id: existing.deploymentId },
+            data: {
+              status: body.data.status,
+              completedAt: now,
+              errorMessage: body.data.errorMessage ?? null,
+            },
+          });
+        }
+
+        return command;
       });
 
       return reply.send({

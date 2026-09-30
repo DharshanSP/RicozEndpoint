@@ -110,6 +110,175 @@ Write-Output "$outcome|$reboot|$($target.Title)"
   throw new Error(`${kbNumber} install did not succeed: ${line}`);
 }
 
+/** Exit codes that mean "it worked" for Windows installers (0, reboot requested, MSI not-found). */
+const INSTALLER_SUCCESS_CODES = [0, 1605, 1614, 1641, 3010];
+
+/** Escape a value for embedding inside a single-quoted PowerShell literal. */
+function psQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function lastLine(output: string): string {
+  return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).pop() ?? '';
+}
+
+/**
+ * Download an http(s) package and install it silently.
+ * Supports .msi, .exe and .msu installers; `silentArgs` is appended verbatim
+ * so the administrator controls vendor-specific switches.
+ */
+async function installApplication(params: Record<string, unknown>): Promise<string> {
+  const url = typeof params.installerUrl === 'string' ? params.installerUrl.trim() : '';
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('INSTALL_APPLICATION requires params.installerUrl to be an http(s) URL');
+  }
+  const silentArgs = typeof params.silentArgs === 'string' ? params.silentArgs.trim() : '';
+
+  const script = `
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ProgressPreference = 'SilentlyContinue'
+try {
+  $url = ${psQuote(url)}
+  $silentArgs = ${psQuote(silentArgs)}
+  $dir = Join-Path $env:TEMP 'ricoz-deploy'
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $name = ''
+  try { $name = [IO.Path]::GetFileName(([Uri]$url).LocalPath) } catch { $name = '' }
+  if ([string]::IsNullOrWhiteSpace($name)) { $name = 'ricoz-package.bin' }
+  $path = Join-Path $dir $name
+  if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+  Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing -TimeoutSec 540
+  if (-not (Test-Path -LiteralPath $path)) { throw 'Download did not produce a package file' }
+  $ext = [IO.Path]::GetExtension($path).ToLowerInvariant()
+  if ($ext -notin @('.msi', '.exe', '.msu')) {
+    Write-Output ('UNSUPPORTED:' + $ext)
+  } else {
+    $exitCode = -1
+    if ($ext -eq '.msi') {
+      $argList = '/i "' + $path + '" /qn /norestart'
+      if ($silentArgs) { $argList = $argList + ' ' + $silentArgs }
+      $exitCode = (Start-Process -FilePath 'msiexec.exe' -ArgumentList $argList -Wait -PassThru).ExitCode
+    } elseif ($ext -eq '.msu') {
+      $argList = '"' + $path + '" /quiet /norestart'
+      $exitCode = (Start-Process -FilePath 'wusa.exe' -ArgumentList $argList -Wait -PassThru).ExitCode
+    } else {
+      if ($silentArgs) {
+        $exitCode = (Start-Process -FilePath $path -ArgumentList $silentArgs -Wait -PassThru).ExitCode
+      } else {
+        $exitCode = (Start-Process -FilePath $path -Wait -PassThru).ExitCode
+      }
+    }
+    if ($exitCode -eq $null) { $exitCode = -1 }
+    if (@(${INSTALLER_SUCCESS_CODES.join(', ')}) -contains $exitCode) {
+      Write-Output ('INSTALLED:' + $ext + '|' + $exitCode)
+    } else {
+      Write-Output ('FAILED:installer for ' + $name + ' exited with code ' + $exitCode)
+    }
+  }
+} catch {
+  Write-Output ('FAILED:' + $_.Exception.Message)
+}
+`;
+
+  const line = lastLine(await runPowerShell(script, 600_000));
+
+  if (line.startsWith('UNSUPPORTED:')) {
+    throw new Error(
+      `Unsupported package type "${line.slice('UNSUPPORTED:'.length)}"; supply an .msi, .exe or .msu package`
+    );
+  }
+  if (line.startsWith('FAILED:')) {
+    throw new Error(line.slice('FAILED:'.length));
+  }
+  if (line.startsWith('INSTALLED:')) {
+    const [, ext, exitCode] = line.split('|');
+    const name = typeof params.name === 'string' ? params.name : 'Application';
+    return `${name} installed successfully (${ext} package, exit code ${exitCode ?? '0'})`;
+  }
+  throw new Error(`Install produced no recognisable result: ${line || 'no output'}`);
+}
+
+/**
+ * Uninstall a product by its registered DisplayName. MSI products are removed
+ * through msiexec; everything else runs its registered UninstallString with the
+ * administrator-supplied silent switches.
+ */
+async function uninstallApplication(params: Record<string, unknown>): Promise<string> {
+  const name = typeof params.name === 'string' ? params.name.trim() : '';
+  if (!name) {
+    throw new Error('UNINSTALL_APPLICATION requires params.name');
+  }
+  const silentArgs = typeof params.silentArgs === 'string' ? params.silentArgs.trim() : '';
+
+  const script = `
+$ErrorActionPreference = 'Stop'
+try {
+  $name = ${psQuote(name)}
+  $silentArgs = ${psQuote(silentArgs)}
+  $roots = @(
+    'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+    'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+    'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
+  )
+  $found = @(Get-ItemProperty -Path $roots -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName -and ($_.DisplayName -ieq $name) })
+  if ($found.Count -eq 0) {
+    Write-Output ('NOT_FOUND:' + $name)
+  } else {
+    $entry = $found[0]
+    $child = [string]$entry.PSChildName
+    $isMsi = $child -match '^[{][0-9A-Fa-f-]{36}[}]$'
+    $exitCode = -1
+    if ($isMsi) {
+      $argList = '/x ' + $child + ' /qn /norestart'
+      if ($silentArgs) { $argList = $argList + ' ' + $silentArgs }
+      $exitCode = (Start-Process -FilePath 'msiexec.exe' -ArgumentList $argList -Wait -PassThru).ExitCode
+    } elseif ($entry.UninstallString) {
+      $raw = [string]$entry.UninstallString
+      $exe = $raw
+      $argStr = ''
+      if ($raw -match '^\s*"([^"]+)"\s*(.*)$') { $exe = $Matches[1]; $argStr = $Matches[2] }
+      elseif ($raw -match '^\s*(\S+)\s*(.*)$') { $exe = $Matches[1]; $argStr = $Matches[2] }
+      if ($silentArgs) {
+        if ($argStr) { $argStr = $argStr + ' ' + $silentArgs } else { $argStr = $silentArgs }
+      }
+      if ($argStr) {
+        $exitCode = (Start-Process -FilePath $exe -ArgumentList $argStr -Wait -PassThru).ExitCode
+      } else {
+        $exitCode = (Start-Process -FilePath $exe -Wait -PassThru).ExitCode
+      }
+    } else {
+      Write-Output ('FAILED:' + $name + ' has no registered UninstallString')
+      $exitCode = $null
+    }
+    if ($exitCode -ne $null) {
+      if (@(${INSTALLER_SUCCESS_CODES.join(', ')}) -contains $exitCode) {
+        Write-Output ('UNINSTALLED:' + $exitCode)
+      } else {
+        Write-Output ('FAILED:uninstall of ' + $name + ' exited with code ' + $exitCode)
+      }
+    }
+  }
+} catch {
+  Write-Output ('FAILED:' + $_.Exception.Message)
+}
+`;
+
+  const line = lastLine(await runPowerShell(script, 600_000));
+
+  if (line.startsWith('NOT_FOUND:')) {
+    throw new Error(`${name} is not installed on this device`);
+  }
+  if (line.startsWith('FAILED:')) {
+    throw new Error(line.slice('FAILED:'.length));
+  }
+  if (line.startsWith('UNINSTALLED:')) {
+    return `${name} uninstalled (exit code ${line.slice('UNINSTALLED:'.length)})`;
+  }
+  throw new Error(`Uninstall produced no recognisable result: ${line || 'no output'}`);
+}
+
 /**
  * Execute a platform command on the local Windows host.
  * Lightweight commands run inline; heavier ones (restart, shutdown) are
@@ -150,6 +319,18 @@ export async function executeCommand(commandType: string, context: CommandExecut
         return { status: 'FAILED', errorMessage: (error as Error).message };
       }
     }
+    case 'INSTALL_APPLICATION':
+      try {
+        return { status: 'COMPLETED', result: await installApplication(context.params ?? {}) };
+      } catch (error) {
+        return { status: 'FAILED', errorMessage: (error as Error).message };
+      }
+    case 'UNINSTALL_APPLICATION':
+      try {
+        return { status: 'COMPLETED', result: await uninstallApplication(context.params ?? {}) };
+      } catch (error) {
+        return { status: 'FAILED', errorMessage: (error as Error).message };
+      }
     case 'LOCK_DEVICE':
       try {
         await runProgram('rundll32.exe', ['user32.dll,LockWorkStation']);

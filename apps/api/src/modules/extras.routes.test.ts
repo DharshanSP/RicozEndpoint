@@ -301,7 +301,21 @@ describe('Audit Logs API', () => {
     assert.equal(res.statusCode, 200);
     const payload = res.json();
     assert.ok(payload.data.total >= 6, 'seed audit entries should exist');
-    assert.ok(payload.data.items[0]?.actor?.email, 'actor details should be included');
+
+    const items = payload.data.items as Array<{ timestamp: string; actor: { email: string } | null }>;
+    for (let i = 1; i < items.length; i += 1) {
+      assert.ok(
+        (items[i - 1]?.timestamp ?? '') >= (items[i]?.timestamp ?? ''),
+        'entries are ordered by timestamp desc'
+      );
+    }
+    // Other suites enrol devices concurrently, and those entries intentionally
+    // carry a null system actor - so assert the join works for some entry on
+    // the page rather than pinning it to the most recent row.
+    assert.ok(
+      items.some((item) => item.actor?.email),
+      'actor details should be included'
+    );
   });
 
   it('filters by action', async () => {

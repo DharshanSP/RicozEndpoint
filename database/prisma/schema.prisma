@@ -21,6 +21,7 @@ model Organization {
   policies     Policy[]
   commands     Command[]
   applications Application[]
+  deployments  Deployment[]
   patches      Patch[]
   alerts       Alert[]
   auditLogs          AuditLog[]
@@ -47,6 +48,7 @@ model User {
   organization          Organization @relation(fields: [organizationId], references: [id])
   auditLogs             AuditLog[]
   requestedCommands     Command[]    @relation("RequestedBy")
+  requestedDeployments  Deployment[] @relation("RequestedDeployments")
   createdEnrollmentTokens EnrollmentToken[] @relation("CreatedEnrollmentTokens")
   createdPolicies       Policy[]
   createdPatches        Patch[]        @relation("CreatedPatches")
@@ -91,6 +93,7 @@ model Device {
   patches           DevicePatch[]
   deviceGroups      DeviceGroupMember[]
   enrollmentTokens  EnrollmentToken[]
+  deployments       Deployment[]
 
   @@unique([organizationId, serialNumber])
   @@index([organizationId])
@@ -276,6 +279,7 @@ model Command {
   status         String    @default("QUEUED")
   requestedBy    String?
   patchId        String?
+  deploymentId   String?
   createdAt      DateTime  @default(now())
   startedAt      DateTime?
   completedAt    DateTime?
@@ -285,10 +289,12 @@ model Command {
   organization Organization @relation(fields: [organizationId], references: [id])
   device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   requester    User?        @relation("RequestedBy", fields: [requestedBy], references: [id])
+  deployment   Deployment?  @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
 
   @@index([deviceId])
   @@index([status])
   @@index([patchId])
+  @@index([deploymentId])
   @@index([createdAt])
   @@map("commands")
 }
@@ -315,16 +321,28 @@ model Application {
 }
 
 model Deployment {
-  id            String   @id @default(uuid())
-  applicationId String
-  deviceId      String
-  status        String   @default("PENDING")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(uuid())
+  organizationId String
+  applicationId  String
+  deviceId       String
+  action         String   @default("INSTALL")
+  status         String   @default("PENDING")
+  requestedBy    String?
+  errorMessage   String?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  device      Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id])
+  requester   User?        @relation("RequestedDeployments", fields: [requestedBy], references: [id])
+  commands    Command[]
 
+  @@index([organizationId])
   @@index([applicationId])
+  @@index([deviceId])
+  @@index([status])
   @@map("deployments")
 }
 
