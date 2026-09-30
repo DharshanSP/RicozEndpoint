@@ -4,6 +4,7 @@ import { commandResultSchema } from './agent.schema';
 export const commandTypeEnum = z.enum([
   'REFRESH_INVENTORY',
   'SYNC_POLICY',
+  'INSTALL_PATCH',
   'LOCK_DEVICE',
   'RESTART_DEVICE',
   'SHUTDOWN_DEVICE',

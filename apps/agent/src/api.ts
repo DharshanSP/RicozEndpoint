@@ -1,5 +1,5 @@
 import { config } from './config';
-import type { SystemInfo, SoftwareItem, SecurityState } from './inventory';
+import type { SystemInfo, SoftwareItem, SecurityState, PatchItem } from './inventory';
 
 export interface EnrollResponse {
   deviceId: string;
@@ -11,6 +11,7 @@ export interface PendingCommand {
   id: string;
   type: string;
   createdAt: string;
+  params?: Record<string, unknown>;
 }
 
 export interface PolicyPayload {
@@ -89,7 +90,12 @@ export function enrollDevice(info: SystemInfo): Promise<EnrollResponse> {
 export function sendHeartbeat(
   agentToken: string,
   deviceId: string,
-  telemetry: { hardware?: SystemInfo; software?: SoftwareItem[]; security?: SecurityState },
+  telemetry: {
+    hardware?: SystemInfo;
+    software?: SoftwareItem[];
+    security?: SecurityState;
+    patches?: PatchItem[];
+  },
 ): Promise<HeartbeatResponse> {
   return request<HeartbeatResponse>('/agent/heartbeat', {
     method: 'POST',
@@ -102,6 +108,7 @@ export function sendHeartbeat(
       ...(telemetry.hardware ? { hardware: telemetry.hardware } : {}),
       ...(telemetry.software ? { software: { items: telemetry.software } } : {}),
       ...(telemetry.security ? { security: telemetry.security } : {}),
+      ...(telemetry.patches ? { patches: { items: telemetry.patches } } : {}),
     },
   });
 }

@@ -52,7 +52,7 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
           page: { type: 'integer', minimum: 1, default: 1 },
           limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           deviceId: { type: 'string', format: 'uuid' },
-          type: { type: 'string', enum: ['REFRESH_INVENTORY', 'SYNC_POLICY', 'LOCK_DEVICE', 'RESTART_DEVICE', 'SHUTDOWN_DEVICE'] },
+          type: { type: 'string', enum: ['REFRESH_INVENTORY', 'SYNC_POLICY', 'INSTALL_PATCH', 'LOCK_DEVICE', 'RESTART_DEVICE', 'SHUTDOWN_DEVICE'] },
           status: { type: 'string', enum: ['QUEUED', 'SENT', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] },
         },
       },
@@ -118,7 +118,7 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
         required: ['deviceId', 'type'],
         properties: {
           deviceId: { type: 'string', format: 'uuid' },
-          type: { type: 'string', enum: ['REFRESH_INVENTORY', 'SYNC_POLICY', 'LOCK_DEVICE', 'RESTART_DEVICE', 'SHUTDOWN_DEVICE'] },
+          type: { type: 'string', enum: ['REFRESH_INVENTORY', 'SYNC_POLICY', 'INSTALL_PATCH', 'LOCK_DEVICE', 'RESTART_DEVICE', 'SHUTDOWN_DEVICE'] },
           confirmed: { type: 'boolean', default: false },
           params: { type: 'object', additionalProperties: true },
         },

@@ -17,10 +17,12 @@ import {
   ShieldCheck,
   Terminal,
   Trash2,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware, useDeleteDevice } from '../hooks/useDeviceQueries';
 import { useDeviceCompliance } from '../hooks/useCompliance';
+import { useDevicePatches } from '../hooks/usePatches';
 import { useCreateCommand } from '../hooks/useCommands';
 import { useAuth } from '../context/AuthContext';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
@@ -45,6 +47,7 @@ const TABS = [
   { value: 'overview', label: 'Overview' },
   { value: 'hardware', label: 'Hardware' },
   { value: 'software', label: 'Software' },
+  { value: 'patches', label: 'Patches' },
   { value: 'policies', label: 'Policies' },
   { value: 'compliance', label: 'Compliance' },
   { value: 'commands', label: 'Commands' },
@@ -92,10 +95,24 @@ function commandBadgeVariant(status: string): BadgeVariant {
       return 'success';
     case 'FAILED':
       return 'destructive';
+    case 'QUEUED':
     case 'PENDING':
       return 'warning';
     case 'RUNNING':
       return 'info';
+    default:
+      return 'secondary';
+  }
+}
+
+function patchDeviceBadgeVariant(status: string): BadgeVariant {
+  switch (status) {
+    case 'INSTALLED':
+      return 'success';
+    case 'FAILED':
+      return 'destructive';
+    case 'MISSING':
+      return 'warning';
     default:
       return 'secondary';
   }
@@ -343,6 +360,11 @@ export function DeviceDetailPage() {
           )}
         </TabsContent>
 
+        {/* Patches */}
+        <TabsContent value="patches">
+          <PatchesTab deviceId={overview.id} />
+        </TabsContent>
+
         {/* Policies */}
         <TabsContent value="policies">
           {detail.data.policies.length === 0 ? (
@@ -351,7 +373,6 @@ export function DeviceDetailPage() {
             <PoliciesList policies={detail.data.policies} />
           )}
         </TabsContent>
-
         {/* Compliance */}
         <TabsContent value="compliance">
           <ComplianceTab deviceId={overview.id} />
@@ -458,6 +479,82 @@ function PoliciesList({ policies }: { policies: AssignedPolicy[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PatchesTab({ deviceId }: { deviceId: string }) {
+  const patches = useDevicePatches(deviceId);
+
+  if (patches.isLoading) return <TabSkeleton rows={4} />;
+
+  if (patches.isError) {
+    return (
+      <TabError
+        message={patches.error instanceof Error ? patches.error.message : 'Patch state could not be loaded.'}
+        onRetry={() => patches.refetch()}
+      />
+    );
+  }
+
+  const data = patches.data?.data;
+  if (!data || data.items.length === 0) {
+    return (
+      <EmptyTab
+        icon={Wrench}
+        title="No patches reported"
+        description="The patch catalog is empty for this organization. Agents upload installed KBs with their telemetry heartbeat."
+      />
+    );
+  }
+
+  const { summary, items } = data;
+  const order: Record<string, number> = { FAILED: 0, MISSING: 1, INSTALLED: 2 };
+  const sorted = [...items].sort(
+    (a, b) => (order[a.deviceStatus] ?? 3) - (order[b.deviceStatus] ?? 3)
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg bg-white border border-slate-200 shadow-xs p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold text-emerald-700">{summary.installed}</span> installed ·{' '}
+          <span className="font-semibold text-rose-700">{summary.missing}</span> missing ·{' '}
+          <span className="font-semibold text-amber-700">{summary.failed}</span> failed of{' '}
+          {summary.total} catalog patch{summary.total === 1 ? '' : 'es'}
+        </div>
+        <div className="text-[11px] text-slate-500 font-mono sm:ml-auto">
+          Agents report KBs on every telemetry heartbeat
+        </div>
+      </div>
+
+      <div className="divide-y divide-slate-100 rounded-lg bg-white border border-slate-200 shadow-xs overflow-hidden">
+        {sorted.map((patch) => (
+          <div key={patch.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-xs font-semibold text-slate-800">{patch.kbNumber}</span>
+                <Badge variant={patchDeviceBadgeVariant(patch.deviceStatus)} className="text-[10px]">
+                  {patch.deviceStatus}
+                </Badge>
+                {patch.command && (
+                  <Badge variant="info" className="text-[10px]">
+                    Install {patch.command.status.toLowerCase()}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 truncate">{patch.title}</p>
+            </div>
+            <div className="text-[11px] text-slate-500 font-mono shrink-0">
+              {patch.installedAt
+                ? `Installed ${formatDateTime(patch.installedAt)}`
+                : patch.lastReportedAt
+                  ? `Seen ${formatDateTime(patch.lastReportedAt)}`
+                  : 'Never reported'}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

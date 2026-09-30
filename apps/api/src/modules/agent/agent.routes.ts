@@ -8,6 +8,30 @@ function toIso(value: Date | null | undefined): string | null {
 }
 
 const PENDING_COMMAND_TAKE = 20;
+const PATCH_INGEST_LIMIT = 1000;
+
+function parsePatchDate(value: string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseCommandParams(raw: string | null): Record<string, unknown> | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Result payload is free-form agent output; ignore non-JSON values.
+  }
+  return undefined;
+}
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // ─── Agent heartbeat + inventory telemetry ───────────────────────────────────
@@ -48,7 +72,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const { deviceId, agentVersion, timestamp, status, hardware, software, security } = parsed.data;
+      const { deviceId, agentVersion, timestamp, status, hardware, software, security, patches } = parsed.data;
 
       if (deviceId !== agentDevice.id) {
         return reply.status(403).send({
@@ -147,11 +171,69 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      if (patches) {
+        const reported = patches.items.slice(0, PATCH_INGEST_LIMIT);
+        const knownKb = new Set<string>();
+
+        await app.prisma.$transaction(async (tx) => {
+          for (const item of reported) {
+            const kbNumber = (item.kbNumber ?? '').trim().toUpperCase();
+            if (!/^KB\d+$/.test(kbNumber)) {
+              continue;
+            }
+            knownKb.add(kbNumber);
+            const title = (item.title ?? '').trim() || kbNumber;
+
+            const patch = await tx.patch.upsert({
+              where: {
+                organizationId_kbNumber: { organizationId: agentDevice.organizationId, kbNumber },
+              },
+              create: { organizationId: agentDevice.organizationId, kbNumber, title },
+              update: { title },
+            });
+
+            const installedAt = parsePatchDate(item.installedAt);
+            await tx.devicePatch.upsert({
+              where: { deviceId_patchId: { deviceId: agentDevice.id, patchId: patch.id } },
+              create: {
+                deviceId: agentDevice.id,
+                patchId: patch.id,
+                status: 'INSTALLED',
+                installedAt,
+                lastReportedAt: now,
+              },
+              update: { status: 'INSTALLED', installedAt, lastReportedAt: now },
+            });
+          }
+
+          // Anything this device previously reported as installed but no longer
+          // reports is no longer present (update uninstalled / superseded).
+          const patchIds = (
+            await tx.patch.findMany({
+              where: {
+                organizationId: agentDevice.organizationId,
+                kbNumber: { in: [...knownKb] },
+              },
+              select: { id: true },
+            })
+          ).map((row) => row.id);
+
+          await tx.devicePatch.updateMany({
+            where: {
+              deviceId: agentDevice.id,
+              status: 'INSTALLED',
+              ...(patchIds.length > 0 ? { patchId: { notIn: patchIds } } : {}),
+            },
+            data: { status: 'MISSING', installedAt: null, lastReportedAt: now },
+          });
+        });
+      }
+
       const pendingCommands = await app.prisma.command.findMany({
-        where: { deviceId: agentDevice.id, status: 'PENDING' },
+        where: { deviceId: agentDevice.id, status: 'QUEUED' },
         orderBy: { createdAt: 'asc' },
         take: PENDING_COMMAND_TAKE,
-        select: { id: true, type: true, createdAt: true },
+        select: { id: true, type: true, createdAt: true, result: true },
       });
 
       return reply.send({
@@ -169,6 +251,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             id: command.id,
             type: command.type,
             createdAt: command.createdAt.toISOString(),
+            params: parseCommandParams(command.result),
           })),
         },
       });
@@ -291,10 +374,10 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       const agentDevice = { id: request.agent!.deviceId, organizationId: request.agent!.organizationId };
 
       const commands = await app.prisma.command.findMany({
-        where: { deviceId: agentDevice.id, status: 'PENDING' },
+        where: { deviceId: agentDevice.id, status: 'QUEUED' },
         orderBy: { createdAt: 'asc' },
         take: PENDING_COMMAND_TAKE,
-        select: { id: true, type: true, createdAt: true },
+        select: { id: true, type: true, createdAt: true, result: true },
       });
 
       return reply.send({
@@ -304,6 +387,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             id: command.id,
             type: command.type,
             createdAt: command.createdAt.toISOString(),
+            params: parseCommandParams(command.result),
           })),
         },
       });

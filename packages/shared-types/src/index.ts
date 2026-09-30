@@ -15,18 +15,18 @@ export enum DeviceStatus {
 }
 
 export enum CommandStatus {
-  PENDING = 'PENDING',
+  QUEUED = 'QUEUED',
   SENT = 'SENT',
   RUNNING = 'RUNNING',
-  SUCCESS = 'SUCCESS',
+  COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
-  EXPIRED = 'EXPIRED',
   CANCELLED = 'CANCELLED',
 }
 
 export enum CommandType {
   REFRESH_INVENTORY = 'REFRESH_INVENTORY',
   SYNC_POLICY = 'SYNC_POLICY',
+  INSTALL_PATCH = 'INSTALL_PATCH',
   LOCK_DEVICE = 'LOCK_DEVICE',
   RESTART_DEVICE = 'RESTART_DEVICE',
   SHUTDOWN_DEVICE = 'SHUTDOWN_DEVICE',
@@ -67,6 +67,18 @@ export enum AlertStatus {
   OPEN = 'OPEN',
   ACKNOWLEDGED = 'ACKNOWLEDGED',
   RESOLVED = 'RESOLVED',
+}
+
+export enum PatchSeverity {
+  CRITICAL = 'CRITICAL',
+  IMPORTANT = 'IMPORTANT',
+  OPTIONAL = 'OPTIONAL',
+}
+
+export enum PatchStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  DEPLOYED = 'DEPLOYED',
 }
 
 export interface Organization {

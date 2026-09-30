@@ -21,6 +21,7 @@ import { softwareCatalogRoutes } from './modules/software-catalog/software-catal
 import { organizationSettingsRoutes } from './modules/organization-settings/organization-settings.routes';
 import { organizationsRoutes } from './modules/organizations/organizations.routes';
 import { complianceRoutes } from './modules/compliance/compliance.routes';
+import { patchesRoutes } from './modules/patches/patches.routes';
 
 const config = loadConfig();
 
@@ -105,6 +106,7 @@ export async function buildApp() {
   await app.register(softwareCatalogRoutes, { prefix: '/api/software' });
   await app.register(organizationSettingsRoutes, { prefix: '/api/settings' });
   await app.register(complianceRoutes, { prefix: '/api/compliance' });
+  await app.register(patchesRoutes, { prefix: '/api/patches' });
 
   return app;
 }

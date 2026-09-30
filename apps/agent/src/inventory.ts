@@ -29,6 +29,12 @@ export interface SecurityState {
   antivirusEnabled: boolean;
 }
 
+export interface PatchItem {
+  kbNumber: string;
+  title: string;
+  installedAt: string | null;
+}
+
 function runPowerShell(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -151,5 +157,39 @@ foreach ($p in $av) {
     return JSON.parse(raw) as SecurityState;
   } catch {
     return { firewallEnabled: false, antivirusEnabled: false };
+  }
+}
+
+/** Enumerate installed OS hotfixes (KB articles) reported by Windows. */
+export async function collectInstalledPatches(): Promise<PatchItem[]> {
+  // `InstalledOn` is a calendar date, so it is emitted in yyyy-MM-dd form: that
+  // parses as UTC on the API side instead of shifting by the local offset the
+  // way a timezone-less round-trip string would.
+  const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+$items = foreach ($hf in @(Get-HotFix 2>$null)) {
+  if ($hf.HotFixId -notmatch '^KB\\d+$') { continue }
+  $installed = $null
+  if ($hf.InstalledOn) {
+    try { $installed = ([datetime]$hf.InstalledOn).ToString('yyyy-MM-dd') } catch { $installed = $null }
+  }
+  [pscustomobject]@{
+    kbNumber = [string]$hf.HotFixId
+    title = [string]$hf.Description
+    installedAt = $installed
+  }
+}
+@($items | Sort-Object kbNumber) | ConvertTo-Json -Compress
+`;
+
+  const raw = await runPowerShell(script);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as PatchItem[] | PatchItem;
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return [];
   }
 }

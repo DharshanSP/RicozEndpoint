@@ -120,9 +120,36 @@ version), `CONFIGURATION` (policy JSON delivered to agent). See [compliance.md](
 | GET | /api/commands/:id | Get command details | VIEWER |
 
 Command creation body: `{ deviceId, type, confirmed?, params? }`. Types:
-`REFRESH_INVENTORY`, `SYNC_POLICY`, `LOCK_DEVICE`, `RESTART_DEVICE`, `SHUTDOWN_DEVICE`.
-Destructive types (`LOCK_DEVICE`, `RESTART_DEVICE`, `SHUTDOWN_DEVICE`) **require
-`confirmed: true`** and fail with a validation error otherwise.
+`REFRESH_INVENTORY`, `SYNC_POLICY`, `INSTALL_PATCH`, `LOCK_DEVICE`, `RESTART_DEVICE`,
+`SHUTDOWN_DEVICE`. Destructive types (`LOCK_DEVICE`, `RESTART_DEVICE`, `SHUTDOWN_DEVICE`)
+**require `confirmed: true`** and fail with a validation error otherwise.
+
+Commands are created with status `QUEUED`; the agent receives them (together with their
+`params`) on its next heartbeat or via `GET /api/agent/commands/pending`, and reports back
+`COMPLETED` / `FAILED`.
+
+## Patches
+
+| Method | Endpoint | Description | Min. role |
+|--------|----------|-------------|-----------|
+| GET | /api/patches | List catalog with coverage + fleet summary (filter: severity, status, search, page, limit) | VIEWER |
+| GET | /api/patches/:id | Get a patch with per-device install state | VIEWER |
+| GET | /api/patches/device/:id | Get every catalog patch alongside its state on one device | VIEWER |
+| POST | /api/patches | Add a patch to the catalog | IT_ADMIN |
+| PATCH | /api/patches/:id | Update metadata or approval status | IT_ADMIN |
+| POST | /api/patches/:id/deploy | Queue `INSTALL_PATCH` on devices missing the patch | IT_ADMIN |
+
+Create body: `{ kbNumber, title, description?, severity?, category?, releaseDate?, status? }`
+where `kbNumber` must match `KB1234567` (it is upper-cased) and `severity` is one of
+`CRITICAL` / `IMPORTANT` / `OPTIONAL`.
+
+Deploy body: `{ deviceIds?, confirmed? }` — **`confirmed: true` is required**. Omitting
+`deviceIds` targets every device in the patch's organization; otherwise the ids must all
+belong to that organization. Devices that already have the patch, or that already have an
+install in flight, are skipped and counted in the response.
+
+Agents report installed KBs on every telemetry heartbeat, which upserts the catalog
+(`PATCH_CREATED` implicitly) and the device's `INSTALLED` / `MISSING` state.
 
 ## Alerts
 

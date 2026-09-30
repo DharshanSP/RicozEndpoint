@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { hardwareInventorySchema, softwareInventorySchema } from './inventory.schema';
+import { hardwareInventorySchema, softwareInventorySchema, patchInventorySchema } from './inventory.schema';
 
 export const registerDeviceSchema = z.object({
   enrollmentToken: z.string().min(1, 'Enrollment token is required'),
@@ -41,6 +41,7 @@ export const agentHeartbeatSchema = heartbeatSchema.extend({
   hardware: hardwareInventorySchema.optional(),
   software: softwareInventorySchema.optional(),
   security: deviceSecuritySchema.optional(),
+  patches: patchInventorySchema.optional(),
 });
 
 export type AgentHeartbeatInput = z.infer<typeof agentHeartbeatSchema>;

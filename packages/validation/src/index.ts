@@ -11,6 +11,7 @@ export * from './audit-log.schema';
 export * from './software.schema';
 export * from './organization.schema';
 export * from './compliance.schema';
+export * from './patch.schema';
 import { z } from 'zod';
 
 export const paginationSchema = z.object({

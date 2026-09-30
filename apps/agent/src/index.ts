@@ -1,6 +1,6 @@
 import { config } from './config';
 import { loadState, saveState, type AgentState } from './state';
-import { collectInstalledSoftware, collectSecurityState, collectSystemInfo } from './inventory';
+import { collectInstalledPatches, collectInstalledSoftware, collectSecurityState, collectSystemInfo } from './inventory';
 import { AgentApiError, enrollDevice, reportCommandResult, sendHeartbeat } from './api';
 import { executeCommand } from './commands';
 import type { PendingCommand } from './api';
@@ -36,7 +36,10 @@ export async function processCommands(state: AgentState, pending: PendingCommand
   for (const command of pending) {
     log('info', `Executing command ${command.id} (${command.type})`);
     try {
-      const outcome = await executeCommand(command.type, { agentToken: state.agentToken });
+      const outcome = await executeCommand(command.type, {
+        agentToken: state.agentToken,
+        params: command.params ?? {},
+      });
       if (outcome.status === 'COMPLETED' && command.type === 'REFRESH_INVENTORY') {
         forceTelemetry = true;
       }
@@ -58,23 +61,31 @@ async function heartbeat(
   let hardware;
   let software;
   let security;
+  let patches;
   if (includeTelemetry) {
     log('info', 'Collecting hardware/software/security telemetry...');
-    const [info, apps, sec] = await Promise.all([
+    const [info, apps, sec, hotfixes] = await Promise.all([
       collectSystemInfo(),
       collectInstalledSoftware(),
       collectSecurityState(),
+      collectInstalledPatches(),
     ]);
     hardware = info;
     software = apps;
     security = sec;
+    patches = hotfixes;
     log(
       'info',
-      `Telemetry collected: ${apps.length} applications, firewall=${sec.firewallEnabled}, antivirus=${sec.antivirusEnabled}`,
+      `Telemetry collected: ${apps.length} applications, ${hotfixes.length} hotfixes, firewall=${sec.firewallEnabled}, antivirus=${sec.antivirusEnabled}`,
     );
   }
 
-  const response = await sendHeartbeat(state.agentToken, state.deviceId, { hardware, software, security });
+  const response = await sendHeartbeat(state.agentToken, state.deviceId, {
+    hardware,
+    software,
+    security,
+    patches,
+  });
   log(
     'info',
     `Heartbeat OK: device=${response.device.status}, pendingCommands=${response.pendingCommands.length}`,

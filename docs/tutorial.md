@@ -129,8 +129,13 @@ Aggregated view of all software across the fleet.
 
 ### 4.5 Patch Management
 Tracks missing OS/security patches per device (populated by agent scans).
-- Filter by severity (Critical / Important / Moderate)
-- Deploy patches via Software Catalog deploy flow
+- Agents report installed KBs on every telemetry heartbeat (`Get-HotFix`); those reports upsert the catalog and the device's install state
+- Filter by severity (Critical / Important / Optional) and status (Pending / Approved / Deployed)
+- Per-patch coverage: installed / failed / missing across the organization's devices, plus a fleet up-to-date percentage
+- **Approve** moves a patch `PENDING → APPROVED`; **Deploy** (IT Admin+) queues an `INSTALL_PATCH` command on every device missing it and marks it `DEPLOYED`
+- Devices already up to date, or with a command already in flight, are skipped and reported back
+- Drill into a device: **Devices → detail → Patches** shows installed / missing / failed per KB
+- Agents pull commands on their next heartbeat; installs run through the Windows Update Agent and never force a reboot
 
 ### 4.6 Policies (Security → Policies)
 Create policy templates:
@@ -224,6 +229,7 @@ log_level = "info"
 | Device Groups | `/api/device-groups` | `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/members`, `DELETE /:id/members/:deviceId` |
 | Policies | `/api/policies` | `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/assign` |
 | Compliance | `/api/compliance` | `GET /`, `GET /device/:id`, `POST /evaluate` |
+| Patches | `/api/patches` | `GET /`, `GET /:id`, `GET /device/:id`, `POST /`, `PATCH /:id`, `POST /:id/deploy` |
 | Alerts | `/api/alerts` | `GET /`, `PATCH /:id/acknowledge`, `PATCH /:id/resolve` |
 | Commands | `/api/commands` | `GET /`, `POST /` (create), `GET /:id` |
 | Software | `/api/software` | `GET /` (catalog), `POST /deploy` |
