@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware, useDeleteDevice } from '../hooks/useDeviceQueries';
+import { useDeviceCompliance } from '../hooks/useCompliance';
 import { useCreateCommand } from '../hooks/useCommands';
 import { useAuth } from '../context/AuthContext';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
@@ -33,7 +34,6 @@ import type {
   ActivityType,
   AssignedPolicy,
   CommandRecord,
-  ComplianceResult,
   DeviceComplianceStatus,
   DeviceSoftwareItem,
   DeviceStatus,
@@ -354,11 +354,7 @@ export function DeviceDetailPage() {
 
         {/* Compliance */}
         <TabsContent value="compliance">
-          {detail.data.compliance.length === 0 ? (
-            <EmptyTab icon={CheckSquare} title="No compliance evaluations" description="No compliance rules have been evaluated against this device yet." />
-          ) : (
-            <ComplianceList results={detail.data.compliance} />
-          )}
+          <ComplianceTab deviceId={overview.id} />
         </TabsContent>
 
         {/* Commands */}
@@ -466,31 +462,142 @@ function PoliciesList({ policies }: { policies: AssignedPolicy[] }) {
   );
 }
 
-function ComplianceList({ results }: { results: ComplianceResult[] }) {
+function ComplianceTab({ deviceId }: { deviceId: string }) {
+  const compliance = useDeviceCompliance(deviceId, { limit: 50 });
+
+  if (compliance.isLoading) return <TabSkeleton rows={4} />;
+
+  if (compliance.isError) {
+    return (
+      <TabError
+        message={
+          compliance.error instanceof Error
+            ? compliance.error.message
+            : 'Compliance evaluations could not be loaded.'
+        }
+        onRetry={() => compliance.refetch()}
+      />
+    );
+  }
+
+  const detail = compliance.data?.data;
+  if (!detail) {
+    return (
+      <EmptyTab
+        icon={CheckSquare}
+        title="No compliance evaluations"
+        description="No policies or rules have been evaluated against this device yet."
+      />
+    );
+  }
+
+  const { summary, controls, history } = detail;
+
   return (
-    <div className="space-y-3">
-      {results.map((result) => (
-        <div key={result.id} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start gap-2 justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-slate-900">
-                {result.rule ? result.rule.name : 'Managed security rule'}
-              </span>
-              <Badge variant={checkBadgeVariant(result.status)} className="text-[10px] font-medium">
-                {result.status.replace('_', ' ')}
-              </Badge>
-            </div>
-            {result.reason && <p className="text-[11px] text-slate-600">{result.reason}</p>}
-            {result.rule?.description && (
-              <p className="text-[11px] text-slate-500">{result.rule.description}</p>
-            )}
-          </div>
-          <div className="text-[11px] text-slate-500 shrink-0 text-left sm:text-right font-mono">
-            <span className="text-slate-600 font-medium">{result.rule ? result.rule.ruleType : 'GENERAL'}</span>
-            <span className="block text-slate-400">{formatDateTime(result.evaluatedAt)}</span>
-          </div>
+    <div className="space-y-4">
+      {/* Summary strip */}
+      <div className="rounded-lg bg-white border border-slate-200 shadow-xs p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-center gap-2">
+          {summary.status === 'NON_COMPLIANT' ? (
+            <ShieldAlert className="w-4 h-4 text-rose-600" />
+          ) : (
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          )}
+          <span className="text-sm font-semibold text-slate-900">
+            {summary.status === 'UNTESTED' ? 'Not Evaluated' : summary.status.replace('_', ' ')}
+          </span>
         </div>
-      ))}
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold text-emerald-700">{summary.compliant}</span> passing ·{' '}
+          <span className="font-semibold text-rose-700">{summary.nonCompliant}</span> failing of{' '}
+          {summary.total} check{summary.total === 1 ? '' : 's'}
+        </div>
+        <div className="text-[11px] text-slate-500 font-mono sm:ml-auto">
+          {summary.evaluatedAt ? `Last evaluated ${formatDateTime(summary.evaluatedAt)}` : 'Never evaluated'}
+        </div>
+      </div>
+
+      {/* Current checks */}
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Current Checks</h3>
+        {controls.length === 0 ? (
+          <EmptyTab
+            icon={CheckSquare}
+            title="No active checks"
+            description="No policies or compliance rules are assigned to this device."
+          />
+        ) : (
+          <div className="space-y-3">
+            {controls.map((check) => (
+              <div
+                key={check.id}
+                className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start gap-2 justify-between"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-900">{check.name}</span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-slate-200 text-slate-500 bg-slate-50"
+                    >
+                      {check.source === 'POLICY' ? 'Policy' : 'Rule'}
+                    </Badge>
+                    <Badge variant={checkBadgeVariant(check.status)} className="text-[10px] font-medium">
+                      {check.status.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  {check.reason && <p className="text-[11px] text-slate-600">{check.reason}</p>}
+                </div>
+                <div className="text-[11px] text-slate-500 shrink-0 font-mono">
+                  {formatDateTime(check.evaluatedAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Evaluation history */}
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+          Evaluation History
+          {detail.historyTotal > history.length ? ` (${history.length} of ${detail.historyTotal})` : ''}
+        </h3>
+        {history.length === 0 ? (
+          <EmptyTab
+            icon={Clock}
+            title="No evaluation history"
+            description="This device has not been evaluated against any policy or rule yet."
+          />
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+                  <th className="px-4 py-2.5 font-semibold">Source</th>
+                  <th className="px-4 py-2.5 font-semibold">Result</th>
+                  <th className="px-4 py-2.5 font-semibold">Reason</th>
+                  <th className="px-4 py-2.5 font-semibold">Evaluated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {history.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3 text-slate-900 font-semibold">{entry.sourceName}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={checkBadgeVariant(entry.status)} className="text-[10px] font-medium">
+                        {entry.status.replace('_', ' ')}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{entry.reason || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 font-mono">{formatDateTime(entry.evaluatedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

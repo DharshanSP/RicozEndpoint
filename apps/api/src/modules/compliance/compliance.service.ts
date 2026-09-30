@@ -34,6 +34,25 @@ function policyMarkerFromReason(reason: string): string | null {
   return reason.slice(idx);
 }
 
+/**
+ * Extracts the policy id a policy-generated result was written for.
+ * Results are stored as `<human reason> [__ricoz_policy__<policyId>]`.
+ */
+export function policyIdFromReason(reason: string): string | null {
+  const idx = reason.indexOf(POLICY_MARKER_PREFIX);
+  if (idx === -1) return null;
+  const rest = reason.slice(idx + POLICY_MARKER_PREFIX.length);
+  const match = rest.match(/^[^\s\]]+/);
+  return match ? match[0] : null;
+}
+
+/** Removes the internal policy marker so the human-readable reason can be shown. */
+export function stripPolicyMarker(reason: string): string {
+  const idx = reason.indexOf(' [');
+  const cleaned = idx === -1 ? reason : reason.slice(0, idx);
+  return cleaned;
+}
+
 function versionTuple(version: string): number[] {
   return version
     .split(/[.\-_+]/)

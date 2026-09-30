@@ -143,8 +143,10 @@ Create policy templates:
 ### 4.7 Compliance (Security → Compliance)
 Per-device, per-rule evaluation results.
 - Rules: Disk Encryption, Firewall Active, EDR Running, Patches Current, AV Real-time, Auto-Lock
-- Status: `COMPLIANT` / `NON_COMPLIANT`
-- Drill into a device → see which rules pass/fail with reasons
+- Status: `COMPLIANT` / `NON_COMPLIANT` / `UNTESTED` (no evaluation yet)
+- Reporting range: last 24h / 7d / 30d / all time — controls recompute over that window
+- Drill into a device → see which policies and rules pass/fail with reasons
+- **Re-evaluate** (IT Admin+) re-runs the engine fleet-wide without waiting for the next heartbeat
 
 ### 4.8 Alerts (Security → Alerts)
 Agent- and policy-generated alerts.
@@ -221,7 +223,7 @@ log_level = "info"
 | Devices | `/api/devices` | `GET /`, `GET /:id`, `POST /:id/commands` |
 | Device Groups | `/api/device-groups` | `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/members`, `DELETE /:id/members/:deviceId` |
 | Policies | `/api/policies` | `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/assign` |
-| Compliance | `/api/compliance` | `GET /`, `GET /device/:id` |
+| Compliance | `/api/compliance` | `GET /`, `GET /device/:id`, `POST /evaluate` |
 | Alerts | `/api/alerts` | `GET /`, `PATCH /:id/acknowledge`, `PATCH /:id/resolve` |
 | Commands | `/api/commands` | `GET /`, `POST /` (create), `GET /:id` |
 | Software | `/api/software` | `GET /` (catalog), `POST /deploy` |

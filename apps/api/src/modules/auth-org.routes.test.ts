@@ -14,6 +14,9 @@ describe('Auth: password management', () => {
   let app: FastifyInstance;
   let adminToken: string;
   let operatorToken: string;
+  let disposableOperatorId: string;
+  let disposableOperatorEmail: string;
+  const runId = Date.now();
 
   before(async () => {
     app = await buildApp();
@@ -25,20 +28,34 @@ describe('Auth: password management', () => {
     });
     adminToken = (admin.json() as LoginResponse).data!.token!;
 
+    // Use a disposable operator: the shared seed operator must not be mutated,
+    // or parallel test files logging in with the seed password will fail.
+    const demoOrg = await app.prisma.organization.findUniqueOrThrow({
+      where: { name: 'Ricoz Demo Organization' },
+      select: { id: true },
+    });
+    const operator = await app.prisma.user.create({
+      data: {
+        organizationId: demoOrg.id,
+        email: `pw-operator-${runId}@ricoz.local`,
+        name: 'Password Test Operator',
+        passwordHash: await hashPassword('operator123'),
+        role: 'OPERATOR',
+      },
+    });
+    disposableOperatorId = operator.id;
+    disposableOperatorEmail = operator.email;
+
     const op = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { email: 'operator@ricoz.local', password: 'operator123' },
+      payload: { email: operator.email, password: 'operator123' },
     });
     operatorToken = (op.json() as LoginResponse).data!.token!;
   });
 
   after(async () => {
-    // Restore seed credentials so repeated runs stay green.
-    await app.prisma.user.updateMany({
-      where: { email: 'operator@ricoz.local' },
-      data: { passwordHash: await hashPassword('operator123') },
-    });
+    await app.prisma.user.delete({ where: { id: disposableOperatorId } }).catch(() => undefined);
     await app.close();
   });
 
@@ -56,14 +73,14 @@ describe('Auth: password management', () => {
     const oldLogin = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { email: 'operator@ricoz.local', password: 'operator123' },
+      payload: { email: disposableOperatorEmail, password: 'operator123' },
     });
     assert.equal(oldLogin.statusCode, 401);
 
     const newLogin = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { email: 'operator@ricoz.local', password: 'operator-newpass1' },
+      payload: { email: disposableOperatorEmail, password: 'operator-newpass1' },
     });
     assert.equal(newLogin.statusCode, 200);
   });

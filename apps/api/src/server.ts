@@ -20,6 +20,7 @@ import { auditLogsRoutes } from './modules/audit-logs/audit-logs.routes';
 import { softwareCatalogRoutes } from './modules/software-catalog/software-catalog.routes';
 import { organizationSettingsRoutes } from './modules/organization-settings/organization-settings.routes';
 import { organizationsRoutes } from './modules/organizations/organizations.routes';
+import { complianceRoutes } from './modules/compliance/compliance.routes';
 
 const config = loadConfig();
 
@@ -66,22 +67,9 @@ export async function buildApp() {
     routePrefix: '/docs',
   });
 
-  await app.register(authRoutes, { prefix: '/api/auth' });
-  await app.register(usersRoutes, { prefix: '/api/users' });
-  await app.register(organizationsRoutes, { prefix: '/api/organizations' });
-  await app.register(devicesRoutes, { prefix: '/api/devices' });
-  await app.register(dashboardRoutes, { prefix: '/api' });
-  await app.register(healthRoutes, { prefix: '/api' });
-  await app.register(enrollmentRoutes, { prefix: '/api' });
-  await app.register(agentRoutes, { prefix: '/api/agent' });
-  await app.register(policiesRoutes, { prefix: '/api/policies' });
-  await app.register(commandsRoutes, { prefix: '/api/commands' });
-  await app.register(alertsRoutes, { prefix: '/api/alerts' });
-  await app.register(deviceGroupsRoutes, { prefix: '/api/device-groups' });
-  await app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
-  await app.register(softwareCatalogRoutes, { prefix: '/api/software' });
-  await app.register(organizationSettingsRoutes, { prefix: '/api/settings' });
-
+  // Registered before the route plugins: `await app.register()` runs each
+  // plugin immediately, so a child context created afterwards would keep
+  // Fastify's default error shape instead of this envelope.
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
     const errCode = (error as { code?: string }).code;
@@ -100,6 +88,23 @@ export async function buildApp() {
       },
     });
   });
+
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(usersRoutes, { prefix: '/api/users' });
+  await app.register(organizationsRoutes, { prefix: '/api/organizations' });
+  await app.register(devicesRoutes, { prefix: '/api/devices' });
+  await app.register(dashboardRoutes, { prefix: '/api' });
+  await app.register(healthRoutes, { prefix: '/api' });
+  await app.register(enrollmentRoutes, { prefix: '/api' });
+  await app.register(agentRoutes, { prefix: '/api/agent' });
+  await app.register(policiesRoutes, { prefix: '/api/policies' });
+  await app.register(commandsRoutes, { prefix: '/api/commands' });
+  await app.register(alertsRoutes, { prefix: '/api/alerts' });
+  await app.register(deviceGroupsRoutes, { prefix: '/api/device-groups' });
+  await app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
+  await app.register(softwareCatalogRoutes, { prefix: '/api/software' });
+  await app.register(organizationSettingsRoutes, { prefix: '/api/settings' });
+  await app.register(complianceRoutes, { prefix: '/api/compliance' });
 
   return app;
 }
