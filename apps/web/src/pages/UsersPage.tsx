@@ -11,6 +11,7 @@ import {
   Lock,
   User,
   SlidersHorizontal,
+  Edit2,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -45,6 +46,7 @@ export function UsersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
+  // Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -52,13 +54,21 @@ export function UsersPage() {
   const [newRole, setNewRole] = useState<UserRole>('OPERATOR');
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Edit Modal State
+  const [editingUser, setEditingUser] = useState<UserSummary | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('OPERATOR');
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const canManageUsers = hasRole(['SUPER_ADMIN', 'ORG_ADMIN']);
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       const matchesSearch =
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase());
+        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.role.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
       const matchesStatus =
         statusFilter === 'ALL' ||
@@ -92,6 +102,44 @@ export function UsersPage() {
       setNewRole('OPERATOR');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create user');
+    }
+  };
+
+  const handleOpenEdit = (userToEdit: UserSummary) => {
+    setEditingUser(userToEdit);
+    setEditName(userToEdit.name);
+    setEditRole(userToEdit.role);
+    setEditIsActive(userToEdit.isActive);
+    setEditError(null);
+  };
+
+  const handleUpdateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditError(null);
+
+    if (!editName.trim()) {
+      setEditError('Full name is required.');
+      return;
+    }
+
+    if (editingUser.id === currentUser?.id && !editIsActive) {
+      setEditError('You cannot deactivate your own administrative account.');
+      return;
+    }
+
+    try {
+      await updateMutation.mutateAsync({
+        id: editingUser.id,
+        payload: {
+          name: editName.trim(),
+          role: editRole,
+          isActive: editIsActive,
+        },
+      });
+      setEditingUser(null);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update user');
     }
   };
 
@@ -144,7 +192,10 @@ export function UsersPage() {
           {canManageUsers && (
             <Button
               size="sm"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setCreateError(null);
+                setShowCreateModal(true);
+              }}
               className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
             >
               <UserPlus className="w-4 h-4" />
@@ -160,7 +211,7 @@ export function UsersPage() {
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search users by name or email..."
+            placeholder="Search users by name, email, or role..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -281,15 +332,26 @@ export function UsersPage() {
                   </td>
                   {canManageUsers && (
                     <td className="px-5 py-3.5 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleStatus(u)}
-                        disabled={u.id === currentUser?.id || updateMutation.isPending}
-                        className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100"
-                      >
-                        {u.isActive ? 'Deactivate' : 'Activate'}
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenEdit(u)}
+                          className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100 gap-1"
+                        >
+                          <Edit2 className="w-3 h-3 text-slate-500" />
+                          <span>Edit</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleStatus(u)}
+                          disabled={u.id === currentUser?.id || updateMutation.isPending}
+                          className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100"
+                        >
+                          {u.isActive ? 'Deactivate' : 'Activate'}
+                        </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -411,6 +473,112 @@ export function UsersPage() {
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   {createMutation.isPending ? 'Creating...' : 'Create Account'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal Dialog */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Edit User Account</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">{editingUser.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Jane Doe"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Assigned Role
+                </label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as UserRole)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                >
+                  <option value="VIEWER">Viewer (Read-only)</option>
+                  <option value="OPERATOR">Operator (Standard fleet management)</option>
+                  <option value="IT_ADMIN">IT Admin (Device and token management)</option>
+                  <option value="ORG_ADMIN">Org Admin (Full organization control)</option>
+                  <option value="SUPER_ADMIN">Super Admin (System Administrator)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="editIsActive"
+                  checked={editIsActive}
+                  onChange={(e) => setEditIsActive(e.target.checked)}
+                  disabled={editingUser.id === currentUser?.id}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                />
+                <label htmlFor="editIsActive" className="text-xs font-medium text-slate-700">
+                  Account Active (Enabled for login)
+                </label>
+              </div>
+              {editingUser.id === currentUser?.id && (
+                <p className="text-[11px] text-slate-400 italic">
+                  You cannot deactivate your own active administrative session.
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingUser(null)}
+                  className="border-slate-200 text-slate-600"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={updateMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </form>

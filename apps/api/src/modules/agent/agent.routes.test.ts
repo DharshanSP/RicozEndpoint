@@ -228,7 +228,7 @@ describe('Agent API (heartbeat, telemetry, commands)', () => {
         organizationId: demoOrgId,
         deviceId,
         type: 'REFRESH_INVENTORY',
-        status: 'PENDING',
+        status: 'QUEUED',
         requestedBy: null,
       },
     });
@@ -268,7 +268,7 @@ describe('Agent API (heartbeat, telemetry, commands)', () => {
 
   it('prevents reporting results for commands of other devices', async () => {
     const command = await app.prisma.command.create({
-      data: { organizationId: demoOrgId, deviceId, type: 'RESTART_DEVICE', status: 'PENDING' },
+      data: { organizationId: demoOrgId, deviceId, type: 'RESTART_DEVICE', status: 'QUEUED' },
     });
 
     const res = await app.inject({
@@ -282,7 +282,7 @@ describe('Agent API (heartbeat, telemetry, commands)', () => {
 
   it('lists pending commands via explicit pull endpoint', async () => {
     const command = await app.prisma.command.create({
-      data: { organizationId: demoOrgId, deviceId, type: 'SYNC_POLICY', status: 'PENDING' },
+      data: { organizationId: demoOrgId, deviceId, type: 'SYNC_POLICY', status: 'QUEUED' },
     });
 
     const res = await app.inject({

@@ -1,6 +1,8 @@
 import { useState, useEffect, type ElementType } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { listOrganizations, type OrganizationSummary } from '../lib/api/organizationsApi';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Shield,
   LayoutDashboard,
@@ -45,10 +47,13 @@ interface NavSection {
 const SIDEBAR_COLLAPSED_KEY = 'ricoz_sidebar_collapsed';
 
 export function RootLayout() {
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, switchOrganization } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
+  const [switchingOrg, setSwitchingOrg] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
@@ -56,6 +61,41 @@ export function RootLayout() {
       return false;
     }
   });
+
+  // Only a super administrator can traverse tenants, so only they get the switcher.
+  const canSwitchOrg = hasRole(['SUPER_ADMIN']);
+
+  useEffect(() => {
+    if (!canSwitchOrg) return;
+    let cancelled = false;
+    (async () => {
+      const res = await listOrganizations({ limit: 100 });
+      if (!cancelled && res.success && res.data) {
+        setOrganizations(res.data);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canSwitchOrg, user?.organizationId]);
+
+  const handleOrgChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextId = e.target.value;
+    if (!nextId || nextId === user?.organizationId) return;
+
+    setSwitchingOrg(true);
+    const res = await switchOrganization(nextId);
+    setSwitchingOrg(false);
+
+    if (!res.success) {
+      alert(res.message ?? 'Failed to switch organization.');
+      return;
+    }
+
+    // Tenant data changed underneath us: drop every cached query and reload.
+    queryClient.clear();
+    window.location.reload();
+  };
 
   useEffect(() => {
     try {
@@ -231,21 +271,48 @@ export function RootLayout() {
 
           {/* Org Selector Box */}
           <div className="px-2.5 pt-2.5 pb-1">
-            <div
-              className={`p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center ${
-                isCollapsed ? 'justify-center' : 'justify-between'
-              } text-xs`}
-              title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
-            >
-              <div className="flex items-center gap-2 truncate">
-                <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                {!isCollapsed && (
-                  <span className="text-slate-700 font-medium truncate">
-                    {user?.organizationName || 'Ricoz Primary Organization'}
-                  </span>
-                )}
+            {canSwitchOrg ? (
+              <div
+                className={`p-2 rounded-lg bg-slate-50 border border-slate-200 ${
+                  isCollapsed ? 'flex justify-center' : ''
+                }`}
+                title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
+              >
+                <label className="sr-only" htmlFor="org-switcher">
+                  Active organization
+                </label>
+                <select
+                  id="org-switcher"
+                  value={user?.organizationId ?? ''}
+                  onChange={handleOrgChange}
+                  disabled={switchingOrg}
+                  className="w-full bg-transparent text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 rounded cursor-pointer disabled:opacity-60"
+                  title="Switch active organization"
+                >
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
+            ) : (
+              <div
+                className={`p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center ${
+                  isCollapsed ? 'justify-center' : 'justify-between'
+                } text-xs`}
+                title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  {!isCollapsed && (
+                    <span className="text-slate-700 font-medium truncate">
+                      {user?.organizationName || 'Ricoz Primary Organization'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Scrollable Nav Items */}

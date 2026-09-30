@@ -35,3 +35,30 @@ export const updateUserSchema = z.object({
 });
 
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+/**
+ * Password policy applied to every self-service or admin-set password.
+ * Mirrors the seed/demo credentials minimum of 8 characters.
+ */
+export const passwordPolicySchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must be at most 128 characters');
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: passwordPolicySchema,
+  })
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: 'New password must be different from the current password',
+    path: ['newPassword'],
+  });
+
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+export const adminResetPasswordSchema = z.object({
+  newPassword: passwordPolicySchema,
+});
+
+export type AdminResetPasswordInput = z.infer<typeof adminResetPasswordSchema>;

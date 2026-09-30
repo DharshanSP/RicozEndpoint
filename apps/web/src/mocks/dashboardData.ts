@@ -10,9 +10,12 @@ export const mockDashboardData: DashboardTelemetryData = {
   offlineDevices: 2,
   pendingEnrollment: 1,
   complianceScore: 91.6,
+  compliantDevices: 13,
+  nonCompliantDevices: 11,
   openAlertsCount: 3,
   criticalAlertsCount: 1,
   warningAlertsCount: 2,
+  failedActionsCount: 1,
   osDistribution: [
     { name: 'Windows 11 Pro / Enterprise', count: 14, percentage: 58.3, color: 'bg-blue-500' },
     { name: 'macOS Sonoma / Ventura', count: 7, percentage: 29.2, color: 'bg-indigo-500' },

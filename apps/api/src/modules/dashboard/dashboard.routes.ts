@@ -61,9 +61,12 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
                 offlineDevices: { type: 'number' },
                 pendingEnrollment: { type: 'number' },
                 complianceScore: { type: 'number' },
+                compliantDevices: { type: 'number' },
+                nonCompliantDevices: { type: 'number' },
                 openAlertsCount: { type: 'number' },
                 criticalAlertsCount: { type: 'number' },
                 warningAlertsCount: { type: 'number' },
+                failedActionsCount: { type: 'number' },
                 osDistribution: {
                   type: 'array',
                   items: {
@@ -164,10 +167,27 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         take: 10,
       });
 
-      const [openAlertsCount, criticalAlertsCount, warningAlertsCount] = await Promise.all([
+      const [openAlertsCount, criticalAlertsCount, warningAlertsCount, failedActionsCount] = await Promise.all([
         app.prisma.alert.count({ where: { ...orgWhere, status: 'OPEN' } }),
         app.prisma.alert.count({ where: { ...orgWhere, status: 'OPEN', severity: 'CRITICAL' } }),
         app.prisma.alert.count({ where: { ...orgWhere, status: 'OPEN', severity: 'WARNING' } }),
+        app.prisma.command.count({ where: { ...orgWhere, status: 'FAILED' } }),
+      ]);
+
+      // Compliance status across devices (per latest result)
+      const [compliantDevices, nonCompliantDevices] = await Promise.all([
+        app.prisma.device.count({
+          where: {
+            ...orgWhere,
+            complianceResults: { some: { status: 'COMPLIANT', NOT: { ruleId: null } } },
+          },
+        }),
+        app.prisma.device.count({
+          where: {
+            ...orgWhere,
+            complianceResults: { some: { status: 'NON_COMPLIANT' } },
+          },
+        }),
       ]);
 
       // Compliance rules + per-rule result aggregation
@@ -227,7 +247,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         id: log.id.slice(0, 8).toUpperCase(),
         type: humanize(log.resource),
         description: `${humanize(log.action)} — ${log.resourceId.slice(0, 8)}`,
-        actor: log.actor.name,
+        actor: log.actor?.name ?? 'System',
         time: formatTimeAgo(log.timestamp),
         status: eventStatusFromAction(log.action),
       }));
@@ -240,9 +260,12 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           offlineDevices,
           pendingEnrollment,
           complianceScore,
+          compliantDevices,
+          nonCompliantDevices,
           openAlertsCount,
           criticalAlertsCount,
           warningAlertsCount,
+          failedActionsCount,
           osDistribution,
           complianceControls,
           activeAlerts,

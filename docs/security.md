@@ -58,7 +58,8 @@ VIEWER      ──▶ Read-only access
 
 - Only allow-listed commands can be executed
 - No arbitrary shell command execution
-- Destructive actions (restart, shutdown) require confirmation
+- Destructive actions (lock, restart, shutdown) require `confirmed: true` in the request —
+  enforced server-side, not only in the UI
 - Commands have configurable timeout
 - All command executions are audit-logged
 

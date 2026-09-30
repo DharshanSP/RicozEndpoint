@@ -1,6 +1,8 @@
 import { fetchApi } from '../api';
 import type { UserRole } from '../../context/AuthContext';
 
+export type { UserRole };
+
 export interface UserSummary {
   id: string;
   email: string;
@@ -11,6 +13,8 @@ export interface UserSummary {
   createdAt: string;
   updatedAt?: string;
 }
+
+export type UserItem = UserSummary;
 
 export interface CreateUserPayload {
   email: string;
@@ -31,6 +35,10 @@ export async function listUsers(): Promise<UserSummary[]> {
     throw new Error(res.error?.message ?? 'Failed to retrieve organization users');
   }
   return res.data;
+}
+
+export async function getUsers() {
+  return fetchApi<UserSummary[]>('/users');
 }
 
 export async function createUser(payload: CreateUserPayload): Promise<UserSummary> {

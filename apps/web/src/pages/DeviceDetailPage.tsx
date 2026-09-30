@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Root as TabsRoot, List as TabsList, Trigger as TabsTrigger, Content as TabsContent } from '@radix-ui/react-tabs';
 import {
   ChevronRight,
@@ -7,33 +7,41 @@ import {
   CheckSquare,
   Clock,
   Cpu,
+  Lock,
   Package,
+  PowerOff,
   RefreshCw,
+  RotateCcw,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Terminal,
-  Lock,
-  RotateCcw,
   Power,
   Search,
   CheckCircle2,
   Copy,
   Check,
   SlidersHorizontal,
+  Trash2,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware } from '../hooks/useDeviceQueries';
+import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware, useDeleteDevice } from '../hooks/useDeviceQueries';
+import { useDeviceCompliance } from '../hooks/useCompliance';
+import { useDevicePatches } from '../hooks/usePatches';
+import { useCreateCommand } from '../hooks/useCommands';
+import { useAuth } from '../context/AuthContext';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
+import type { CommandType } from '../types/command';
 import type {
   ActivityEvent,
   ActivityType,
   AssignedPolicy,
   CommandRecord,
-  ComplianceResult,
   DeviceComplianceStatus,
   DeviceSoftwareItem,
   DeviceStatus,
@@ -45,9 +53,11 @@ const TABS = [
   { value: 'overview', label: 'Overview' },
   { value: 'hardware', label: 'Hardware' },
   { value: 'software', label: 'Software' },
+  { value: 'patches', label: 'Patches' },
   { value: 'policies', label: 'Policies' },
   { value: 'compliance', label: 'Compliance' },
   { value: 'commands', label: 'Commands' },
+  { value: 'actions', label: 'Actions' },
   { value: 'activity', label: 'Activity' },
 ] as const;
 
@@ -91,10 +101,24 @@ function commandBadgeVariant(status: string): BadgeVariant {
       return 'success';
     case 'FAILED':
       return 'destructive';
+    case 'QUEUED':
     case 'PENDING':
       return 'warning';
     case 'RUNNING':
       return 'info';
+    default:
+      return 'secondary';
+  }
+}
+
+function patchDeviceBadgeVariant(status: string): BadgeVariant {
+  switch (status) {
+    case 'INSTALLED':
+      return 'success';
+    case 'FAILED':
+      return 'destructive';
+    case 'MISSING':
+      return 'warning';
     default:
       return 'secondary';
   }
@@ -435,6 +459,11 @@ export function DeviceDetailPage() {
           )}
         </TabsContent>
 
+        {/* Patches Tab */}
+        <TabsContent value="patches">
+          <PatchesTab deviceId={overview.id} />
+        </TabsContent>
+
         {/* Policies Tab with Filter */}
         <TabsContent value="policies" className="space-y-3">
           {detail.data.policies.length === 0 ? (
@@ -447,14 +476,9 @@ export function DeviceDetailPage() {
             />
           )}
         </TabsContent>
-
         {/* Compliance Tab */}
         <TabsContent value="compliance">
-          {detail.data.compliance.length === 0 ? (
-            <EmptyTab icon={CheckSquare} title="No compliance evaluations" description="No compliance rules have been evaluated against this device yet." />
-          ) : (
-            <ComplianceList results={detail.data.compliance} />
-          )}
+          <ComplianceTab deviceId={overview.id} />
         </TabsContent>
 
         {/* Commands Tab with Status Filter */}
@@ -468,6 +492,11 @@ export function DeviceDetailPage() {
               onFilterChange={setCommandStatusFilter}
             />
           )}
+        </TabsContent>
+
+        {/* Actions Tab */}
+        <TabsContent value="actions">
+          <ActionsTab deviceId={overview.id} />
         </TabsContent>
 
         {/* Activity Tab with Category Filter */}
@@ -647,31 +676,218 @@ function PoliciesList({ policies }: { policies: AssignedPolicy[] }) {
   );
 }
 
-function ComplianceList({ results }: { results: ComplianceResult[] }) {
+function PatchesTab({ deviceId }: { deviceId: string }) {
+  const patches = useDevicePatches(deviceId);
+
+  if (patches.isLoading) return <TabSkeleton rows={4} />;
+
+  if (patches.isError) {
+    return (
+      <TabError
+        message={patches.error instanceof Error ? patches.error.message : 'Patch state could not be loaded.'}
+        onRetry={() => patches.refetch()}
+      />
+    );
+  }
+
+  const data = patches.data?.data;
+  if (!data || data.items.length === 0) {
+    return (
+      <EmptyTab
+        icon={Wrench}
+        title="No patches reported"
+        description="The patch catalog is empty for this organization. Agents upload installed KBs with their telemetry heartbeat."
+      />
+    );
+  }
+
+  const { summary, items } = data;
+  const order: Record<string, number> = { FAILED: 0, MISSING: 1, INSTALLED: 2 };
+  const sorted = [...items].sort(
+    (a, b) => (order[a.deviceStatus] ?? 3) - (order[b.deviceStatus] ?? 3)
+  );
+
   return (
-    <div className="space-y-3">
-      {results.map((result) => (
-        <div key={result.id} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start gap-2 justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-slate-900">
-                {result.rule ? result.rule.name : 'Managed security rule'}
-              </span>
-              <Badge variant={checkBadgeVariant(result.status)} className="text-[10px] font-medium">
-                {result.status.replace('_', ' ')}
-              </Badge>
-            </div>
-            {result.reason && <p className="text-[11px] text-slate-600">{result.reason}</p>}
-            {result.rule?.description && (
-              <p className="text-[11px] text-slate-500">{result.rule.description}</p>
-            )}
-          </div>
-          <div className="text-[11px] text-slate-500 shrink-0 text-left sm:text-right font-mono">
-            <span className="text-slate-600 font-medium">{result.rule ? result.rule.ruleType : 'GENERAL'}</span>
-            <span className="block text-slate-400">{formatDateTime(result.evaluatedAt)}</span>
-          </div>
+    <div className="space-y-4">
+      <div className="rounded-lg bg-white border border-slate-200 shadow-xs p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold text-emerald-700">{summary.installed}</span> installed ·{' '}
+          <span className="font-semibold text-rose-700">{summary.missing}</span> missing ·{' '}
+          <span className="font-semibold text-amber-700">{summary.failed}</span> failed of{' '}
+          {summary.total} catalog patch{summary.total === 1 ? '' : 'es'}
         </div>
-      ))}
+        <div className="text-[11px] text-slate-500 font-mono sm:ml-auto">
+          Agents report KBs on every telemetry heartbeat
+        </div>
+      </div>
+
+      <div className="divide-y divide-slate-100 rounded-lg bg-white border border-slate-200 shadow-xs overflow-hidden">
+        {sorted.map((patch) => (
+          <div key={patch.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-xs font-semibold text-slate-800">{patch.kbNumber}</span>
+                <Badge variant={patchDeviceBadgeVariant(patch.deviceStatus)} className="text-[10px]">
+                  {patch.deviceStatus}
+                </Badge>
+                {patch.command && (
+                  <Badge variant="info" className="text-[10px]">
+                    Install {patch.command.status.toLowerCase()}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 truncate">{patch.title}</p>
+            </div>
+            <div className="text-[11px] text-slate-500 font-mono shrink-0">
+              {patch.installedAt
+                ? `Installed ${formatDateTime(patch.installedAt)}`
+                : patch.lastReportedAt
+                  ? `Seen ${formatDateTime(patch.lastReportedAt)}`
+                  : 'Never reported'}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ComplianceTab({ deviceId }: { deviceId: string }) {
+  const compliance = useDeviceCompliance(deviceId, { limit: 50 });
+
+  if (compliance.isLoading) return <TabSkeleton rows={4} />;
+
+  if (compliance.isError) {
+    return (
+      <TabError
+        message={
+          compliance.error instanceof Error
+            ? compliance.error.message
+            : 'Compliance evaluations could not be loaded.'
+        }
+        onRetry={() => compliance.refetch()}
+      />
+    );
+  }
+
+  const detail = compliance.data?.data;
+  if (!detail) {
+    return (
+      <EmptyTab
+        icon={CheckSquare}
+        title="No compliance evaluations"
+        description="No policies or rules have been evaluated against this device yet."
+      />
+    );
+  }
+
+  const { summary, controls, history } = detail;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary strip */}
+      <div className="rounded-lg bg-white border border-slate-200 shadow-xs p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-center gap-2">
+          {summary.status === 'NON_COMPLIANT' ? (
+            <ShieldAlert className="w-4 h-4 text-rose-600" />
+          ) : (
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          )}
+          <span className="text-sm font-semibold text-slate-900">
+            {summary.status === 'UNTESTED' ? 'Not Evaluated' : summary.status.replace('_', ' ')}
+          </span>
+        </div>
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold text-emerald-700">{summary.compliant}</span> passing ·{' '}
+          <span className="font-semibold text-rose-700">{summary.nonCompliant}</span> failing of{' '}
+          {summary.total} check{summary.total === 1 ? '' : 's'}
+        </div>
+        <div className="text-[11px] text-slate-500 font-mono sm:ml-auto">
+          {summary.evaluatedAt ? `Last evaluated ${formatDateTime(summary.evaluatedAt)}` : 'Never evaluated'}
+        </div>
+      </div>
+
+      {/* Current checks */}
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Current Checks</h3>
+        {controls.length === 0 ? (
+          <EmptyTab
+            icon={CheckSquare}
+            title="No active checks"
+            description="No policies or compliance rules are assigned to this device."
+          />
+        ) : (
+          <div className="space-y-3">
+            {controls.map((check) => (
+              <div
+                key={check.id}
+                className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start gap-2 justify-between"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-900">{check.name}</span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-slate-200 text-slate-500 bg-slate-50"
+                    >
+                      {check.source === 'POLICY' ? 'Policy' : 'Rule'}
+                    </Badge>
+                    <Badge variant={checkBadgeVariant(check.status)} className="text-[10px] font-medium">
+                      {check.status.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  {check.reason && <p className="text-[11px] text-slate-600">{check.reason}</p>}
+                </div>
+                <div className="text-[11px] text-slate-500 shrink-0 font-mono">
+                  {formatDateTime(check.evaluatedAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Evaluation history */}
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+          Evaluation History
+          {detail.historyTotal > history.length ? ` (${history.length} of ${detail.historyTotal})` : ''}
+        </h3>
+        {history.length === 0 ? (
+          <EmptyTab
+            icon={Clock}
+            title="No evaluation history"
+            description="This device has not been evaluated against any policy or rule yet."
+          />
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+                  <th className="px-4 py-2.5 font-semibold">Source</th>
+                  <th className="px-4 py-2.5 font-semibold">Result</th>
+                  <th className="px-4 py-2.5 font-semibold">Reason</th>
+                  <th className="px-4 py-2.5 font-semibold">Evaluated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {history.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3 text-slate-900 font-semibold">{entry.sourceName}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={checkBadgeVariant(entry.status)} className="text-[10px] font-medium">
+                        {entry.status.replace('_', ' ')}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{entry.reason || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 font-mono">{formatDateTime(entry.evaluatedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -826,6 +1042,284 @@ function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+interface CommandAction {
+  type: CommandType;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  destructive: boolean;
+}
+
+const COMMAND_ACTIONS: CommandAction[] = [
+  {
+    type: 'REFRESH_INVENTORY',
+    label: 'Refresh Inventory',
+    description: 'Ask the agent to re-collect hardware and software inventory.',
+    icon: RefreshCw,
+    destructive: false,
+  },
+  {
+    type: 'SYNC_POLICY',
+    label: 'Sync Policy',
+    description: 'Force the agent to re-fetch and apply its effective policies immediately.',
+    icon: ShieldCheck,
+    destructive: false,
+  },
+  {
+    type: 'LOCK_DEVICE',
+    label: 'Lock Device',
+    description: 'Immediately lock the workstation session. Requires confirmation.',
+    icon: Lock,
+    destructive: true,
+  },
+  {
+    type: 'RESTART_DEVICE',
+    label: 'Restart Device',
+    description: 'Force a system restart of the endpoint. Requires confirmation.',
+    icon: RotateCcw,
+    destructive: true,
+  },
+  {
+    type: 'SHUTDOWN_DEVICE',
+    label: 'Shutdown Device',
+    description: 'Power the endpoint down. Requires confirmation.',
+    icon: PowerOff,
+    destructive: true,
+  },
+];
+
+function ActionsTab({ deviceId }: { deviceId: string }) {
+  const { hasRole } = useAuth();
+  const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const navigate = useNavigate();
+  const createCommand = useCreateCommand(deviceId);
+  const deleteDevice = useDeleteDevice();
+  const [pendingType, setPendingType] = useState<CommandType | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+
+  if (!canManage) {
+    return (
+      <EmptyTab
+        icon={ShieldAlert}
+        title="Read-only access"
+        description="Your role does not permit issuing remote commands. This requires IT_ADMIN or above."
+      />
+    );
+  }
+
+  const pendingAction = COMMAND_ACTIONS.find((action) => action.type === pendingType) ?? null;
+
+  const dispatch = (type: CommandType) => {
+    setConfirmed(false);
+    const action = COMMAND_ACTIONS.find((a) => a.type === type)!;
+    const destructive = action.destructive;
+    if (destructive) {
+      setPendingType(type);
+      return;
+    }
+    createCommand.mutate({ deviceId, type, confirmed: false });
+  };
+
+  const confirmDispatch = () => {
+    if (!pendingAction || !confirmed) return;
+    createCommand.mutate(
+      { deviceId, type: pendingAction.type, confirmed: true },
+      {
+        onSuccess: () => {
+          setPendingType(null);
+          setConfirmed(false);
+        },
+      },
+    );
+  };
+
+  const handleDeleteClick = () => {
+    setPendingDelete(true);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteConfirmed || !deletePassword) return;
+    deleteDevice.mutate({ id: deviceId, password: deletePassword }, {
+      onSuccess: () => {
+        setPendingDelete(false);
+        setDeleteConfirmed(false);
+        setDeletePassword('');
+        navigate('/devices');
+      },
+    });
+  };
+
+  const running = createCommand.isPending || deleteDevice.isPending;
+
+  return (
+    <div className="space-y-3">
+      {createCommand.isError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+          {(createCommand.error as Error).message}
+        </div>
+      )}
+      {createCommand.isSuccess && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
+          Command {String((createCommand.data as { data?: { type?: string } }).data?.type ?? '')} queued for this device.
+        </div>
+      )}
+      {deleteDevice.isError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+          {(deleteDevice.error as Error).message}
+        </div>
+      )}
+
+      {pendingAction && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <pendingAction.icon className="w-4 h-4 text-amber-600" />
+            <span className="text-sm font-bold text-slate-900">
+              Confirm {pendingAction.label} ({pendingAction.type})
+            </span>
+          </div>
+          <p className="text-xs text-slate-700">{pendingAction.description}.</p>
+          <p className="text-[11px] text-amber-700">
+            This action is destructive and irreversible once the agent executes it. The server will reject it without an explicit confirmation.
+          </p>
+          <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+            />
+            I understand the consequences and confirm this action.
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPendingType(null)} disabled={running}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmDispatch}
+              disabled={running || !confirmed}
+            >
+              {running ? 'Confirming...' : 'Confirm & Send'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span className="text-sm font-bold text-slate-900">Confirm Device Deletion</span>
+          </div>
+          <p className="text-xs text-slate-700">
+            This will permanently delete the device and all its related data (hardware, software inventory, policies, compliance results, commands, and audit logs).
+          </p>
+          <p className="text-[11px] text-rose-700">This action is irreversible.</p>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-800">
+              <input
+                type="checkbox"
+                checked={deleteConfirmed}
+                onChange={(e) => setDeleteConfirmed(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              I understand this cannot be undone and confirm deletion.
+            </label>
+            {deleteConfirmed && (
+              <input
+                type="password"
+                placeholder="Enter admin password to confirm"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm rounded-md border border-slate-300 focus:ring-1 focus:ring-rose-500 focus:border-rose-500"
+              />
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPendingDelete(false)} disabled={running}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmDelete}
+              disabled={running || !deleteConfirmed || !deletePassword}
+            >
+              {running ? 'Deleting...' : 'Confirm & Delete'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {COMMAND_ACTIONS.map((action) => (
+        <div key={action.type} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className={`p-2 rounded-md border shrink-0 ${action.destructive ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-blue-50 border-blue-200 text-blue-600'}`}>
+              <action.icon className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-900">{action.label}</span>
+                <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                  {action.type}
+                </span>
+                {action.destructive && (
+                  <Badge variant="destructive" className="text-[10px] font-medium">
+                    Destructive
+                  </Badge>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">{action.description}</p>
+            </div>
+          </div>
+          <Button
+            variant={action.destructive ? 'outline' : 'default'}
+            size="sm"
+            className={action.destructive ? 'text-rose-700 border-rose-300 hover:bg-rose-50' : ''}
+            onClick={() => dispatch(action.type)}
+            disabled={running}
+          >
+            {action.destructive ? 'Request...' : 'Run'}
+          </Button>
+        </div>
+      ))}
+
+      <div className="p-4 rounded-lg bg-white border border-rose-200 shadow-xs flex items-center justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="p-2 rounded-md border shrink-0 bg-rose-50 border-rose-200 text-rose-600">
+            <Trash2 className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-slate-900">Delete Device</span>
+              <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                DELETE_DEVICE
+              </span>
+              <Badge variant="destructive" className="text-[10px] font-medium">Destructive</Badge>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Permanently remove this device and all its data from the organization. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-rose-700 border-rose-300 hover:bg-rose-50"
+          onClick={handleDeleteClick}
+          disabled={running}
+        >
+          Delete Device
+        </Button>
+      </div>
     </div>
   );
 }

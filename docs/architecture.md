@@ -36,16 +36,33 @@ RicozEndpoint is an enterprise endpoint management platform that enables IT admi
 - **API Docs**: Swagger/OpenAPI via @fastify/swagger
 - **Logging**: Pino structured logging
 
-### Agent (agents/windows)
-- **Language**: C# (.NET 8.0)
-- **Type**: Windows Service
-- **Communication**: REST over HTTPS
-- **Inventory**: WMI + Windows Registry
-- **Storage**: Windows Credential Manager
+### Agent
+- **Reference agent (`apps/agent`)**: TypeScript service — device registration, hardware/
+  software/security inventory, heartbeats, policy fetch, command polling/execution.
+- **Native agent (`agents/windows`)**: C# (.NET 8.0) Windows Service — see
+  [`agents/windows/README.md`](../agents/windows/README.md).
 
 ### Shared Packages
 - **@ricoz/shared-types**: TypeScript enums, interfaces, and types
 - **@ricoz/validation**: Zod validation schemas
+- **@ricoz/types** / **database** (Prisma): generated client + migrations
+
+## Functional Modules (apps/api)
+
+| Module | Route prefix | Responsibilities |
+| ------ | ------------ | ---------------- |
+| auth | /api/auth | Login, current user, JWT issuance |
+| users | /api/users | User CRUD (org-scoped) |
+| devices | /api/devices | Device registry, inventory, activity |
+| dashboard | /api/dashboard | Fleet KPIs (devices, compliance, alerts, commands) |
+| enrollment | /api/enrollment-tokens, /api/enroll | One-time tokens, agent registration |
+| agent | /api/agent | Heartbeat, security telemetry, policy fetch, command polling |
+| policies | /api/policies | Policy CRUD + device/group assignment |
+| compliance | (service, invoked on heartbeat) | Evaluates policies, writes ComplianceResult, raises alerts |
+| commands | /api/commands | Command create/list (allow-listed types, confirm flag) |
+| alerts | /api/alerts | Alert list/resolve for compliance and operator feedback |
+
+See [compliance.md](compliance.md) and [agent.md](agent.md) for module details.
 
 ## Multi-Tenancy
 
@@ -112,7 +129,23 @@ Inventory:
   Agent ──POST /api/agent/inventory/software──▶ Backend ──▶ DeviceSoftware upserted
 
 Commands:
-  Admin ──POST /api/devices/:id/commands──▶ Backend ──▶ Command created
-  Agent ──GET /api/agent/commands──▶ Backend ──▶ Pending commands returned
+  Admin ──POST /api/commands──▶ Backend ──▶ Command created (confirm required for LOCK/RESTART/SHUTDOWN)
+  Agent ──GET /api/agent/commands/pending──▶ Backend ──▶ Pending commands returned
   Agent ──POST /api/agent/commands/:id/result──▶ Backend ──▶ Command status updated
+```
+
+## Data Flow: Policy & Compliance
+
+```
+Policy Management:
+  Admin ──POST /api/policies──▶ Backend ──▶ Policy created (typed: SECURITY/COMPLIANCE/CONFIGURATION)
+  Admin ──POST /api/policies/:id/assign──▶ Backend ──▶ PolicyAssignment (deviceIds / groupIds, priority)
+
+Policy Delivery:
+  Admin ──POST /api/commands { type: SYNC_POLICY }──▶ Agent ──GET /api/agent/policies──▶ Merged active policies
+  Heartbeat ──▶ ComplianceService ──▶ ComplianceResult table + complianceStatus on Device
+
+Compliance:
+  Heartbeat (security telemetry) ──▶ evaluate effective policies ──▶ write results ──▶ raise
+  COMPLIANCE_VIOLATION alert (deduplicated) ──▶ visible on /api/dashboard and /api/alerts
 ```

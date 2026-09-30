@@ -10,16 +10,19 @@ datasource db {
 // ─── Organization ────────────────────────────────────────────────────────────
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String   @unique
+  settingsJson Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   users        User[]
   devices      Device[]
   policies     Policy[]
   commands     Command[]
   applications Application[]
+  deployments  Deployment[]
+  patches      Patch[]
   alerts       Alert[]
   auditLogs          AuditLog[]
   agentTokens        AgentToken[]
@@ -45,7 +48,10 @@ model User {
   organization          Organization @relation(fields: [organizationId], references: [id])
   auditLogs             AuditLog[]
   requestedCommands     Command[]    @relation("RequestedBy")
+  requestedDeployments  Deployment[] @relation("RequestedDeployments")
   createdEnrollmentTokens EnrollmentToken[] @relation("CreatedEnrollmentTokens")
+  createdPolicies       Policy[]
+  createdPatches        Patch[]        @relation("CreatedPatches")
 
   @@index([organizationId])
   @@index([email])
@@ -72,6 +78,8 @@ model Device {
   registeredAt   DateTime  @default(now())
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  firewallEnabled Boolean?
+  antivirusEnabled Boolean?
 
   organization      Organization        @relation(fields: [organizationId], references: [id])
   hardware          DeviceHardware?
@@ -82,8 +90,10 @@ model Device {
   complianceResults ComplianceResult[]
   alerts            Alert[]
   agentTokens       AgentToken[]
+  patches           DevicePatch[]
   deviceGroups      DeviceGroupMember[]
   enrollmentTokens  EnrollmentToken[]
+  deployments       Deployment[]
 
   @@unique([organizationId, serialNumber])
   @@index([organizationId])
@@ -191,13 +201,16 @@ model Policy {
   description    String   @default("")
   settings       String   @default("{}")
   isActive       Boolean  @default(true)
+  createdById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization       @relation(fields: [organizationId], references: [id])
+  createdBy    User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
   assignments  PolicyAssignment[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("policies")
 }
 
@@ -263,8 +276,10 @@ model Command {
   organizationId String
   deviceId       String
   type           String
-  status         String    @default("PENDING")
+  status         String    @default("QUEUED")
   requestedBy    String?
+  patchId        String?
+  deploymentId   String?
   createdAt      DateTime  @default(now())
   startedAt      DateTime?
   completedAt    DateTime?
@@ -274,9 +289,12 @@ model Command {
   organization Organization @relation(fields: [organizationId], references: [id])
   device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   requester    User?        @relation("RequestedBy", fields: [requestedBy], references: [id])
+  deployment   Deployment?  @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
 
   @@index([deviceId])
   @@index([status])
+  @@index([patchId])
+  @@index([deploymentId])
   @@index([createdAt])
   @@map("commands")
 }
@@ -303,16 +321,28 @@ model Application {
 }
 
 model Deployment {
-  id            String   @id @default(uuid())
-  applicationId String
-  deviceId      String
-  status        String   @default("PENDING")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(uuid())
+  organizationId String
+  applicationId  String
+  deviceId       String
+  action         String   @default("INSTALL")
+  status         String   @default("PENDING")
+  requestedBy    String?
+  errorMessage   String?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  device      Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id])
+  requester   User?        @relation("RequestedDeployments", fields: [requestedBy], references: [id])
+  commands    Command[]
 
+  @@index([organizationId])
   @@index([applicationId])
+  @@index([deviceId])
+  @@index([status])
   @@map("deployments")
 }
 
@@ -322,6 +352,7 @@ model Alert {
   id             String    @id @default(uuid())
   organizationId String
   deviceId       String?
+  type           String    @default("")
   severity       String
   title          String
   message        String
@@ -344,7 +375,9 @@ model Alert {
 model AuditLog {
   id             String   @id @default(uuid())
   organizationId String
-  actorId        String
+  /// Null for system-initiated events (agent enrollment, scheduled evaluations) that
+  /// have no authenticated human actor.
+  actorId        String?
   action         String
   resource       String
   resourceId     String
@@ -353,7 +386,7 @@ model AuditLog {
   metadata       String?
 
   organization Organization @relation(fields: [organizationId], references: [id])
-  actor        User         @relation(fields: [actorId], references: [id])
+  actor        User?        @relation(fields: [actorId], references: [id])
 
   @@index([organizationId])
   @@index([actorId])
@@ -372,11 +405,12 @@ model EnrollmentToken {
   createdById    String?
   deviceId       String?
   expiresAt      DateTime?
-  maxUses        Int       @default(1)
-  uses           Int       @default(0)
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  maxUses       Int       @default(1)
+  uses          Int       @default(0)
+  isActive      Boolean   @default(true)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   createdBy    User?        @relation("CreatedEnrollmentTokens", fields: [createdById], references: [id])
@@ -404,4 +438,54 @@ model AgentToken {
   @@index([tokenHash])
   @@index([deviceId])
   @@map("agent_tokens")
+}
+
+
+// ============================== Patch Catalog ================================
+
+model Patch {
+  id             String    @id @default(uuid())
+  organizationId String
+  kbNumber       String
+  title          String
+  description    String    @default("")
+  severity       String    @default("IMPORTANT")
+  category       String    @default("Security Updates")
+  status         String    @default("PENDING")
+  releaseDate    DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User?        @relation("CreatedPatches", fields: [createdById], references: [id])
+  devices      DevicePatch[]
+
+  @@unique([organizationId, kbNumber])
+  @@index([organizationId])
+  @@index([organizationId, severity])
+  @@index([organizationId, status])
+  @@map("patches")
+}
+
+// ============================ Device Patch State =============================
+
+model DevicePatch {
+  id             String    @id @default(uuid())
+  deviceId       String
+  patchId        String
+  status         String    @default("MISSING")
+  installedAt    DateTime?
+  lastReportedAt DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  patch  Patch  @relation(fields: [patchId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, patchId])
+  @@index([deviceId])
+  @@index([patchId])
+  @@index([status])
+  @@map("device_patches")
 }

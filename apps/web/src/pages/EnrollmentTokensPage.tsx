@@ -1,9 +1,14 @@
 import { useState } from 'react';
-import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, History } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { useCreateEnrollmentToken, useEnrollmentTokenList, useRevokeEnrollmentToken } from '../hooks/useEnrollmentTokens';
+import {
+  useCreateEnrollmentToken,
+  useEnrollmentHistory,
+  useEnrollmentTokenList,
+  useRevokeEnrollmentToken,
+} from '../hooks/useEnrollmentTokens';
 import type { EnrollmentTokenSummary } from '../types/enrollment';
 
 const inputClass =
@@ -270,7 +275,8 @@ export function EnrollmentTokensPage() {
                     <th className="px-5 py-3 font-semibold">Uses</th>
                     <th className="px-5 py-3 font-semibold">Expires</th>
                     <th className="px-5 py-3 font-semibold">Status</th>
-                    <th className="px-5 py-3 font-semibold">Created</th>
+                    <th className="px-5 py-3 font-semibold">Last Used / Created</th>
+                    <th className="px-5 py-3 font-semibold">Created By</th>
                     <th className="px-5 py-3 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
@@ -298,8 +304,16 @@ export function EnrollmentTokensPage() {
                             {badge.label}
                           </Badge>
                         </td>
-                        <td className="px-5 py-3.5 text-slate-500 font-mono text-[11px]">
-                          {formatDate(token.createdAt)}
+                        <td className="px-5 py-3.5">
+                          <div className="text-slate-700 font-mono text-[11px]">
+                            {token.lastUsedAt ? `Used ${formatDate(token.lastUsedAt)}` : 'Never used'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            Created {formatDate(token.createdAt)}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-600 text-xs">
+                          {token.createdBy?.name ?? token.createdBy?.email ?? 'System'}
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           {token.isActive && (
@@ -324,6 +338,103 @@ export function EnrollmentTokensPage() {
           )}
         </CardContent>
       </Card>
+
+      <EnrollmentHistoryCard />
     </div>
+  );
+}
+
+/**
+ * Enrollment history derived from issued agent tokens. A device that re-enrolls
+ * receives a new agent token, so a repeated serial number here is expected and
+ * means a re-enrollment occurred.
+ */
+function EnrollmentHistoryCard() {
+  const historyQuery = useEnrollmentHistory(25);
+  const entries = historyQuery.data ?? [];
+
+  return (
+    <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
+      <CardHeader className="pb-3 border-b border-slate-100">
+        <CardTitle className="text-base font-bold text-slate-900">Enrollment History</CardTitle>
+        <CardDescription className="text-xs text-slate-500">
+          Every agent credential ever issued. Repeated devices indicate re-enrollment.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {historyQuery.isLoading && (
+          <div className="p-6 space-y-3">
+            {[0, 1].map((row) => (
+              <div key={row} className="h-10 rounded-lg bg-slate-100 animate-pulse border border-slate-200" />
+            ))}
+          </div>
+        )}
+
+        {historyQuery.isError && (
+          <div className="flex flex-col items-center justify-center gap-3 py-8 text-center p-6">
+            <p className="text-xs text-rose-600">
+              {(historyQuery.error as Error).message}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void historyQuery.refetch()}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Retry
+            </Button>
+          </div>
+        )}
+
+        {historyQuery.isSuccess && entries.length === 0 && (
+          <div className="py-8 text-center p-6 space-y-2">
+            <History className="w-8 h-8 mx-auto text-slate-400 mb-2" />
+            <p className="text-xs text-slate-500">No devices have enrolled yet.</p>
+          </div>
+        )}
+
+        {historyQuery.isSuccess && entries.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+                  <th className="px-5 py-3 font-semibold">Device</th>
+                  <th className="px-5 py-3 font-semibold">Serial</th>
+                  <th className="px-5 py-3 font-semibold">OS</th>
+                  <th className="px-5 py-3 font-semibold">Enrolled</th>
+                  <th className="px-5 py-3 font-semibold text-right">Credential</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <div className="text-slate-900 font-semibold">
+                        {entry.device.deviceName}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        {entry.device.hostname}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-700 font-mono text-xs">
+                      {entry.device.serialNumber}
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-600 text-xs">
+                      {entry.device.os} {entry.device.osVersion}
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500 font-mono text-[11px]">
+                      {formatDate(entry.enrolledAt)}
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <Badge
+                        variant={entry.isCurrent ? 'success' : 'secondary'}
+                        className="text-[11px] font-medium"
+                      >
+                        {entry.isCurrent ? 'Current' : 'Revoked'}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

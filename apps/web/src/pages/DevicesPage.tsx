@@ -24,11 +24,19 @@ import {
   SlidersHorizontal,
   KeyRound,
   ShieldAlert,
+  Trash2,
+  Copy,
+  Check,
+  Terminal,
+  MonitorCheck,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
+import { useAuth } from '../context/AuthContext';
+import { useDeleteDevice } from '../hooks/useDeviceQueries';
+import { fetchApi } from '../lib/api';
 
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
@@ -90,6 +98,11 @@ function getStatusBadge(devStatus: string) {
 
 export function DevicesPage() {
   const navigate = useNavigate();
+  const { hasRole } = useAuth();
+  const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const deleteDevice = useDeleteDevice();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [deletePassword, setDeletePassword] = useState<string>('');
 
   // Filter & pagination state
   const [search, setSearch] = useState<string>('');
@@ -104,6 +117,78 @@ export function DevicesPage() {
   // UI state
   const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);
   const [showMoreFilters, setShowMoreFilters] = useState<boolean>(false);
+
+  // Enrollment modal state
+  const [enrollTab, setEnrollTab] = useState<'token' | 'manual'>('token');
+  const [enrollLabel, setEnrollLabel] = useState('');
+  const [enrollMaxUses, setEnrollMaxUses] = useState(5);
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Manual device form state
+  const [manualForm, setManualForm] = useState({ hostname: '', serialNumber: '', os: 'Windows', osVersion: '', manufacturer: '', model: '', ipAddress: '', architecture: 'x64' });
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [manualSuccess, setManualSuccess] = useState(false);
+
+  const handleGenerateToken = async () => {
+    setEnrollLoading(true);
+    setEnrollError(null);
+    setGeneratedToken(null);
+    try {
+      const res = await fetchApi<{ token: string; id: string }>('/enrollment-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ label: enrollLabel || 'Quick Enroll', maxUses: enrollMaxUses }),
+      });
+      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to create token');
+      setGeneratedToken(res.data.token);
+    } catch (e) {
+      setEnrollError(e instanceof Error ? e.message : 'Failed to generate token');
+    } finally {
+      setEnrollLoading(false);
+    }
+  };
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const curlCommand = generatedToken
+    ? `curl -X POST http://localhost:3001/api/enroll -H \"Content-Type: application/json\" -d '{\"enrollmentToken\":\"${generatedToken}\",\"hostname\":\"my-device\",\"serialNumber\":\"SN-001\",\"os\":\"Windows\",\"osVersion\":\"11\",\"architecture\":\"x64\",\"agentVersion\":\"1.0.0\"}'`
+    : '';
+
+  const handleManualSubmit = async () => {
+    if (!manualForm.hostname || !manualForm.serialNumber || !manualForm.osVersion) {
+      setManualError('Hostname, Serial Number, and OS Version are required.');
+      return;
+    }
+    setManualLoading(true);
+    setManualError(null);
+    setManualSuccess(false);
+    try {
+      const tokenRes = await fetchApi<{ token: string }>('/enrollment-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ label: `Manual: ${manualForm.hostname}`, maxUses: 1 }),
+      });
+      if (!tokenRes.success || !tokenRes.data) throw new Error(tokenRes.error?.message ?? 'Failed to create token');
+      const enrollRes = await fetchApi('/enroll', {
+        method: 'POST',
+        body: JSON.stringify({ enrollmentToken: tokenRes.data.token, ...manualForm, agentVersion: '1.0.0' }),
+      });
+      if (!enrollRes.success) throw new Error(enrollRes.error?.message ?? 'Enrollment failed');
+      setManualSuccess(true);
+      setManualForm({ hostname: '', serialNumber: '', os: 'Windows', osVersion: '', manufacturer: '', model: '', ipAddress: '', architecture: 'x64' });
+      refetch();
+    } catch (e) {
+      setManualError(e instanceof Error ? e.message : 'Enrollment failed');
+    } finally {
+      setManualLoading(false);
+    }
+  };
 
   // Query parameters for real TanStack Query backend hook
   const query = useMemo(
@@ -122,7 +207,7 @@ export function DevicesPage() {
 
   const { data, isLoading, isFetching, error, refetch } = useDeviceList(query);
 
-  const rawDevices = data?.devices ?? [];
+  const rawDevices = useMemo(() => data?.devices ?? [], [data]);
   const pagination = data?.pagination ?? {
     page,
     limit: pageSize,
@@ -206,7 +291,7 @@ export function DevicesPage() {
     setPage(1);
   };
 
-  const handlePageSizeChange = (val: number) => {
+const handlePageSizeChange = (val: number) => {
     setPageSize(val);
     setPage(1);
   };
@@ -252,13 +337,15 @@ export function DevicesPage() {
             <span>{isFetching ? 'Syncing...' : 'Sync'}</span>
           </Button>
 
-          <Button
-            onClick={() => setShowEnrollModal(true)}
-            className="h-9 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Enroll Device</span>
-          </Button>
+          {canManageDevices && (
+            <Button
+              onClick={() => setShowEnrollModal(true)}
+              className="h-9 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Enroll Device</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -757,15 +844,38 @@ export function DevicesPage() {
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/devices/${device.id}`)}
-                          className="h-7 px-2.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
-                        >
-                          <span>Details</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/devices/${device.id}`)}
+                            className="h-7 px-2.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
+                          >
+                            <span>Details</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </Button>
+{canManageDevices && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  if (window.confirm('Are you sure you want to delete this device?')) {
+                    const pwd = prompt('Enter admin password to confirm deletion:', '');
+                    if (pwd !== null && pwd.trim() !== '') {
+                      await deleteDevice.mutateAsync({ id: device.id, password: pwd });
+                      alert('Device deletion initiated.');
+                      refetch();
+                    }
+                  }
+                }}
+                disabled={deleteDevice.isPending}
+                className="h-7 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1"
+                title="Delete Device"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -857,76 +967,168 @@ export function DevicesPage() {
 
       {/* Enroll Device Modal Dialog */}
       {showEnrollModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-xl shadow-xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-600 text-white shadow">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Enroll New Endpoint</h3>
-                  <p className="text-xs text-slate-500">Provision agent authorization credentials</p>
+                  <h3 className="text-base font-bold text-slate-900">Add Device</h3>
+                  <p className="text-xs text-slate-500">Generate a token or add manually</p>
                 </div>
               </div>
-              <button
-                onClick={() => setShowEnrollModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-md"
-              >
+              <button onClick={() => { setShowEnrollModal(false); setGeneratedToken(null); setEnrollError(null); setManualSuccess(false); setManualError(null); }} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/70 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-lg bg-blue-50/70 border border-blue-100 text-xs text-slate-700 space-y-1.5">
-              <div className="flex items-center gap-2 font-semibold text-blue-700">
-                <KeyRound className="w-4 h-4" />
-                <span>Agent Enrollment Tokens & Installers</span>
-              </div>
-              <p className="text-slate-600 leading-relaxed">
-                Generate tokenized enrollment keys and deploy pre-configured agent installers for Windows (.msi / .ps1), macOS (.pkg / mobileconfig), and Linux (deb / systemd daemon).
-              </p>
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100">
+              <button
+                onClick={() => setEnrollTab('token')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+                  enrollTab === 'token' ? 'border-b-2 border-blue-600 text-blue-700 bg-blue-50/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <Terminal className="w-4 h-4" />
+                Agent Enrollment
+              </button>
+              <button
+                onClick={() => setEnrollTab('manual')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+                  enrollTab === 'manual' ? 'border-b-2 border-blue-600 text-blue-700 bg-blue-50/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <MonitorCheck className="w-4 h-4" />
+                Manual Registration
+              </button>
             </div>
 
-            <div className="space-y-2 text-xs">
-              <span className="font-semibold text-slate-700 block uppercase tracking-wider text-[10px]">
-                Available Platform Installers
-              </span>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">
-                  <span className="font-semibold text-slate-800 block">Windows</span>
-                  <span className="text-[10px] font-mono mt-0.5 block text-slate-500">.msi / .ps1</span>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">
-                  <span className="font-semibold text-slate-800 block">macOS</span>
-                  <span className="text-[10px] font-mono mt-0.5 block text-slate-500">.pkg / mobileconfig</span>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">
-                  <span className="font-semibold text-slate-800 block">Linux</span>
-                  <span className="text-[10px] font-mono mt-0.5 block text-slate-500">.deb / systemd</span>
-                </div>
-              </div>
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              {enrollTab === 'token' ? (
+                <>
+                  <p className="text-xs text-slate-500">Generate a secure enrollment token and run the command on the target machine to register it with Ricoz.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-700">Label (optional)</label>
+                      <input
+                        value={enrollLabel}
+                        onChange={(e) => setEnrollLabel(e.target.value)}
+                        placeholder="e.g. Finance Laptops"
+                        className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-700">Max Uses</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={enrollMaxUses}
+                        onChange={(e) => setEnrollMaxUses(Number(e.target.value))}
+                        className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {enrollError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{enrollError}</p>}
+
+                  {!generatedToken ? (
+                    <Button onClick={handleGenerateToken} disabled={enrollLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                      {enrollLoading ? 'Generating...' : <><KeyRound className="w-4 h-4" /> Generate Enrollment Token</>}
+                    </Button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-emerald-700">? Token Generated</span>
+                          <button onClick={() => handleCopy(generatedToken)} className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center gap-1 font-medium">
+                            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            {copied ? 'Copied!' : 'Copy token'}
+                          </button>
+                        </div>
+                        <code className="text-[11px] font-mono text-emerald-800 break-all block">{generatedToken}</code>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-700">Run on target machine (curl)</span>
+                          <button onClick={() => handleCopy(curlCommand)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium">
+                            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            Copy command
+                          </button>
+                        </div>
+                        <pre className="text-[10px] font-mono bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">{curlCommand}</pre>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setGeneratedToken(null); setEnrollLabel(''); setEnrollMaxUses(5); }}
+                        className="w-full text-xs border-slate-200"
+                      >
+                        Generate another token
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">Register a device directly without deploying an agent. Useful for pre-provisioning or demo devices.</p>
+
+                  {manualSuccess && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">? Device registered successfully! It will appear in the device list.</p>}
+                  {manualError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{manualError}</p>}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Hostname *', key: 'hostname', placeholder: 'LAPTOP-001' },
+                      { label: 'Serial Number *', key: 'serialNumber', placeholder: 'SN-ABC-001' },
+                      { label: 'OS Version *', key: 'osVersion', placeholder: 'Windows 11 Pro 23H2' },
+                      { label: 'IP Address', key: 'ipAddress', placeholder: '192.168.1.100' },
+                      { label: 'Manufacturer', key: 'manufacturer', placeholder: 'Dell' },
+                      { label: 'Model', key: 'model', placeholder: 'OptiPlex 7090' },
+                    ].map(({ label, key, placeholder }) => (
+                      <div key={key} className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-700">{label}</label>
+                        <input
+                          value={manualForm[key as keyof typeof manualForm]}
+                          onChange={(e) => setManualForm(f => ({ ...f, [key]: e.target.value }))}
+                          placeholder={placeholder}
+                          className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        />
+                      </div>
+                    ))}
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-700">OS</label>
+                      <select value={manualForm.os} onChange={(e) => setManualForm(f => ({ ...f, os: e.target.value }))} className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option>Windows</option>
+                        <option>macOS</option>
+                        <option>Linux</option>
+                        <option>Windows Server</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-700">Architecture</label>
+                      <select value={manualForm.architecture} onChange={(e) => setManualForm(f => ({ ...f, architecture: e.target.value }))} className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option>x64</option>
+                        <option>x86</option>
+                        <option>arm64</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <Button onClick={handleManualSubmit} disabled={manualLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                    {manualLoading ? 'Registering...' : <><MonitorCheck className="w-4 h-4" /> Register Device</>}
+                  </Button>
+                </>
+              )}
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setShowEnrollModal(false);
-                  navigate('/enrollment-tokens');
-                }}
-                className="text-xs border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 gap-1.5 font-medium"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Manage Enrollment Tokens</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowEnrollModal(false)}
-                className="text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              >
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowEnrollModal(false)} className="text-xs">
                 Close
               </Button>
             </div>

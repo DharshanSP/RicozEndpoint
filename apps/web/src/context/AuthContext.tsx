@@ -21,6 +21,13 @@ interface AuthContextType {
   logout: () => void;
   hasRole: (roles: UserRole[]) => boolean;
   hasMinRole: (minRole: UserRole) => boolean;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<{ success: boolean; message?: string }>;
+  switchOrganization: (
+    organizationId: string
+  ) => Promise<{ success: boolean; message?: string; organizationName?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -91,6 +98,59 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
     setUser(null);
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    const res = await fetchApi<{ token: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    if (res.success && res.data?.token) {
+      // Server rotates the session so the user stays signed in after the change.
+      localStorage.setItem(TOKEN_KEY, res.data.token);
+      setToken(res.data.token);
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      message: res.error?.message || 'Failed to change password.',
+    };
+  };
+
+  const switchOrganization = async (organizationId: string) => {
+    const res = await fetchApi<{ token: string; organization: { id: string; name: string } }>(
+      '/auth/switch-organization',
+      {
+        method: 'POST',
+        body: JSON.stringify({ organizationId }),
+      }
+    );
+
+    if (res.success && res.data?.token) {
+      localStorage.setItem(TOKEN_KEY, res.data.token);
+      setToken(res.data.token);
+      // Keep the cached profile in sync so headers and nav reflect the new tenant.
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              organizationId: res.data!.organization.id,
+              organizationName: res.data!.organization.name,
+            }
+          : prev
+      );
+      return {
+        success: true,
+        organizationName: res.data.organization.name,
+      };
+    }
+
+    return {
+      success: false,
+      message: res.error?.message || 'Failed to switch organization.',
+    };
+  };
+
   const hasRole = (allowedRoles: UserRole[]) => {
     if (!user) return false;
     if (user.role === 'SUPER_ADMIN') return true;
@@ -115,6 +175,8 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
         logout,
         hasRole,
         hasMinRole,
+        changePassword,
+        switchOrganization,
       }}
     >
       {children}

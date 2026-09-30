@@ -7,9 +7,12 @@ export async function fetchApi<T = unknown>(
   const token = localStorage.getItem('ricoz_auth_token');
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+
+  if (options.body) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;

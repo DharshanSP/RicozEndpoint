@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { verifyPassword } from '../../utils/password';
+import { verifyPassword, hashPassword } from '../../utils/password';
 import { authenticate, JwtPayload } from '../../middleware/rbac.middleware';
+import { writeAudit } from '../../utils/audit';
+import { changePasswordSchema } from '@ricoz/validation';
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/login', {
@@ -93,6 +95,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // The token carries the *active* organization, which may differ from the
+      // user's home organization after a super-admin tenant switch. Prefer the
+      // token scope so the client keeps rendering the tenant it selected.
+      const activeOrganizationId = jwtUser.organizationId;
+      const activeOrganization =
+        activeOrganizationId === user.organizationId
+          ? user.organization
+          : await app.prisma.organization.findUnique({
+              where: { id: activeOrganizationId },
+              select: { id: true, name: true },
+            });
+
       return reply.send({
         success: true,
         data: {
@@ -100,9 +114,181 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           email: user.email,
           name: user.name,
           role: user.role,
-          organizationId: user.organizationId,
-          organizationName: user.organization.name,
+          organizationId: activeOrganizationId,
+          organizationName: activeOrganization?.name ?? user.organization.name,
+          homeOrganizationId: user.organizationId,
           createdAt: user.createdAt,
+        },
+      });
+    },
+  });
+
+  // ─── Self-service password change ──────────────────────────────────────────
+  app.post('/change-password', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Change the authenticated user password by verifying the current one',
+      tags: ['Auth'],
+      body: {
+        type: 'object',
+        required: ['currentPassword', 'newPassword'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          newPassword: { type: 'string', minLength: 8, maxLength: 128 },
+        },
+      },
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      const parsed = changePasswordSchema.safeParse(request.body);
+
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid password payload',
+          },
+        });
+      }
+
+      const { currentPassword, newPassword } = parsed.data;
+
+      const user = await app.prisma.user.findUnique({ where: { id: jwtUser.sub } });
+      if (!user || !user.isActive) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'User account is inactive or not found' },
+        });
+      }
+
+      const isValid = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isValid) {
+        return reply.status(401).send({
+          success: false,
+          error: {
+            code: 'INVALID_CREDENTIALS',
+            message: 'Current password is incorrect',
+          },
+        });
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+      await app.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      });
+
+      await writeAudit(app.prisma, jwtUser, 'PASSWORD_CHANGED', 'USER', user.id, {}, request);
+
+      // Issue a fresh token so the current session continues without re-login.
+      const token = app.jwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+      });
+
+      return reply.send({
+        success: true,
+        data: { token, changedAt: new Date().toISOString() },
+      });
+    },
+  });
+
+  // ─── Refresh an existing session token ──────────────────────────────────────
+  app.post('/refresh', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Exchange a valid (near-expiry) session token for a freshly signed one',
+      tags: ['Auth'],
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+
+      const user = await app.prisma.user.findUnique({ where: { id: jwtUser.sub } });
+      if (!user || !user.isActive) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'User account is inactive or not found' },
+        });
+      }
+
+      const token = app.jwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            organizationId: user.organizationId,
+          },
+        },
+      });
+    },
+  });
+
+  // ─── Switch active organization (tenant) ────────────────────────────────────
+  app.post('/switch-organization', {
+    preHandler: [authenticate],
+    schema: {
+      description:
+        'Re-issue the session token scoped to another organization. SUPER_ADMIN may target any tenant; all other roles are restricted to their own organization.',
+      tags: ['Auth'],
+      body: {
+        type: 'object',
+        required: ['organizationId'],
+        properties: { organizationId: { type: 'string', format: 'uuid' } },
+      },
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      const { organizationId } = request.body as { organizationId: string };
+
+      // Non super-admins may only re-scope to the organization they already belong to.
+      if (jwtUser.role !== 'SUPER_ADMIN' && organizationId !== jwtUser.organizationId) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Only a super administrator may switch to another organization',
+          },
+        });
+      }
+
+      const organization = await app.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { id: true, name: true },
+      });
+
+      if (!organization) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Organization not found' },
+        });
+      }
+
+      const token = app.jwt.sign({
+        sub: jwtUser.sub,
+        email: jwtUser.email,
+        role: jwtUser.role,
+        organizationId: organization.id,
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          token,
+          organization: { id: organization.id, name: organization.name },
         },
       });
     },

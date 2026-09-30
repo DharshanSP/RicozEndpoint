@@ -7,18 +7,43 @@ Enterprise endpoint management platform for managing, monitoring, and securing d
 - Device registration and management
 - Hardware and software inventory collection
 - Real-time device status monitoring
-- Policy management and compliance evaluation
-- Remote command execution (allow-listed actions)
+- Policy management (SECURITY / COMPLIANCE / CONFIGURATION) with device + group assignment
+- Compliance evaluation on agent heartbeat, with auto-generated violation alerts
+- Remote command execution (allow-listed actions, confirmed destructive commands)
 - Multi-tenant architecture
 - Role-based access control
 - Comprehensive audit logging
+
+## Feature Matrix
+
+| Feature | WEB | API | AGENT |
+| ------- | --- | --- | ----- |
+| Device list / detail / inventory / activity | ✅ | ✅ | — |
+| Dashboard KPIs (compliance, commands, alerts) | ✅ | ✅ | — |
+| Enrollment token management | ✅ | ✅ | — |
+| Policy CRUD + assignment | ✅ | ✅ | — |
+| Compliance scoring & violation alerts | ✅ | ✅ | — |
+| Alerts list + resolve | ✅ | ✅ | — |
+| Commands list + issue (confirm for destructive) | ✅ | ✅ | — |
+| Hardware/software/security inventory | — | ✅ | ✅ |
+| Heartbeat + policy fetch + command execution | — | ✅ | ✅ |
+
+## Role Matrix
+
+| Role | View | Devices | Policies | Commands | Alerts | Users |
+| ---- | ---- | ------- | -------- | -------- | ------ | ----- |
+| SUPER_ADMIN | ✅ all orgs | ✅ | ✅ | ✅ | ✅ | ✅ |
+| ORG_ADMIN | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| IT_ADMIN | ✅ | ✅ | ✅ (create) | ✅ resolve | ✅ | list |
+| OPERATOR | ✅ | view | view | legacy | view | — |
+| VIEWER | ✅ | view | view | view | view | — |
 
 ## Tech Stack
 
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
 - **Backend**: Node.js, Fastify, TypeScript, Prisma ORM
 - **Database**: PostgreSQL
-- **Agent**: C# Windows Service (.NET 8.0)
+- **Agent**: TypeScript reference agent (`apps/agent`) + C# Windows Service (`agents/windows`)
 
 ## Quick Start
 
@@ -44,6 +69,8 @@ pnpm dev
 - [API Reference](docs/api.md)
 - [Database](docs/database.md)
 - [Security](docs/security.md)
+- [Compliance](docs/compliance.md)
+- [Agent](docs/agent.md)
 - [Development Guide](docs/development.md)
 - [Windows Agent](agents/windows/README.md)
 

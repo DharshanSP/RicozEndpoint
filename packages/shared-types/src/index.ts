@@ -15,21 +15,35 @@ export enum DeviceStatus {
 }
 
 export enum CommandStatus {
-  PENDING = 'PENDING',
+  QUEUED = 'QUEUED',
   SENT = 'SENT',
   RUNNING = 'RUNNING',
-  SUCCESS = 'SUCCESS',
+  COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
-  EXPIRED = 'EXPIRED',
   CANCELLED = 'CANCELLED',
 }
 
 export enum CommandType {
   REFRESH_INVENTORY = 'REFRESH_INVENTORY',
   SYNC_POLICY = 'SYNC_POLICY',
+  INSTALL_PATCH = 'INSTALL_PATCH',
+  INSTALL_APPLICATION = 'INSTALL_APPLICATION',
+  UNINSTALL_APPLICATION = 'UNINSTALL_APPLICATION',
   LOCK_DEVICE = 'LOCK_DEVICE',
   RESTART_DEVICE = 'RESTART_DEVICE',
   SHUTDOWN_DEVICE = 'SHUTDOWN_DEVICE',
+}
+
+export enum DeploymentAction {
+  INSTALL = 'INSTALL',
+  UNINSTALL = 'UNINSTALL',
+}
+
+export enum DeploymentStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum PolicyType {
@@ -41,7 +55,20 @@ export enum PolicyType {
 export enum ComplianceStatus {
   COMPLIANT = 'COMPLIANT',
   NON_COMPLIANT = 'NON_COMPLIANT',
+  UNKNOWN = 'UNKNOWN',
   NOT_EVALUATED = 'NOT_EVALUATED',
+}
+
+/** Event types recorded against a device in its activity feed. */
+export type DeviceActivityType = 'HEARTBEAT' | 'COMMAND' | 'ALERT' | 'POLICY' | 'COMPLIANCE';
+
+export interface DeviceActivityEvent {
+  id: string;
+  type: DeviceActivityType;
+  timestamp: string;
+  status?: string;
+  severity?: string;
+  description: string;
 }
 
 export enum AlertSeverity {
@@ -56,11 +83,41 @@ export enum AlertStatus {
   RESOLVED = 'RESOLVED',
 }
 
+export enum PatchSeverity {
+  CRITICAL = 'CRITICAL',
+  IMPORTANT = 'IMPORTANT',
+  OPTIONAL = 'OPTIONAL',
+}
+
+export enum PatchStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  DEPLOYED = 'DEPLOYED',
+}
+
 export interface Organization {
   id: string;
   name: string;
+  settings?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface DeviceGroup {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrganizationSettings {
+  agentHeartbeatIntervalSeconds: number;
+  offlineTimeoutMinutes: number;
+  alertRetentionDays: number;
+  auditRetentionDays: number;
+  defaultPolicyPriority: number;
 }
 
 export interface User {

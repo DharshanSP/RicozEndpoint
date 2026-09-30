@@ -32,3 +32,18 @@ export const softwareInventorySchema = z.object({
 });
 
 export type SoftwareInventoryInput = z.infer<typeof softwareInventorySchema>;
+
+export const patchItemSchema = z.object({
+  kbNumber: z.string(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  installedAt: z.string().nullable().optional(),
+});
+
+export type PatchItemInput = z.infer<typeof patchItemSchema>;
+
+export const patchInventorySchema = z.object({
+  items: z.array(patchItemSchema),
+});
+
+export type PatchInventoryInput = z.infer<typeof patchInventorySchema>;
