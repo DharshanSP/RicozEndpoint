@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X } from 'lucide-react';
+import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -7,7 +7,7 @@ import { useCreateEnrollmentToken, useEnrollmentTokenList, useRevokeEnrollmentTo
 import type { EnrollmentTokenSummary } from '../types/enrollment';
 
 const inputClass =
-  'w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/50';
+  'w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
 
 function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: 'success' | 'warning' | 'secondary' } {
   if (!token.isActive) return { label: 'Revoked', variant: 'secondary' };
@@ -79,75 +79,102 @@ export function EnrollmentTokensPage() {
 
   const handleRevoke = (token: EnrollmentTokenSummary) => {
     if (!token.isActive) return;
-    if (!window.confirm(`Revoke enrollment token ${token.label || token.id.slice(0, 8)}?`)) return;
+    if (!window.confirm(`Revoke enrollment token '${token.label || token.id.slice(0, 8)}'?`)) return;
     revokeMutation.mutate(token.id);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-blue-400" />
-            Enrollment Tokens
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Issue single-use codes that endpoint agents exchange for per-device credentials.
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              Enrollment Tokens
+            </h1>
+          </div>
+          <p className="text-xs text-slate-500">
+            Issue single-use or scoped tokens that endpoint agents exchange for per-device credentials during initial discovery.
           </p>
         </div>
+
         <div className="flex items-center gap-2">
-          {listQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />}
-          <Button variant="default" onClick={() => setShowCreate((value) => !value)}>
-            {showCreate ? <X className="w-4 h-4 mr-1.5" /> : <Plus className="w-4 h-4 mr-1.5" />}
-            {showCreate ? 'Cancel' : 'New Token'}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => listQuery.refetch()}
+            disabled={listQuery.isFetching}
+            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${listQuery.isFetching ? 'animate-spin' : ''}`} />
+            <span>{listQuery.isFetching ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => setShowCreate((value) => !value)}
+            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+          >
+            {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            <span>{showCreate ? 'Cancel' : 'Generate Token'}</span>
           </Button>
         </div>
       </div>
 
       {/* Create Panel */}
       {showCreate && (
-        <Card className="border-slate-800 bg-slate-900/60 shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-white">Issue Enrollment Token</CardTitle>
-            <CardDescription>
-              The code is shown only once. Configure the agent's <code className="text-blue-400">ENROLLMENT_TOKEN</code> and start it.
+        <Card className="border-slate-200 bg-white shadow-xs animate-in fade-in duration-150">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <CardTitle className="text-base font-bold text-slate-900">Issue Enrollment Token</CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              The secret token will be shown only once upon creation. Copy and configure it on the target host as <code className="text-blue-600 font-mono bg-blue-50 px-1 py-0.5 rounded border border-blue-200">ENROLLMENT_TOKEN</code>.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pt-4 space-y-4">
             {createdToken && (
-              <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 space-y-2 shadow-xs animate-in fade-in duration-200">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                    Enrollment code (copy now)
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Generated Enrollment Token (Copy Now)
                   </span>
-                  <Button variant="outline" size="sm" onClick={handleCopy}>
-                    {copied ? <Check className="w-3.5 h-3.5 mr-1.5" /> : <Copy className="w-3.5 h-3.5 mr-1.5" />}
-                    {copied ? 'Copied' : 'Copy'}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="h-7 text-xs border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 gap-1"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-emerald-600" />}
+                    <span>{copied ? 'Copied!' : 'Copy Code'}</span>
                   </Button>
                 </div>
-                <code className="block text-sm text-emerald-300 break-all font-mono">{createdToken}</code>
+                <code className="block text-xs text-emerald-950 font-mono bg-white p-2.5 rounded-lg border border-emerald-200 break-all font-semibold select-all">
+                  {createdToken}
+                </code>
               </div>
             )}
 
             {createMutation.isError && (
-              <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-300">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">
                 Failed to create token: {(createMutation.error as Error).message}
               </div>
             )}
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Label</label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Token Label</label>
                 <input
                   className={inputClass}
-                  placeholder="e.g. Finance floor rollout"
+                  placeholder="e.g. Finance Wing Windows rollout"
                   value={label}
                   onChange={(event) => setLabel(event.target.value)}
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Max uses</label>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Max Device Enrollments</label>
                 <input
                   type="number"
                   min={1}
@@ -157,8 +184,8 @@ export function EnrollmentTokensPage() {
                   onChange={(event) => setMaxUses(Number(event.target.value))}
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Expires at</label>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Expiration (Optional)</label>
                 <input
                   type="datetime-local"
                   className={inputClass}
@@ -168,12 +195,23 @@ export function EnrollmentTokensPage() {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2 pt-2">
               <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCreate(false)}
+                className="text-xs border-slate-200 text-slate-600"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
                 onClick={handleCreate}
                 disabled={createMutation.isPending || maxUses < 1 || maxUses > 1000}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
               >
-                {createMutation.isPending ? 'Creating...' : 'Generate Token'}
+                {createMutation.isPending ? 'Generating...' : 'Confirm & Create'}
               </Button>
             </div>
           </CardContent>
@@ -181,28 +219,30 @@ export function EnrollmentTokensPage() {
       )}
 
       {/* List */}
-      <Card className="border-slate-800 bg-slate-900/60 shadow-lg">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-white text-base">Issued Tokens</CardTitle>
-            <Badge variant="secondary" className="text-xs">
-              {activeCount} active / {total} total
-            </Badge>
+      <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-bold text-slate-900">Active & Historical Tokens</CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Tokens are automatically tracked and marked consumed once usage limits are met.
+            </CardDescription>
           </div>
-          <CardDescription>Single-use codes are consumed automatically after enrollment.</CardDescription>
+          <Badge variant="secondary" className="text-xs font-medium">
+            {activeCount} active / {total} total
+          </Badge>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {listQuery.isLoading && (
-            <div className="space-y-3" data-testid="enrollment-tokens-loading">
+            <div className="p-6 space-y-3" data-testid="enrollment-tokens-loading">
               {[0, 1, 2].map((row) => (
-                <div key={row} className="h-12 rounded-md bg-slate-800/50 animate-pulse" />
+                <div key={row} className="h-12 rounded-lg bg-slate-100 animate-pulse border border-slate-200" />
               ))}
             </div>
           )}
 
           {listQuery.isError && (
-            <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-              <p className="text-sm text-rose-300">{(listQuery.error as Error).message}</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center p-6">
+              <p className="text-xs text-rose-600">{(listQuery.error as Error).message}</p>
               <Button variant="outline" size="sm" onClick={() => void listQuery.refetch()}>
                 <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Retry
               </Button>
@@ -210,58 +250,67 @@ export function EnrollmentTokensPage() {
           )}
 
           {listQuery.isSuccess && tokens.length === 0 && (
-            <div className="py-10 text-center">
-              <KeyRound className="w-8 h-8 mx-auto text-slate-600 mb-2" />
-              <p className="text-sm text-slate-400">No enrollment tokens issued yet.</p>
+            <div className="py-12 text-center p-6 space-y-2">
+              <div className="inline-flex p-3 rounded-full bg-slate-100 text-slate-500 mb-1">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-900">No enrollment tokens issued yet</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Generate an enrollment token to onboard physical and virtual devices to your fleet.
+              </p>
             </div>
           )}
 
           {listQuery.isSuccess && tokens.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-700/70 text-left text-xs uppercase tracking-wider text-slate-400">
-                    <th className="pb-2 pr-4 font-semibold">Label</th>
-                    <th className="pb-2 pr-4 font-semibold">Uses</th>
-                    <th className="pb-2 pr-4 font-semibold">Expires</th>
-                    <th className="pb-2 pr-4 font-semibold">Status</th>
-                    <th className="pb-2 pr-4 font-semibold">Created</th>
-                    <th className="pb-2 font-semibold text-right">Actions</th>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+                    <th className="px-5 py-3 font-semibold">Label</th>
+                    <th className="px-5 py-3 font-semibold">Uses</th>
+                    <th className="px-5 py-3 font-semibold">Expires</th>
+                    <th className="px-5 py-3 font-semibold">Status</th>
+                    <th className="px-5 py-3 font-semibold">Created</th>
+                    <th className="px-5 py-3 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {tokens.map((token) => {
                     const badge = statusBadge(token);
                     return (
-                      <tr key={token.id} className="border-b border-slate-800/70">
-                        <td className="py-2.5 pr-4">
-                          <div className="text-slate-100 font-medium">{token.label || 'Untitled'}</div>
+                      <tr key={token.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <span className="text-slate-900 font-semibold block">{token.label || 'Untitled Token'}</span>
                           {token.device && (
-                            <div className="text-xs text-slate-500">
-                              Bound to {token.device.deviceName}
-                            </div>
+                            <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                              Pre-bound to {token.device.deviceName}
+                            </span>
                           )}
                         </td>
-                        <td className="py-2.5 pr-4 text-slate-300">
+                        <td className="px-5 py-3.5 text-slate-700 font-mono font-medium">
                           {token.uses} / {token.maxUses}
                         </td>
-                        <td className="py-2.5 pr-4 text-slate-300">{formatDate(token.expiresAt)}</td>
-                        <td className="py-2.5 pr-4">
-                          <Badge variant={badge.variant} className="text-xs">
+                        <td className="px-5 py-3.5 text-slate-600 font-mono text-[11px]">
+                          {formatDate(token.expiresAt)}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <Badge variant={badge.variant} className="text-[11px] font-medium">
                             {badge.label}
                           </Badge>
                         </td>
-                        <td className="py-2.5 pr-4 text-slate-400">{formatDate(token.createdAt)}</td>
-                        <td className="py-2.5 text-right">
+                        <td className="px-5 py-3.5 text-slate-500 font-mono text-[11px]">
+                          {formatDate(token.createdAt)}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
                           {token.isActive && (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleRevoke(token)}
                               disabled={revokeMutation.isPending}
-                              className="text-slate-400 hover:text-rose-400"
+                              className="h-7 text-[11px] text-slate-600 hover:text-rose-600 hover:bg-rose-50"
                             >
-                              <Trash2 className="w-3.5 h-3.5 mr-1" />
+                              <Trash2 className="w-3.5 h-3.5 mr-1 text-rose-500" />
                               Revoke
                             </Button>
                           )}

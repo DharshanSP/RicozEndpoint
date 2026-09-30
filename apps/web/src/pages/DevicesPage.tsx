@@ -141,12 +141,21 @@ export function DevicesPage() {
   // Derived KPI metrics
   const metrics = useMemo(() => {
     return {
-      totalDevices: pagination.total,
-      onlineDevices: rawDevices.filter((d) => d.status?.toUpperCase() === 'ONLINE').length,
-      offlineDevices: rawDevices.filter((d) => d.status?.toUpperCase() === 'OFFLINE').length,
-      pendingDevices: rawDevices.filter((d) => d.status?.toUpperCase() === 'PENDING').length,
+      totalDevices: status === 'ALL' ? pagination.total : pagination.total,
+      onlineDevices:
+        status === 'ONLINE'
+          ? pagination.total
+          : rawDevices.filter((d) => d.status?.toUpperCase() === 'ONLINE').length,
+      offlineDevices:
+        status === 'OFFLINE'
+          ? pagination.total
+          : rawDevices.filter((d) => d.status?.toUpperCase() === 'OFFLINE').length,
+      pendingDevices:
+        status === 'PENDING'
+          ? pagination.total
+          : rawDevices.filter((d) => d.status?.toUpperCase() === 'PENDING').length,
     };
-  }, [pagination.total, rawDevices]);
+  }, [pagination.total, rawDevices, status]);
 
   const hasActiveFilters =
     search.trim() !== '' || status !== 'ALL' || os !== 'ALL' || manufacturer !== 'ALL';

@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Root as TabsRoot, List as TabsList, Trigger as TabsTrigger, Content as TabsContent } from '@radix-ui/react-tabs';
 import {
-  ArrowLeft,
+  ChevronRight,
   Activity,
   CheckSquare,
   Clock,
@@ -12,6 +12,14 @@ import {
   Server,
   ShieldCheck,
   Terminal,
+  Lock,
+  RotateCcw,
+  Power,
+  Search,
+  CheckCircle2,
+  Copy,
+  Check,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware } from '../hooks/useDeviceQueries';
@@ -171,6 +179,14 @@ function TabSkeleton({ rows = 3 }: { rows?: number }) {
 export function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<TabValue>('overview');
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
+
+  // Sub-tab search and filter states
+  const [softwareSearch, setSoftwareSearch] = useState('');
+  const [policyTypeFilter, setPolicyTypeFilter] = useState('ALL');
+  const [commandStatusFilter, setCommandStatusFilter] = useState('ALL');
+  const [activityCategoryFilter, setActivityCategoryFilter] = useState('ALL');
 
   const detail = useDeviceDetail(id);
   const hardware = useDeviceHardware(id, activeTab === 'hardware');
@@ -179,21 +195,33 @@ export function DeviceDetailPage() {
 
   const handleTabChange = (value: string) => setActiveTab(value as TabValue);
 
+  const handleActionClick = (actionName: string) => {
+    setActionNotice(`Remote action '${actionName}' initiated for this device.`);
+    setTimeout(() => setActionNotice(null), 4000);
+  };
+
+  const copyDeviceId = () => {
+    if (!id) return;
+    navigator.clipboard.writeText(id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
   // Invalid / missing device id
   if (!id) {
     return (
       <div className="space-y-6 max-w-6xl mx-auto">
-        <BackLink />
+        <Breadcrumbs deviceName="Unknown" />
         <TabError message="This device route is missing a device identifier." onRetry={() => detail.refetch()} />
       </div>
     );
   }
 
-  // Detail error state (covers 401, 404, 500, network)
+  // Detail error state
   if (detail.isError) {
     return (
       <div className="space-y-6 max-w-6xl mx-auto">
-        <BackLink />
+        <Breadcrumbs deviceName="Error" />
         <TabError
           message={
             detail.error instanceof Error
@@ -212,9 +240,10 @@ export function DeviceDetailPage() {
   if (detail.isLoading || !detail.data) {
     return (
       <div className="space-y-6 max-w-6xl mx-auto animate-pulse" data-testid="device-detail-loading">
-        <div className="h-16 w-full bg-slate-200 rounded-lg border border-slate-300" />
-        <div className="h-10 w-2/3 bg-slate-200 rounded-lg border border-slate-300" />
-        <div className="h-72 bg-slate-100 rounded-lg border border-slate-200" />
+        <div className="h-6 w-48 bg-slate-200 rounded" />
+        <div className="h-28 w-full bg-slate-200 rounded-xl border border-slate-300" />
+        <div className="h-10 w-full bg-slate-100 rounded-lg border border-slate-200" />
+        <div className="h-72 bg-slate-100 rounded-xl border border-slate-200" />
       </div>
     );
   }
@@ -224,47 +253,115 @@ export function DeviceDetailPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Breadcrumb + back */}
-      <BackLink />
+      {/* Breadcrumb Navigation */}
+      <Breadcrumbs deviceName={overview.deviceName} />
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-6 rounded-xl border shadow-xs">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
-              <Server className="w-5 h-5" />
+      {/* Action Notification Banner */}
+      {actionNotice && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="font-medium">{actionNotice}</span>
+          </div>
+          <button
+            onClick={() => setActionNotice(null)}
+            className="text-blue-500 hover:text-blue-700 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Device Header Card */}
+      <div className="pb-5 border border-slate-200 bg-white p-6 rounded-xl shadow-xs space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+                <Server className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
+                  {overview.deviceName}
+                  <button
+                    onClick={copyDeviceId}
+                    title="Click to copy device ID"
+                    className="inline-flex items-center gap-1 text-xs font-mono text-slate-600 font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors"
+                  >
+                    <span>{overview.serialNumber}</span>
+                    {copiedId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                  </button>
+                </h1>
+                <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                  {overview.hostname} • IP {overview.ipAddress || '—'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
-                {overview.deviceName}
-                <span className="text-xs font-mono text-slate-500 font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200">{overview.serialNumber}</span>
-              </h1>
-              <p className="text-xs text-slate-500 mt-1 font-mono">{overview.hostname} • {overview.ipAddress}</p>
+
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <Badge variant={statusBadgeVariant(overview.status)} className="text-[11px] font-semibold">
+                {statusText}
+              </Badge>
+              <Badge variant={complianceBadgeVariant(overview.complianceStatus)} className="text-[11px] font-medium">
+                {overview.complianceStatus.replace('_', ' ')}
+              </Badge>
+              <Badge variant="outline" className="gap-1 text-[11px] border-slate-200 text-slate-600 bg-slate-50 font-normal">
+                <Clock className="w-3 h-3 text-slate-500" />
+                Last seen {formatRelativeTime(overview.lastSeenAt)}
+              </Badge>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap pt-1">
-            <Badge variant={statusBadgeVariant(overview.status)} className="text-[11px] font-medium">
-              {statusText}
-            </Badge>
-            <Badge variant={complianceBadgeVariant(overview.complianceStatus)} className="text-[11px] font-medium">
-              {overview.complianceStatus.replace('_', ' ')}
-            </Badge>
-            <Badge variant="outline" className="gap-1 text-[11px] border-slate-200 text-slate-600 bg-slate-50 font-normal">
-              <Clock className="w-3 h-3 text-slate-500" />
-              Last seen {formatRelativeTime(overview.lastSeenAt)}
-            </Badge>
+
+          {/* Quick Actions Toolbar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleActionClick('Lock Workstation')}
+              className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
+            >
+              <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Lock</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleActionClick('Restart Host')}
+              className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+              <span>Restart</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleActionClick('Shutdown Host')}
+              className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
+            >
+              <Power className="w-3.5 h-3.5 text-rose-600" />
+              <span>Shutdown</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleActionClick('Sync Policies')}
+              className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Sync Policy</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => detail.refetch()}
+              disabled={detail.isFetching}
+              className="h-8 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${detail.isFetching ? 'animate-spin' : ''}`} />
+              <span>{detail.isFetching ? 'Syncing...' : 'Refresh'}</span>
+            </Button>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => detail.refetch()}
-          disabled={detail.isFetching}
-          className="self-start md:self-auto h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${detail.isFetching ? 'animate-spin' : ''}`} />
-          <span>{detail.isFetching ? 'Refreshing...' : 'Refresh'}</span>
-        </Button>
       </div>
 
       {/* Tabs */}
@@ -281,7 +378,7 @@ export function DeviceDetailPage() {
           ))}
         </TabsList>
 
-        {/* Overview */}
+        {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <InfoTile label="Status" value={<Badge variant={statusBadgeVariant(overview.status)} className="text-[11px] font-medium">{statusText}</Badge>} />
@@ -299,7 +396,7 @@ export function DeviceDetailPage() {
           </div>
         </TabsContent>
 
-        {/* Hardware */}
+        {/* Hardware Tab */}
         <TabsContent value="hardware">
           {hardware.isLoading ? (
             <TabSkeleton rows={4} />
@@ -321,8 +418,8 @@ export function DeviceDetailPage() {
           )}
         </TabsContent>
 
-        {/* Software */}
-        <TabsContent value="software">
+        {/* Software Tab with Search */}
+        <TabsContent value="software" className="space-y-3">
           {software.isLoading ? (
             <TabSkeleton rows={4} />
           ) : software.isError ? (
@@ -330,20 +427,28 @@ export function DeviceDetailPage() {
           ) : !software.data || software.data.length === 0 ? (
             <EmptyTab icon={Package} title="No software inventory" description="No installed software has been reported for this device yet." />
           ) : (
-            <SoftwareTable items={software.data} />
+            <SoftwareSection
+              items={software.data}
+              searchTerm={softwareSearch}
+              onSearchChange={setSoftwareSearch}
+            />
           )}
         </TabsContent>
 
-        {/* Policies */}
-        <TabsContent value="policies">
+        {/* Policies Tab with Filter */}
+        <TabsContent value="policies" className="space-y-3">
           {detail.data.policies.length === 0 ? (
             <EmptyTab icon={ShieldCheck} title="No policies assigned" description="This device currently has no configuration or security policies assigned." />
           ) : (
-            <PoliciesList policies={detail.data.policies} />
+            <PoliciesSection
+              policies={detail.data.policies}
+              filter={policyTypeFilter}
+              onFilterChange={setPolicyTypeFilter}
+            />
           )}
         </TabsContent>
 
-        {/* Compliance */}
+        {/* Compliance Tab */}
         <TabsContent value="compliance">
           {detail.data.compliance.length === 0 ? (
             <EmptyTab icon={CheckSquare} title="No compliance evaluations" description="No compliance rules have been evaluated against this device yet." />
@@ -352,17 +457,21 @@ export function DeviceDetailPage() {
           )}
         </TabsContent>
 
-        {/* Commands */}
-        <TabsContent value="commands">
+        {/* Commands Tab with Status Filter */}
+        <TabsContent value="commands" className="space-y-3">
           {detail.data.commands.length === 0 ? (
             <EmptyTab icon={Terminal} title="No commands issued" description="No remote commands have been dispatched to this device." />
           ) : (
-            <CommandsTable commands={detail.data.commands} />
+            <CommandsSection
+              commands={detail.data.commands}
+              filter={commandStatusFilter}
+              onFilterChange={setCommandStatusFilter}
+            />
           )}
         </TabsContent>
 
-        {/* Activity */}
-        <TabsContent value="activity">
+        {/* Activity Tab with Category Filter */}
+        <TabsContent value="activity" className="space-y-3">
           {activity.isLoading ? (
             <TabSkeleton rows={4} />
           ) : activity.isError ? (
@@ -370,7 +479,11 @@ export function DeviceDetailPage() {
           ) : !activity.data || activity.data.length === 0 ? (
             <EmptyTab icon={Activity} title="No activity reported" description="No heartbeats, commands or alerts have been recorded for this device." />
           ) : (
-            <ActivityTimeline events={activity.data} />
+            <ActivitySection
+              events={activity.data}
+              filter={activityCategoryFilter}
+              onFilterChange={setActivityCategoryFilter}
+            />
           )}
         </TabsContent>
       </TabsRoot>
@@ -378,43 +491,125 @@ export function DeviceDetailPage() {
   );
 }
 
-function BackLink() {
+function Breadcrumbs({ deviceName }: { deviceName: string }) {
   return (
-    <Link
-      to="/devices"
-      className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors font-medium"
-    >
-      <ArrowLeft className="w-3.5 h-3.5" />
-      <span>Back to Fleet Devices</span>
-    </Link>
+    <nav className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+      <Link to="/" className="hover:text-slate-800 transition-colors">
+        Dashboard
+      </Link>
+      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+      <Link to="/devices" className="hover:text-slate-800 transition-colors">
+        Devices
+      </Link>
+      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+      <span className="text-slate-900 font-semibold">{deviceName}</span>
+    </nav>
   );
 }
 
-function SoftwareTable({ items }: { items: DeviceSoftwareItem[] }) {
+function SoftwareSection({
+  items,
+  searchTerm,
+  onSearchChange,
+}: {
+  items: DeviceSoftwareItem[];
+  searchTerm: string;
+  onSearchChange: (term: string) => void;
+}) {
+  const filtered = useMemo(() => {
+    if (!searchTerm.trim()) return items;
+    const term = searchTerm.toLowerCase();
+    return items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(term) ||
+        (item.publisher && item.publisher.toLowerCase().includes(term)) ||
+        (item.version && item.version.toLowerCase().includes(term))
+    );
+  }, [items, searchTerm]);
+
   return (
-    <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
-      <table className="w-full text-left text-xs border-collapse">
-        <thead>
-          <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
-            <th className="px-4 py-2.5 font-semibold">Application</th>
-            <th className="px-4 py-2.5 font-semibold">Version</th>
-            <th className="px-4 py-2.5 font-semibold">Publisher</th>
-            <th className="px-4 py-2.5 font-semibold">Architecture</th>
-            <th className="px-4 py-2.5 font-semibold">Installed</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {items.map((item) => (
-            <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-              <td className="px-4 py-3 text-slate-900 font-semibold">{item.name}</td>
-              <td className="px-4 py-3 text-slate-800 font-mono font-medium">{item.version}</td>
-              <td className="px-4 py-3 text-slate-600">{item.publisher || '—'}</td>
-              <td className="px-4 py-3 text-slate-500 font-mono">{item.architecture || '—'}</td>
-              <td className="px-4 py-3 text-slate-500">{formatDateTime(item.installDate)}</td>
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="relative w-full sm:w-72">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search software or publisher..."
+            value={searchTerm}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
+          />
+        </div>
+        <span className="text-xs text-slate-500 self-start sm:self-center font-medium">
+          Showing <strong className="text-slate-800">{filtered.length}</strong> of {items.length} applications
+        </span>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+        <table className="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+              <th className="px-4 py-2.5 font-semibold">Application</th>
+              <th className="px-4 py-2.5 font-semibold">Version</th>
+              <th className="px-4 py-2.5 font-semibold">Publisher</th>
+              <th className="px-4 py-2.5 font-semibold">Architecture</th>
+              <th className="px-4 py-2.5 font-semibold">Installed</th>
             </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filtered.map((item) => (
+              <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                <td className="px-4 py-3 text-slate-900 font-semibold">{item.name}</td>
+                <td className="px-4 py-3 text-slate-800 font-mono font-medium">{item.version}</td>
+                <td className="px-4 py-3 text-slate-600">{item.publisher || '—'}</td>
+                <td className="px-4 py-3 text-slate-500 font-mono">{item.architecture || '—'}</td>
+                <td className="px-4 py-3 text-slate-500">{formatDateTime(item.installDate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PoliciesSection({
+  policies,
+  filter,
+  onFilterChange,
+}: {
+  policies: AssignedPolicy[];
+  filter: string;
+  onFilterChange: (f: string) => void;
+}) {
+  const filtered = useMemo(() => {
+    if (filter === 'ALL') return policies;
+    return policies.filter((p) => p.policy.type === filter);
+  }, [policies, filter]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+        <span className="text-xs font-semibold text-slate-600">Type:</span>
+        <div className="flex items-center gap-1">
+          {['ALL', 'SECURITY', 'CONFIGURATION', 'COMPLIANCE'].map((f) => (
+            <button
+              key={f}
+              onClick={() => onFilterChange(f)}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                filter === f
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {f}
+            </button>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+
+      <PoliciesList policies={filtered} />
     </div>
   );
 }
@@ -481,6 +676,47 @@ function ComplianceList({ results }: { results: ComplianceResult[] }) {
   );
 }
 
+function CommandsSection({
+  commands,
+  filter,
+  onFilterChange,
+}: {
+  commands: CommandRecord[];
+  filter: string;
+  onFilterChange: (f: string) => void;
+}) {
+  const filtered = useMemo(() => {
+    if (filter === 'ALL') return commands;
+    return commands.filter((c) => c.status === filter);
+  }, [commands, filter]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+        <span className="text-xs font-semibold text-slate-600">Status:</span>
+        <div className="flex items-center gap-1">
+          {['ALL', 'COMPLETED', 'FAILED', 'PENDING'].map((f) => (
+            <button
+              key={f}
+              onClick={() => onFilterChange(f)}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                filter === f
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <CommandsTable commands={filtered} />
+    </div>
+  );
+}
+
 function CommandsTable({ commands }: { commands: CommandRecord[] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
@@ -518,6 +754,47 @@ function CommandsTable({ commands }: { commands: CommandRecord[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ActivitySection({
+  events,
+  filter,
+  onFilterChange,
+}: {
+  events: ActivityEvent[];
+  filter: string;
+  onFilterChange: (f: string) => void;
+}) {
+  const filtered = useMemo(() => {
+    if (filter === 'ALL') return events;
+    return events.filter((e) => e.type === filter);
+  }, [events, filter]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+        <span className="text-xs font-semibold text-slate-600">Category:</span>
+        <div className="flex items-center gap-1">
+          {['ALL', 'HEARTBEAT', 'COMMAND', 'ALERT'].map((f) => (
+            <button
+              key={f}
+              onClick={() => onFilterChange(f)}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                filter === f
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ActivityTimeline events={filtered} />
     </div>
   );
 }

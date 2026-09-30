@@ -4,6 +4,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { DeviceDetailPage } from '../pages/DeviceDetailPage';
 import { EnrollmentTokensPage } from '../pages/EnrollmentTokensPage';
+import { UsersPage } from '../pages/UsersPage';
 import { LoginPage } from '../pages/LoginPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
@@ -192,20 +193,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'users',
-        element: (
-          <PlaceholderPage
-            title="User & Role Administration"
-            section="ADMINISTRATION"
-            icon={Users}
-            description="Manage administrative accounts, role assignments, and granular RBAC permissions."
-            plannedFeatures={[
-              'Role assignment (SUPER_ADMIN, ORG_ADMIN, IT_ADMIN, OPERATOR, VIEWER)',
-              'Multi-tenant user provisioning and invitation workflows',
-              'API token generation and agent authorization credentials',
-            ]}
-            schemaEntities={['User', 'Organization']}
-          />
-        ),
+        element: <UsersPage />,
       },
       {
         path: 'settings',
