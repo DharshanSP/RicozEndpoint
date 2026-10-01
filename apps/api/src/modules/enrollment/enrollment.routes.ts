@@ -9,6 +9,7 @@ import {
   enrollDeviceSchema,
 } from '@ricoz/validation';
 import { generateToken, generateAgentToken, hashToken } from '../../utils/tokens';
+import { loadConfig } from '../../config';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -17,7 +18,7 @@ function toIso(value: Date | null | undefined): string | null {
 export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
   // ─── Admin: list enrollment tokens ───────────────────────────────────────────
   app.get('/enrollment-tokens', {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireMinRole(UserRole.IT_ADMIN)],
     schema: {
       description: 'List enrollment tokens for the caller organization',
       tags: ['Enrollment'],
@@ -522,24 +523,35 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const activeToken = await app.prisma.enrollmentToken.findFirst({
-        where: { organizationId: orgId, isActive: true },
-        orderBy: { createdAt: 'desc' },
+      // Hashes are one-way, so a usable code cannot be recovered from an
+      // existing token: mint a fresh single-use code for this snippet.
+      const rawToken = generateToken();
+      const token = await app.prisma.enrollmentToken.create({
+        data: {
+          organizationId: orgId,
+          tokenHash: hashToken(rawToken),
+          label: 'Install snippet',
+          createdById: jwtUser.sub,
+          maxUses: 1,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
       });
 
-      const tokenValue = activeToken ? activeToken.tokenHash : `RICOZ-ENROLL-${orgId.slice(0, 8).toUpperCase()}`;
-      const apiBaseUrl = `http://localhost:3001/api`;
-      const powershellCommand = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:RICOZ_ENROLL_TOKEN="${tokenValue}"; $env:RICOZ_API_URL="${apiBaseUrl}"; iwr -useb "${apiBaseUrl}/agent/install.ps1" | iex`;
+      const host = request.headers.host ?? `localhost:${loadConfig().API_PORT}`;
+      const apiBaseUrl = `${request.protocol}://${host}/api`;
+      const powershellCommand = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:RICOZ_ENROLL_TOKEN="${rawToken}"; $env:RICOZ_API_URL="${apiBaseUrl}"; iwr -useb "${apiBaseUrl}/agent/install.ps1" | iex`;
 
       return reply.send({
         success: true,
         data: {
           organizationId: org.id,
           organizationName: org.name,
-          enrollmentToken: tokenValue,
+          enrollmentToken: rawToken,
+          enrollmentTokenId: token.id,
+          expiresAt: toIso(token.expiresAt),
           apiBaseUrl,
           powershellInstallCommand: powershellCommand,
-          enrollmentUrl: `${apiBaseUrl}/devices/enroll`,
+          enrollmentUrl: `${apiBaseUrl}/enroll`,
         },
       });
     },

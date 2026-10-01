@@ -59,3 +59,21 @@ export async function getDashboardData(timeRange: string = '24h'): Promise<Dashb
     `/dashboard${timeRange ? `?range=${encodeURIComponent(timeRange)}` : ''}`
   );
 }
+
+export interface SystemHealth {
+  status: string;
+  database?: string;
+  timestamp: string;
+  uptime: number;
+  version?: string;
+}
+
+/** Unauthenticated liveness/readiness probe used by the dashboard status panel. */
+export async function getSystemHealth(): Promise<SystemHealth> {
+  const res = await fetchApi<SystemHealth>('/health');
+  const payload = res.data as SystemHealth | undefined;
+  if (!payload?.status) {
+    throw new Error(res.error?.message ?? 'Health probe failed');
+  }
+  return payload;
+}

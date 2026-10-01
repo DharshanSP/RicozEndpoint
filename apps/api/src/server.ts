@@ -22,6 +22,7 @@ import { organizationSettingsRoutes } from './modules/organization-settings/orga
 import { organizationsRoutes } from './modules/organizations/organizations.routes';
 import { complianceRoutes } from './modules/compliance/compliance.routes';
 import { patchesRoutes } from './modules/patches/patches.routes';
+import { startOfflineSweeper } from './services/device-status.service';
 
 const config = loadConfig();
 
@@ -41,8 +42,12 @@ export async function buildApp() {
     },
   });
 
+  const allowedOrigins = config.CORS_ORIGIN.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   await app.register(cors, {
-    origin: true, // allow any origin in dev
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
@@ -108,6 +113,19 @@ export async function buildApp() {
   await app.register(organizationSettingsRoutes, { prefix: '/api/settings' });
   await app.register(complianceRoutes, { prefix: '/api/compliance' });
   await app.register(patchesRoutes, { prefix: '/api/patches' });
+
+  // Background offline detection: keeps device status and DEVICE_OFFLINE alerts
+  // accurate without depending on a user opening the device list.
+  let offlineSweeper: NodeJS.Timeout | null = null;
+  app.addHook('onReady', async () => {
+    offlineSweeper = startOfflineSweeper(app.prisma, app.log);
+  });
+  app.addHook('onClose', async () => {
+    if (offlineSweeper) {
+      clearInterval(offlineSweeper);
+      offlineSweeper = null;
+    }
+  });
 
   return app;
 }

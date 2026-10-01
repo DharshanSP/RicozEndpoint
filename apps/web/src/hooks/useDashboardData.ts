@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { DashboardTelemetryData } from '../types/dashboard';
 import { getDashboardData } from '../lib/api/dashboardApi';
 
@@ -11,45 +12,34 @@ interface UseDashboardDataResult {
 
 /**
  * Custom React hook for consuming dashboard telemetry data.
- * Manages fetching, caching, loading state, error handling, and manual refresh triggers.
+ * Backed by react-query so switching time ranges reuses cached responses and
+ * the board polls for fresh telemetry while it is mounted.
  *
  * @param timeRange - Selected telemetry timeframe ('24h' | '7d' | '30d')
  */
 export function useDashboardData(timeRange: '24h' | '7d' | '30d' = '24h'): UseDashboardDataResult {
-  const [data, setData] = useState<DashboardTelemetryData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery({
+    queryKey: ['dashboard', timeRange],
+    queryFn: async (): Promise<DashboardTelemetryData> => {
       const res = await getDashboardData(timeRange);
-      if (res.success && res.data) {
-        setData(res.data);
-      } else {
-        setError(res.error?.message || 'Failed to retrieve telemetry data from service.');
+      if (!res.success || !res.data) {
+        throw new Error(res.error?.message || 'Failed to retrieve telemetry data from service.');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected network error occurred.');
-    } finally {
-      setLoading(false);
-    }
-  }, [timeRange]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+      return res.data;
+    },
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    retry: 1,
+  });
 
   const refresh = useCallback(async () => {
-    await fetchData();
-  }, [fetchData]);
+    await query.refetch();
+  }, [query]);
 
   return {
-    data,
-    loading,
-    error,
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: query.isError ? (query.error as Error).message : null,
     refresh,
   };
 }

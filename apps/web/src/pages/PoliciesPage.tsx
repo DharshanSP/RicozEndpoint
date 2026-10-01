@@ -9,6 +9,8 @@ import {
   Link2,
   Search,
   X,
+  Copy,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDeviceList } from '../hooks/useDeviceQueries';
@@ -16,7 +18,9 @@ import {
   useAssignPolicy,
   useCreatePolicy,
   useDeletePolicy,
+  useDuplicatePolicy,
   usePoliciesList,
+  usePolicy,
   useUpdatePolicy,
 } from '../hooks/usePolicies';
 import type {
@@ -119,12 +123,15 @@ export function PoliciesPage() {
   const [assignPriority, setAssignPriority] = useState(100);
   const [removeMode, setRemoveMode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const listQuery = usePoliciesList({ page: 1, limit: 100, search, type: typeFilter, includeAssignments: true });
   const createMutation = useCreatePolicy();
   const updateMutation = useUpdatePolicy();
   const deleteMutation = useDeletePolicy();
   const assignMutation = useAssignPolicy();
+  const duplicateMutation = useDuplicatePolicy();
+  const detailQuery = usePolicy(detailId ?? undefined);
 
   const policies = useMemo(() => listQuery.data?.data?.items ?? [], [listQuery.data]);
   const total = listQuery.data?.data?.total ?? 0;
@@ -134,6 +141,10 @@ export function PoliciesPage() {
   const assignPolicy = useMemo(
     () => policies.find((p) => p.id === assignPolicyId) ?? null,
     [policies, assignPolicyId],
+  );
+  const detailPolicy = useMemo(
+    () => detailQuery.data ?? policies.find((p) => p.id === detailId) ?? null,
+    [detailQuery.data, policies, detailId],
   );
 
   // Reset assign selection whenever the target policy changes.
@@ -162,6 +173,22 @@ export function PoliciesPage() {
     setShowForm(false);
     setEditingId(null);
     setFormError(null);
+  };
+
+  const openDetail = (policy: PolicySummary) => {
+    setAssignPolicyId(null);
+    setDetailId(policy.id);
+  };
+
+  const handleDuplicate = (policy: PolicySummary) => {
+    duplicateMutation.mutate(
+      { id: policy.id },
+      {
+        onSuccess: (created) => {
+          if (created?.id) setDetailId(created.id);
+        },
+      },
+    );
   };
 
   const setSetting = (key: string, value: unknown) =>
@@ -579,6 +606,129 @@ export function PoliciesPage() {
         </Card>
       )}
 
+      {/* Policy detail panel */}
+      {detailPolicy && (
+        <Card className="border-slate-200 bg-white shadow-xs">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-slate-900 text-base flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-blue-600" />
+                  {detailPolicy.name}
+                </CardTitle>
+                <CardDescription>
+                  {detailPolicy.description?.trim() || 'No description provided.'}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {canManage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicate(detailPolicy)}
+                    disabled={duplicateMutation.isPending}
+                    title="Duplicate into an inactive draft"
+                  >
+                    <Copy className="w-3.5 h-3.5 mr-1.5" />
+                    {duplicateMutation.isPending ? 'Duplicating...' : 'Duplicate'}
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setDetailId(null)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {detailQuery.isLoading && (
+              <div className="space-y-2">
+                {[0, 1, 2].map((row) => (
+                  <div key={row} className="h-8 rounded-md bg-slate-100 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {detailQuery.isError && (
+              <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+                {(detailQuery.error as Error).message}
+              </div>
+            )}
+
+            {!detailQuery.isLoading && (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={policyTypeBadgeVariant(detailPolicy.type)} className="text-[10px] font-medium">
+                    {detailPolicy.type}
+                  </Badge>
+                  <Badge variant={detailPolicy.isActive ? 'success' : 'secondary'} className="text-[10px] font-medium">
+                    {detailPolicy.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px] font-mono border-slate-200 text-slate-600 bg-slate-50">
+                    {detailPolicy.assignmentsCount ?? 0} assignment
+                    {(detailPolicy.assignmentsCount ?? 0) === 1 ? '' : 's'}
+                  </Badge>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    Created {new Date(detailPolicy.createdAt).toLocaleString()}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    Updated {new Date(detailPolicy.updatedAt).toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-700 block">Policy settings</span>
+                  <pre className="text-[11px] leading-relaxed font-mono bg-slate-950 text-slate-100 rounded-lg p-3 overflow-x-auto max-h-64">
+                    {JSON.stringify(detailPolicy.settings ?? {}, null, 2)}
+                  </pre>
+                </div>
+
+                {detailPolicy.assignments && detailPolicy.assignments.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-700 block">Assigned targets</span>
+                    <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                      {detailPolicy.assignments.map((assignment) => (
+                        <div key={assignment.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                          <span className="text-slate-800 font-medium">
+                            {assignment.device?.deviceName ?? assignment.group?.name ?? 'Unknown target'}
+                          </span>
+                          <span className="font-mono text-slate-500">
+                            priority {assignment.priority}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setDetailId(null)}>
+                    Close
+                  </Button>
+                  {canManage && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        openEdit(detailPolicy);
+                        setDetailId(null);
+                      }}
+                    >
+                      <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                      Edit Policy
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {duplicateMutation.isError && (
+              <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+                {(duplicateMutation.error as Error).message}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
@@ -683,6 +833,15 @@ export function PoliciesPage() {
                             variant="ghost"
                             size="sm"
                             className="text-slate-500 hover:text-blue-600"
+                            onClick={() => openDetail(policy)}
+                            title="View details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-slate-500 hover:text-blue-600"
                             onClick={() => {
                               setAssignPolicyId(policy.id);
                             }}
@@ -691,6 +850,18 @@ export function PoliciesPage() {
                           >
                             <Link2 className="w-3.5 h-3.5" />
                           </Button>
+                          {canManage && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-slate-500 hover:text-blue-600"
+                              onClick={() => handleDuplicate(policy)}
+                              title="Duplicate"
+                              disabled={duplicateMutation.isPending}
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           {canManage && (
                             <Button
                               variant="ghost"

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { getSystemHealth } from '../lib/api/dashboardApi';
 import {
   Laptop,
   CheckCircle2,
@@ -23,11 +25,24 @@ import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
 import { Link } from 'react-router-dom';
 
+/** Safe percentage: never renders NaN when the denominator is zero. */
+function pct(part: number, total: number): number {
+  if (!total || total <= 0) return 0;
+  return Math.round((part / total) * 100);
+}
+
 export function DashboardPage() {
   const { user, hasRole } = useAuth();
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('24h');
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const { data: telemetryData, loading, error, refresh } = useDashboardData(timeRange);
+
+  const healthQuery = useQuery({
+    queryKey: ['system-health'],
+    queryFn: getSystemHealth,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
 
   const handleRefresh = async () => {
     await refresh();
@@ -132,7 +147,8 @@ export function DashboardPage() {
           <div>
             <span className="font-semibold text-slate-900">Telemetry Data Mode: </span>
             <span className="text-slate-600">
-              Visualizing endpoint structure & preview telemetry stream. Live agent daemon streaming pipeline is staged.
+              Live counters computed from enrolled endpoints, agent heartbeats, alerts and compliance results. The
+              board refreshes automatically every 30 seconds.
             </span>
           </div>
         </div>
@@ -167,71 +183,79 @@ export function DashboardPage() {
         {/* Online Devices */}
         <Link to="/devices?status=ONLINE" className="block group">
           <Card className="border-slate-200 bg-white shadow-xs group-hover:border-emerald-300 group-hover:shadow-sm transition-all h-full">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-emerald-700 transition-colors">Online / Active</span>
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-                </span>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-bold text-emerald-600 tracking-tight">
-                  {telemetryData.onlineDevices}
-                </span>
-                <span className="text-[11px] text-emerald-700 font-medium">
-                  {((telemetryData.onlineDevices / telemetryData.totalDevices) * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Streaming Heartbeats</span>
-                <span className="text-emerald-700 font-semibold">Active</span>
-              </div>
-            </CardContent>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Online / Active</span>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-bold text-emerald-600 tracking-tight">
+                {telemetryData.onlineDevices}
+              </span>
+              <span className="text-[11px] text-emerald-700 font-medium">
+                {pct(telemetryData.onlineDevices, telemetryData.totalDevices)}%
+              </span>
+            </div>
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">Streaming Heartbeats</span>
+              <span className="text-emerald-700 font-semibold">Active</span>
+            </div>
+          </CardContent>
           </Card>
         </Link>
 
         {/* Offline Devices */}
         <Link to="/devices?status=OFFLINE" className="block group">
           <Card className="border-slate-200 bg-white shadow-xs group-hover:border-amber-300 group-hover:shadow-sm transition-all h-full">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-amber-700 transition-colors">Offline / Inactive</span>
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-bold text-amber-600 tracking-tight">
-                  {telemetryData.offlineDevices}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  +1 Pending
-                </span>
-              </div>
-              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Threshold: &gt; 5m</span>
-                <span className="text-amber-700 font-semibold">Review Needed</span>
-              </div>
-            </CardContent>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Offline / Inactive</span>
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-bold text-amber-600 tracking-tight">
+                {telemetryData.offlineDevices}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {telemetryData.pendingEnrollment} Pending
+              </span>
+            </div>
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">Threshold: &gt; 5m</span>
+              <span className="text-amber-700 font-semibold">Review Needed</span>
+            </div>
+          </CardContent>
           </Card>
         </Link>
 
         {/* Fleet Compliance */}
         <Link to="/compliance" className="block group">
           <Card className="border-slate-200 bg-white shadow-xs group-hover:border-blue-300 group-hover:shadow-sm transition-all h-full">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-blue-600 transition-colors">Compliance Rate</span>
-                <CheckSquare className="w-4 h-4 text-blue-600" />
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.complianceScore}%</span>
-                <span className="text-[11px] text-emerald-700 font-medium">Target &gt;90%</span>
-              </div>
-              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Security Baseline</span>
-                <span className="text-emerald-700 font-semibold">Passing</span>
-              </div>
-            </CardContent>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Compliance Rate</span>
+              <CheckSquare className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.complianceScore}%</span>
+              <span className="text-[11px] text-slate-500 font-medium">
+                {telemetryData.compliantDevices}/{telemetryData.compliantDevices + telemetryData.nonCompliantDevices} evaluated
+              </span>
+            </div>
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">Security Baseline</span>
+              <span
+                className={
+                  telemetryData.complianceScore >= 90 ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'
+                }
+              >
+                {telemetryData.complianceScore >= 90 ? 'Passing' : 'Below target'}
+              </span>
+            </div>
+          </CardContent>
           </Card>
         </Link>
 
@@ -283,17 +307,17 @@ export function DashboardPage() {
             <div className="space-y-2">
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
                 <div
-                  style={{ width: `${(telemetryData.onlineDevices / telemetryData.totalDevices) * 100}%` }}
+                  style={{ width: `${pct(telemetryData.onlineDevices, telemetryData.totalDevices)}%` }}
                   className="bg-emerald-500"
                   title="Online"
                 />
                 <div
-                  style={{ width: `${(telemetryData.offlineDevices / telemetryData.totalDevices) * 100}%` }}
+                  style={{ width: `${pct(telemetryData.offlineDevices, telemetryData.totalDevices)}%` }}
                   className="bg-amber-500"
                   title="Offline"
                 />
                 <div
-                  style={{ width: `${(telemetryData.pendingEnrollment / telemetryData.totalDevices) * 100}%` }}
+                  style={{ width: `${pct(telemetryData.pendingEnrollment, telemetryData.totalDevices)}%` }}
                   className="bg-blue-500"
                   title="Pending Enrollment"
                 />
@@ -357,7 +381,7 @@ export function DashboardPage() {
           <CardContent className="p-5 pt-4 space-y-3">
             <div className="space-y-2">
               {telemetryData.complianceControls.map((control) => {
-                const passRate = ((control.compliantCount / control.total) * 100).toFixed(0);
+                const passRate = control.total > 0 ? ((control.compliantCount / control.total) * 100).toFixed(0) : '0';
                 const isFullyCompliant = control.status === 'Compliant';
 
                 return (
@@ -518,24 +542,58 @@ export function DashboardPage() {
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between text-slate-700">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        healthQuery.isLoading
+                          ? 'bg-slate-400'
+                          : healthQuery.data?.status === 'ok'
+                          ? 'bg-emerald-500'
+                          : 'bg-rose-500'
+                      }`}
+                    />
+                    <span>API Service</span>
+                  </span>
+                  <span
+                    className={`text-[11px] font-mono font-medium ${
+                      healthQuery.data?.status === 'ok' ? 'text-emerald-700' : 'text-rose-700'
+                    }`}
+                  >
+                    {healthQuery.isLoading
+                      ? 'Checking…'
+                      : healthQuery.data?.status === 'ok'
+                      ? `Healthy v${healthQuery.data.version ?? '0.1.0'}`
+                      : 'Unavailable'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-700">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        healthQuery.data?.database === 'up' ? 'bg-emerald-500' : 'bg-rose-500'
+                      }`}
+                    />
                     <span>Database Engine</span>
                   </span>
-                  <span className="text-[11px] font-mono text-emerald-700 font-medium">PostgreSQL Ready</span>
+                  <span
+                    className={`text-[11px] font-mono font-medium ${
+                      healthQuery.data?.database === 'up' ? 'text-emerald-700' : 'text-rose-700'
+                    }`}
+                  >
+                    {healthQuery.data?.database === 'up' ? 'PostgreSQL Ready' : 'Unreachable'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-slate-700">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span>Authentication Service</span>
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        telemetryData.onlineDevices > 0 ? 'bg-blue-500' : 'bg-slate-400'
+                      }`}
+                    />
+                    <span>Connected Agents</span>
                   </span>
-                  <span className="text-[11px] font-mono text-emerald-700 font-medium">JWT / RBAC Active</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-700">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    <span>Agent Telemetry Daemon</span>
+                  <span className="text-[11px] font-mono text-blue-700 font-medium">
+                    {telemetryData.onlineDevices} / {telemetryData.totalDevices}
                   </span>
-                  <span className="text-[11px] font-mono text-blue-700 font-medium">Pipeline Staged</span>
                 </div>
               </div>
             </div>

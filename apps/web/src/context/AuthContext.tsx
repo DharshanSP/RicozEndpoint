@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode, type FC } from 'react';
-import { fetchApi } from '../lib/api';
+import { fetchApi, UNAUTHORIZED_EVENT } from '../lib/api';
 
 export type UserRole = 'SUPER_ADMIN' | 'ORG_ADMIN' | 'IT_ADMIN' | 'OPERATOR' | 'VIEWER';
 
@@ -46,6 +46,17 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Any 401 from the API clears the session so ProtectedRoute redirects to /login.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      localStorage.removeItem(TOKEN_KEY);
+      setToken(null);
+      setUser(null);
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
 
   // Fetch current user details on startup if token exists
   useEffect(() => {

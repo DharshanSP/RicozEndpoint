@@ -54,8 +54,14 @@ export async function auditLogsRoutes(app: FastifyInstance): Promise<void> {
         ...(action ? { action: { contains: action, mode: 'insensitive' } } : {}),
         ...(resource ? { resource: { contains: resource, mode: 'insensitive' } } : {}),
         ...(actorId ? { actorId } : {}),
-        ...(from ? { timestamp: { gte: from } } : {}),
-        ...(to ? { timestamp: { lte: to } } : {}),
+        ...(from || to
+          ? {
+              timestamp: {
+                ...(from ? { gte: new Date(from) } : {}),
+                ...(to ? { lte: new Date(to) } : {}),
+              },
+            }
+          : {}),
         ...(search
           ? {
               OR: [

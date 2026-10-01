@@ -92,6 +92,8 @@ async function main() {
       agentVersion: '0.1.0',
       status: 'ONLINE',
       lastSeenAt: new Date(),
+      firewallEnabled: true,
+      antivirusEnabled: true,
     },
     {
       deviceName: 'DESKTOP-WKS-002',
@@ -106,6 +108,8 @@ async function main() {
       agentVersion: '0.1.0',
       status: 'ONLINE',
       lastSeenAt: new Date(Date.now() - 60_000),
+      firewallEnabled: true,
+      antivirusEnabled: true,
     },
     {
       deviceName: 'LAPTOP-SALES-003',
@@ -120,6 +124,9 @@ async function main() {
       agentVersion: '0.1.0',
       status: 'OFFLINE',
       lastSeenAt: new Date(Date.now() - 3_600_000),
+      // Intentionally disabled so the baseline policy reports a violation.
+      firewallEnabled: false,
+      antivirusEnabled: true,
     },
     {
       deviceName: 'SRV-APPS-004',
@@ -134,6 +141,9 @@ async function main() {
       agentVersion: '0.1.0',
       status: 'ONLINE',
       lastSeenAt: new Date(Date.now() - 120_000),
+      firewallEnabled: true,
+      // Intentionally missing AV so the baseline policy reports a violation.
+      antivirusEnabled: false,
     },
     {
       deviceName: 'DESKTOP-HR-005',
@@ -148,6 +158,8 @@ async function main() {
       agentVersion: '0.1.0',
       status: 'PENDING',
       lastSeenAt: null,
+      firewallEnabled: true,
+      antivirusEnabled: true,
     },
   ];
 
@@ -205,12 +217,12 @@ async function main() {
 
   console.log(`Seeded ${demoDevices.length} demo devices with hardware and software`);
 
-  const existingPolicy = await prisma.policy.findFirst({
+  let baselinePolicy = await prisma.policy.findFirst({
     where: { organizationId: organization.id, name: 'Corporate Security Baseline' },
   });
 
-  if (!existingPolicy) {
-    await prisma.policy.create({
+  if (!baselinePolicy) {
+    baselinePolicy = await prisma.policy.create({
       data: {
         organizationId: organization.id,
         name: 'Corporate Security Baseline',
@@ -228,6 +240,63 @@ async function main() {
   }
 
   console.log('Seeded demo policy: Corporate Security Baseline');
+
+  // Assign the baseline to every demo device so compliance evaluation, the
+  // compliance overview page and device detail views all have real targets.
+  let assignmentCount = 0;
+  for (const deviceData of demoDevices) {
+    const device = await prisma.device.findUnique({
+      where: {
+        organizationId_serialNumber: {
+          organizationId: organization.id,
+          serialNumber: deviceData.serialNumber,
+        },
+      },
+      select: { id: true },
+    });
+    if (!device) continue;
+
+    const existingAssignment = await prisma.policyAssignment.findFirst({
+      where: { policyId: baselinePolicy.id, deviceId: device.id, groupId: null },
+      select: { id: true },
+    });
+    if (!existingAssignment) {
+      await prisma.policyAssignment.create({
+        data: { policyId: baselinePolicy.id, deviceId: device.id, priority: 100 },
+      });
+      assignmentCount += 1;
+    }
+  }
+  console.log(`Assigned baseline policy to ${assignmentCount} device(s)`);
+
+  // A demo alert so the alert queue is populated on a fresh install. The dedup
+  // key matches the offline sweeper's, preventing duplicates.
+  const offlineDemo = await prisma.device.findUnique({
+    where: {
+      organizationId_serialNumber: {
+        organizationId: organization.id,
+        serialNumber: 'SN-DEMO-003',
+      },
+    },
+    select: { id: true, hostname: true },
+  });
+  const alertCount = await prisma.alert.count({ where: { organizationId: organization.id } });
+  if (offlineDemo && alertCount === 0) {
+    await prisma.alert.create({
+      data: {
+        organizationId: organization.id,
+        deviceId: offlineDemo.id,
+        dedupKey: `offline:${offlineDemo.id}`,
+        type: 'DEVICE_OFFLINE',
+        severity: 'WARNING',
+        title: `Device offline: ${offlineDemo.hostname}`,
+        message:
+          'No agent heartbeat received in the last 5 minutes. Verify the endpoint is powered on and the agent service is running.',
+        status: 'OPEN',
+      },
+    });
+    console.log('Seeded demo alert: device offline');
+  }
 
   const auditLogCount = await prisma.auditLog.count({
     where: { organizationId: organization.id, actorId: adminUser.id },

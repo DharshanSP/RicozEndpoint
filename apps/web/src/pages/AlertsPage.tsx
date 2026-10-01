@@ -1,15 +1,33 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, RefreshCw, Search, CheckCircle2, Server } from 'lucide-react';
+import {
+  Bell,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Search,
+  Server,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useAlertsList, useResolveAlert } from '../hooks/useAlerts';
-import type { AlertItem, AlertSeverity, AlertStatus } from '../types/alert';
+import {
+  useAcknowledgeAlert,
+  useAlertsList,
+  useBatchResolveAlerts,
+  useResolveAlert,
+} from '../hooks/useAlerts';
+import type { AlertItem, AlertSeverity, AlertStatus, AlertType } from '../types/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { formatDateTime, formatRelativeTime } from '../lib/format';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple';
+
+type StatusFilter = 'UNRESOLVED' | AlertStatus | 'ALL';
+
+const PAGE_SIZE = 20;
 
 const inputClass =
   'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
@@ -28,31 +46,58 @@ function severityBadgeVariant(severity: string): BadgeVariant {
 }
 
 function statusBadgeVariant(status: string): BadgeVariant {
-  return status === 'RESOLVED' ? 'success' : 'destructive';
+  if (status === 'RESOLVED') return 'success';
+  if (status === 'ACKNOWLEDGED') return 'warning';
+  return 'destructive';
 }
 
 export function AlertsPage() {
   const { hasRole } = useAuth();
   const canResolve = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const canAcknowledge = canResolve || hasRole(['OPERATOR']);
 
-  const [statusFilter, setStatusFilter] = useState<AlertStatus | 'ALL'>('OPEN');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('UNRESOLVED');
   const [severityFilter, setSeverityFilter] = useState<AlertSeverity | 'ALL'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<AlertType | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [resolveTarget, setResolveTarget] = useState<string | null>(null);
   const [resolveNote, setResolveNote] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkNote, setBulkNote] = useState('');
 
   const listQuery = useAlertsList({
-    page: 1,
-    limit: 50,
-    status: statusFilter,
+    page,
+    limit: PAGE_SIZE,
+    status: statusFilter === 'UNRESOLVED' ? undefined : statusFilter,
+    unresolved: statusFilter === 'UNRESOLVED' ? true : undefined,
     severity: severityFilter,
+    type: typeFilter,
     search: search || undefined,
   });
   const resolveMutation = useResolveAlert();
+  const acknowledgeMutation = useAcknowledgeAlert();
+  const bulkMutation = useBatchResolveAlerts();
 
-  const alerts = listQuery.data?.data?.items ?? [];
+  const alerts = useMemo(() => listQuery.data?.data?.items ?? [], [listQuery.data]);
   const total = listQuery.data?.data?.total ?? 0;
-  const openCount = alerts.filter((a) => a.status === 'OPEN').length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const allSelected = alerts.length > 0 && alerts.every((alert) => selected.has(alert.id));
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(alerts.map((alert) => alert.id)));
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleResolve = (id: string) => {
     resolveMutation.mutate(
@@ -65,6 +110,49 @@ export function AlertsPage() {
       },
     );
   };
+
+  const handleAcknowledge = (id: string) => {
+    acknowledgeMutation.mutate(id);
+  };
+
+  const handleBulkResolve = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    bulkMutation.mutate(
+      { ids, note: bulkNote.trim() || undefined },
+      {
+        onSuccess: () => {
+          setBulkOpen(false);
+          setBulkNote('');
+          setSelected(new Set());
+        },
+      },
+    );
+  };
+
+  const resetFilters = () => {
+    setStatusFilter('UNRESOLVED');
+    setSeverityFilter('ALL');
+    setTypeFilter('ALL');
+    setSearch('');
+    setPage(1);
+    setSelected(new Set());
+  };
+
+  const counts = useMemo(
+    () => ({
+      unresolved: alerts.filter((a) => a.status !== 'RESOLVED').length,
+      critical: alerts.filter((a) => a.severity === 'CRITICAL' && a.status !== 'RESOLVED').length,
+      acknowledged: alerts.filter((a) => a.status === 'ACKNOWLEDGED').length,
+    }),
+    [alerts],
+  );
+
+  const actionError =
+    (resolveMutation.isError && (resolveMutation.error as Error).message) ||
+    (acknowledgeMutation.isError && (acknowledgeMutation.error as Error).message) ||
+    (bulkMutation.isError && (bulkMutation.error as Error).message) ||
+    '';
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -97,29 +185,36 @@ export function AlertsPage() {
       </div>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Open Alerts</span>
-            <div className="text-2xl font-bold text-rose-600">{openCount}</div>
-            <span className="text-[11px] text-slate-500">On current page</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unresolved (page)</span>
+            <div className="text-2xl font-bold text-rose-600">{counts.unresolved}</div>
+            <span className="text-[11px] text-slate-500">Current page</span>
           </CardContent>
         </Card>
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Total Matching</span>
-            <div className="text-2xl font-bold text-slate-900">{total}</div>
-            <span className="text-[11px] text-slate-500">After filters</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Critical (page)</span>
+            <div className="text-2xl font-bold text-amber-600">{counts.critical}</div>
+            <span className="text-[11px] text-slate-500">Still open</span>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200 bg-white shadow-xs">
+          <CardContent className="p-4 space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Acknowledged (page)</span>
+            <div className="text-2xl font-bold text-slate-900">{counts.acknowledged}</div>
+            <span className="text-[11px] text-slate-500">Triaged, not resolved</span>
           </CardContent>
         </Card>
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Triage Access</span>
             <div className="text-sm font-bold text-slate-900">
-              {canResolve ? 'Resolve enabled' : 'Read only'}
+              {canResolve ? 'Resolve enabled' : canAcknowledge ? 'Acknowledge only' : 'Read only'}
             </div>
             <span className="text-[11px] text-slate-500">
-              {canResolve ? 'IT_ADMIN or above' : 'Requires IT_ADMIN role'}
+              {canResolve ? 'IT_ADMIN or above' : canAcknowledge ? 'OPERATOR or above' : 'Requires OPERATOR role'}
             </span>
           </CardContent>
         </Card>
@@ -133,39 +228,104 @@ export function AlertsPage() {
             className={`${inputClass} pl-9 h-9`}
             placeholder="Search alert titles..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
           />
         </div>
         <select
           className={`${inputClass} w-auto h-9`}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as AlertStatus | 'ALL')}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as StatusFilter);
+            setPage(1);
+            setSelected(new Set());
+          }}
         >
+          <option value="UNRESOLVED">Unresolved</option>
           <option value="ALL">All statuses</option>
           <option value="OPEN">Open</option>
+          <option value="ACKNOWLEDGED">Acknowledged</option>
           <option value="RESOLVED">Resolved</option>
         </select>
         <select
           className={`${inputClass} w-auto h-9`}
           value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | 'ALL')}
+          onChange={(e) => {
+            setSeverityFilter(e.target.value as AlertSeverity | 'ALL');
+            setPage(1);
+          }}
         >
           <option value="ALL">All severities</option>
           <option value="CRITICAL">Critical</option>
           <option value="WARNING">Warning</option>
           <option value="INFO">Info</option>
         </select>
+        <select
+          className={`${inputClass} w-auto`}
+          value={typeFilter}
+          onChange={(e) => {
+            setTypeFilter(e.target.value as AlertType | 'ALL');
+            setPage(1);
+          }}
+        >
+          <option value="ALL">All types</option>
+          <option value="COMPLIANCE_VIOLATION">Compliance violation</option>
+          <option value="DEVICE_OFFLINE">Device offline</option>
+          <option value="COMMAND_FAILED">Command failed</option>
+          <option value="SECURITY">Security</option>
+          <option value="POLICY">Policy</option>
+          <option value="INFO">Info</option>
+        </select>
+        {(statusFilter !== 'UNRESOLVED' ||
+          severityFilter !== 'ALL' ||
+          typeFilter !== 'ALL' ||
+          search !== '') && (
+          <Button variant="ghost" size="sm" onClick={resetFilters}>
+            Clear filters
+          </Button>
+        )}
+        {canResolve && selected.size > 0 && (
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => setBulkOpen(true)}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+            Resolve selected ({selected.size})
+          </Button>
+        )}
       </div>
+
+      {actionError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{actionError}</div>
+      )}
 
       {/* List */}
       <Card className="border-slate-200 bg-white shadow-xs">
         <CardHeader className="pb-3">
           <CardTitle className="text-slate-900 text-base">Alert Queue</CardTitle>
           <CardDescription>
-            Compliance violations are raised automatically during heartbeat evaluation.
+            Acknowledge alerts to mark them triaged; resolve them once remediation is complete.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {alerts.length > 0 && (
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                checked={allSelected}
+                onChange={toggleAll}
+                aria-label="Select all alerts on this page"
+              />
+              <span className="text-[11px] text-slate-500">
+                {selected.size > 0 ? `${selected.size} selected` : 'Select all on page'}
+              </span>
+            </div>
+          )}
+
           {listQuery.isLoading && (
             <div className="space-y-3" data-testid="alerts-loading">
               {[0, 1, 2].map((row) => (
@@ -196,8 +356,12 @@ export function AlertsPage() {
                 <AlertRow
                   key={alert.id}
                   alert={alert}
+                  selected={selected.has(alert.id)}
+                  onToggle={() => toggleOne(alert.id)}
                   canResolve={canResolve}
+                  canAcknowledge={canAcknowledge}
                   resolving={resolveMutation.isPending && resolveTarget === alert.id}
+                  acknowledging={acknowledgeMutation.isPending && acknowledgeMutation.variables === alert.id}
                   expanding={resolveTarget === alert.id}
                   note={resolveNote}
                   onNoteChange={setResolveNote}
@@ -210,16 +374,74 @@ export function AlertsPage() {
                     setResolveNote('');
                   }}
                   onConfirmResolve={() => handleResolve(alert.id)}
+                  onAcknowledge={() => handleAcknowledge(alert.id)}
                 />
               ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {total > PAGE_SIZE && (
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-2">
+              <span className="text-[11px] text-slate-500">
+                Page {page} of {totalPages} · {total} alerts
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1 || listQuery.isFetching}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages || listQuery.isFetching}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {resolveMutation.isError && (
-        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
-          {(resolveMutation.error as Error).message}
+      {/* Bulk resolve modal */}
+      {bulkOpen && canResolve && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setBulkOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-slate-900">
+              Resolve {selected.size} alert{selected.size === 1 ? '' : 's'}
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Resolved alerts are removed from the unresolved queue and recorded with your account.
+            </p>
+            <label className="block text-xs font-medium text-slate-600 mt-4">Resolution note (optional)</label>
+            <textarea
+              className={inputClass}
+              rows={3}
+              placeholder="What action was taken?"
+              value={bulkNote}
+              onChange={(e) => setBulkNote(e.target.value)}
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" size="sm" onClick={() => setBulkOpen(false)} disabled={bulkMutation.isPending}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleBulkResolve} disabled={bulkMutation.isPending}>
+                {bulkMutation.isPending ? 'Resolving...' : 'Confirm Resolve'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -228,31 +450,52 @@ export function AlertsPage() {
 
 function AlertRow({
   alert,
+  selected,
+  onToggle,
   canResolve,
+  canAcknowledge,
   resolving,
+  acknowledging,
   expanding,
   note,
   onNoteChange,
   onStartResolve,
   onCancelResolve,
   onConfirmResolve,
+  onAcknowledge,
 }: {
   alert: AlertItem;
+  selected: boolean;
+  onToggle: () => void;
   canResolve: boolean;
+  canAcknowledge: boolean;
   resolving: boolean;
+  acknowledging: boolean;
   expanding: boolean;
   note: string;
   onNoteChange: (value: string) => void;
   onStartResolve: () => void;
   onCancelResolve: () => void;
   onConfirmResolve: () => void;
+  onAcknowledge: () => void;
 }) {
   const isOpen = alert.status === 'OPEN';
+  const isAcknowledged = alert.status === 'ACKNOWLEDGED';
 
   return (
     <div className="py-4 first:pt-1 last:pb-1">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
-        <div className="min-w-0 space-y-1.5">
+        {canResolve && (
+          <input
+            type="checkbox"
+            className="mt-1 h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select alert ${alert.title}`}
+          />
+        )}
+
+        <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant={severityBadgeVariant(String(alert.severity))} className="text-[10px] uppercase font-semibold tracking-wider">
               {alert.severity}
@@ -279,13 +522,28 @@ function AlertRow({
             )}
             <span>•</span>
             <span title={formatDateTime(alert.createdAt)}>{formatRelativeTime(alert.createdAt)}</span>
+            {alert.acknowledgedAt && (
+              <>
+                <span>•</span>
+                <span className="text-amber-600">
+                  Acknowledged {formatRelativeTime(alert.acknowledgedAt)}
+                  {alert.acknowledgedBy ? ` by ${alert.acknowledgedBy}` : ''}
+                </span>
+              </>
+            )}
             {alert.resolvedAt && (
               <>
                 <span>•</span>
-                <span className="text-emerald-600">Resolved {formatRelativeTime(alert.resolvedAt)}</span>
+                <span className="text-emerald-600">
+                  Resolved {formatRelativeTime(alert.resolvedAt)}
+                  {alert.resolvedBy ? ` by ${alert.resolvedBy}` : ''}
+                </span>
               </>
             )}
           </div>
+          {alert.resolvedNote && (
+            <p className="text-[11px] text-slate-500 italic">Note: {alert.resolvedNote}</p>
+          )}
         </div>
 
         <div className="shrink-0 flex items-center gap-2 self-end sm:self-auto">
@@ -296,7 +554,19 @@ function AlertRow({
               </Button>
             </Link>
           )}
-          {isOpen && canResolve && !expanding && (
+          {isOpen && canAcknowledge && !expanding && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[11px] border-slate-200 bg-white text-amber-700 hover:bg-amber-50"
+              onClick={onAcknowledge}
+              disabled={acknowledging}
+            >
+              <Check className="w-3.5 h-3.5 mr-1" />
+              {acknowledging ? 'Acknowledging...' : 'Acknowledge'}
+            </Button>
+          )}
+          {(isOpen || isAcknowledged) && canResolve && !expanding && (
             <Button
               variant="outline"
               size="sm"

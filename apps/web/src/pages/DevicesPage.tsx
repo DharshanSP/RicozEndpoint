@@ -35,7 +35,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
-import { fetchApi } from '../lib/api';
+import { fetchApi, apiBaseUrl } from '../lib/api';
 
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
@@ -95,18 +95,48 @@ function getStatusBadge(devStatus: string) {
   );
 }
 
+function getComplianceBadge(complianceStatus?: string) {
+  const s = (complianceStatus || '').toUpperCase();
+  if (s === 'NON_COMPLIANT') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-rose-200 bg-rose-50 text-rose-700">
+        <ShieldAlert className="w-3 h-3 text-rose-600" />
+        Non-Compliant
+      </span>
+    );
+  }
+  if (s === 'COMPLIANT') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-emerald-200 bg-emerald-50 text-emerald-700">
+        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+        Compliant
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-slate-200 bg-slate-50 text-slate-600">
+      <Clock className="w-3 h-3 text-slate-500" />
+      Not Evaluated
+    </span>
+  );
+}
+
 export function DevicesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { hasRole } = useAuth();
   const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const deleteDevice = useDeleteDevice();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deletePassword, setDeletePassword] = useState<string>('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Filter & pagination state
   const paramStatus = searchParams.get('status') || 'ALL';
   const paramSearch = searchParams.get('search') || '';
   const [search, setSearch] = useState<string>(paramSearch);
   const [status, setStatus] = useState<string>(paramStatus);
+  const [compliance, setCompliance] = useState<string>('ALL');
   const [os, setOs] = useState<string>('ALL');
   const [manufacturer, setManufacturer] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
@@ -172,8 +202,33 @@ export function DevicesPage() {
   };
 
   const curlCommand = generatedToken
-    ? `curl -X POST http://localhost:3001/api/enroll -H \"Content-Type: application/json\" -d '{\"enrollmentToken\":\"${generatedToken}\",\"hostname\":\"my-device\",\"serialNumber\":\"SN-001\",\"os\":\"Windows\",\"osVersion\":\"11\",\"architecture\":\"x64\",\"agentVersion\":\"1.0.0\"}'`
+    ? `curl -X POST ${apiBaseUrl}/enroll -H "Content-Type: application/json" -d '{"enrollmentToken":"${generatedToken}","hostname":"my-device","serialNumber":"SN-001","os":"Windows","osVersion":"11","architecture":"x64","agentVersion":"1.0.0"}'`
     : '';
+
+  const openDeleteConfirm = (device: { id: string; deviceName?: string; hostname?: string }) => {
+    setDeleteTarget({ id: device.id, name: device.deviceName || device.hostname || device.id });
+    setDeletePassword('');
+    setDeleteError(null);
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeleteTarget(null);
+    setDeletePassword('');
+    setDeleteError(null);
+    deleteDevice.reset();
+  };
+
+  const confirmDeleteDevice = async () => {
+    if (!deleteTarget || !deletePassword.trim()) return;
+    setDeleteError(null);
+    try {
+      await deleteDevice.mutateAsync({ id: deleteTarget.id, password: deletePassword.trim() });
+      closeDeleteConfirm();
+      refetch();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete device');
+    }
+  };
 
   const handleManualSubmit = async () => {
     if (!manualForm.hostname || !manualForm.serialNumber || !manualForm.osVersion) {
@@ -211,12 +266,13 @@ export function DevicesPage() {
       limit: pageSize,
       search: search.trim() || undefined,
       status: status !== 'ALL' ? (status as DeviceStatus) : undefined,
+      complianceStatus: compliance !== 'ALL' ? compliance : undefined,
       os: os !== 'ALL' ? os : undefined,
       manufacturer: manufacturer !== 'ALL' ? manufacturer : undefined,
       sortBy,
       sortOrder,
     }),
-    [page, pageSize, search, status, os, manufacturer, sortBy, sortOrder]
+    [page, pageSize, search, status, compliance, os, manufacturer, sortBy, sortOrder]
   );
 
   const { data, isLoading, isFetching, error, refetch } = useDeviceList(query);
@@ -257,7 +313,11 @@ export function DevicesPage() {
   }, [pagination.total, rawDevices, status]);
 
   const hasActiveFilters =
-    search.trim() !== '' || status !== 'ALL' || os !== 'ALL' || manufacturer !== 'ALL';
+    search.trim() !== '' ||
+    status !== 'ALL' ||
+    compliance !== 'ALL' ||
+    os !== 'ALL' ||
+    manufacturer !== 'ALL';
 
   const manufacturerOptions = useMemo(
     () => ['ALL', 'Dell Inc.', 'Apple', 'Lenovo', 'HP Inc.', 'Framework', 'Microsoft Corporation'],
@@ -295,6 +355,11 @@ export function DevicesPage() {
     setPage(1);
   };
 
+  const handleComplianceChange = (val: string) => {
+    setCompliance(val);
+    setPage(1);
+  };
+
   const handleOsChange = (val: string) => {
     setOs(val);
     setPage(1);
@@ -313,6 +378,7 @@ const handlePageSizeChange = (val: number) => {
   const clearFilters = () => {
     setSearch('');
     setStatus('ALL');
+    setCompliance('ALL');
     setOs('ALL');
     setManufacturer('ALL');
     setPage(1);
@@ -487,7 +553,21 @@ const handlePageSizeChange = (val: number) => {
                   <option value="ONLINE">Online</option>
                   <option value="OFFLINE">Offline</option>
                   <option value="PENDING">Pending</option>
+                </select>
+              </div>
+
+              {/* Compliance Filter Dropdown */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 text-xs">
+                <span className="text-slate-500 text-[11px] font-medium">Compliance:</span>
+                <select
+                  value={compliance}
+                  onChange={(e) => handleComplianceChange(e.target.value)}
+                  className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
+                >
+                  <option value="ALL">All</option>
+                  <option value="COMPLIANT">Compliant</option>
                   <option value="NON_COMPLIANT">Non-Compliant</option>
+                  <option value="UNTESTED">Not Evaluated</option>
                 </select>
               </div>
 
@@ -748,6 +828,11 @@ const handlePageSizeChange = (val: number) => {
                     </div>
                   </th>
 
+                  {/* Compliance Header */}
+                  <th className="py-3 px-4 hidden md:table-cell">
+                    <span>Compliance</span>
+                  </th>
+
                   {/* IP Address Header */}
                   <th className="py-3 px-4 hidden md:table-cell">
                     <span>IP Address</span>
@@ -825,6 +910,11 @@ const handlePageSizeChange = (val: number) => {
                         {getStatusBadge(device.status)}
                       </td>
 
+                      {/* Compliance */}
+                      <td className="py-3 px-4 hidden md:table-cell">
+                        {getComplianceBadge(device.complianceStatus)}
+                      </td>
+
                       {/* IP Address */}
                       <td className="py-3 px-4 hidden md:table-cell">
                         <span className="font-mono text-[11px] text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-200">
@@ -872,16 +962,7 @@ const handlePageSizeChange = (val: number) => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={async () => {
-                  if (window.confirm('Are you sure you want to delete this device?')) {
-                    const pwd = prompt('Enter admin password to confirm deletion:', '');
-                    if (pwd !== null && pwd.trim() !== '') {
-                      await deleteDevice.mutateAsync({ id: device.id, password: pwd });
-                      alert('Device deletion initiated.');
-                      refetch();
-                    }
-                  }
-                }}
+                onClick={() => openDeleteConfirm(device)}
                 disabled={deleteDevice.isPending}
                 className="h-7 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1"
                 title="Delete Device"
@@ -973,6 +1054,70 @@ const handlePageSizeChange = (val: number) => {
               >
                 <span>Next</span>
                 <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Device Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-rose-50">
+              <div className="p-2 rounded-xl bg-rose-600 text-white shadow">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete Device</h3>
+                <p className="text-xs text-slate-500">This action requires password confirmation</p>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-1.5">
+                <p className="text-xs text-rose-700 font-semibold">
+                  Permanently delete &quot;{deleteTarget.name}&quot;?
+                </p>
+                <p className="text-xs text-rose-600">
+                  This removes the device with all of its hardware/software inventory, compliance
+                  results, commands and audit data. This action is irreversible.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Admin password</label>
+                <input
+                  type="password"
+                  autoFocus
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void confirmDeleteDevice();
+                  }}
+                  placeholder="Enter your password to confirm"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 outline-none"
+                />
+              </div>
+
+              {deleteError && (
+                <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  {deleteError}
+                </p>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={closeDeleteConfirm} disabled={deleteDevice.isPending} className="text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void confirmDeleteDevice()}
+                disabled={deleteDevice.isPending || !deletePassword.trim()}
+                className="text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1.5"
+              >
+                {deleteDevice.isPending ? 'Deleting...' : 'Confirm & Delete'}
               </Button>
             </div>
           </div>

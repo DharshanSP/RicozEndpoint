@@ -361,6 +361,75 @@ export async function policiesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  // ─── Duplicate policy ──────────────────────────────────────────────────────
+  app.post('/:id/duplicate', {
+    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Duplicate an existing policy into a new inactive draft copy',
+      tags: ['Policies'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 255 },
+        },
+      },
+      response: { 201: { type: 'object', additionalProperties: true } },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = policyParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid policy id' },
+        });
+      }
+
+      const source = await app.prisma.policy.findFirst({
+        where: orgFilter(jwtUser, { id: params.data.id }),
+      });
+      if (!source) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Policy not found' },
+        });
+      }
+
+      const body = (request.body ?? {}) as { name?: string };
+      const name = body.name?.trim() || `${source.name} (Copy)`;
+
+      const copy = await app.prisma.policy.create({
+        data: {
+          organizationId: source.organizationId,
+          name,
+          type: source.type,
+          description: source.description,
+          settings: source.settings,
+          // Copies start disabled so they can be reviewed before rollout.
+          isActive: false,
+          createdById: jwtUser.sub,
+        },
+      });
+
+      await writeAudit(
+        jwtUser,
+        'POLICY_DUPLICATED',
+        'POLICY',
+        copy.id,
+        { sourcePolicyId: source.id, name: copy.name },
+        request
+      );
+
+      return reply.status(201).send({ success: true, data: policyDetails(copy) });
+    },
+  });
+
   // ─── Delete policy ─────────────────────────────────────────────────────────
   app.delete('/:id', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],

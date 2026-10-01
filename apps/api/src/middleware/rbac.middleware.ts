@@ -18,17 +18,50 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
 
 /**
  * Fastify preHandler middleware to verify JWT authentication.
+ *
+ * The token itself only proves identity: the account must still exist and be
+ * active, otherwise a deactivated user could keep using an unexpired token.
  */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     await request.jwtVerify();
   } catch {
-    reply.status(401).send({
+    return reply.status(401).send({
       success: false,
       error: {
         code: 'UNAUTHORIZED',
         message: 'Authentication token is invalid or expired',
       },
+    });
+  }
+
+  const payload = request.user as JwtPayload | undefined;
+  if (!payload?.sub) {
+    return reply.status(401).send({
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Authentication token is invalid or expired' },
+    });
+  }
+
+  try {
+    const user = await request.server.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Account is disabled',
+        },
+      });
+    }
+  } catch {
+    return reply.status(401).send({
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Unable to validate account status' },
     });
   }
 }

@@ -4,6 +4,7 @@ import type {
   CreatePolicyPayload,
   PolicyDetailResponse,
   PolicyListResponse,
+  PolicySummary,
   PolicyType,
   UpdatePolicyPayload,
 } from '../../types/policy';
@@ -80,5 +81,13 @@ export async function assignPolicy(id: string, payload: AssignPolicyPayload) {
   return requestBody(`/policies/${encodeURIComponent(id)}/assign`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+/** Duplicates a policy into a new inactive draft copy. */
+export async function duplicatePolicy(id: string, name?: string) {
+  return requestBody<PolicySummary>(`/policies/${encodeURIComponent(id)}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
   });
 }
