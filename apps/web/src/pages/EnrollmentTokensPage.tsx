@@ -41,6 +41,7 @@ export function EnrollmentTokensPage() {
   const [expiresAt, setExpiresAt] = useState('');
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState(false);
 
   const listQuery = useEnrollmentTokenList({ page: 1, limit: 50 });
   const createMutation = useCreateEnrollmentToken();
@@ -80,6 +81,14 @@ export function EnrollmentTokensPage() {
     await navigator.clipboard.writeText(createdToken);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const windowsCommand = `$env:API_URL='${apiUrl.replace(/'/g, "''")}'; npx tsx src/index.ts`;
+  const handleCopyCommand = async () => {
+    await navigator.clipboard.writeText(windowsCommand);
+    setCopiedCommand(true);
+    setTimeout(() => setCopiedCommand(false), 2000);
   };
 
   const handleRevoke = (token: EnrollmentTokenSummary) => {
@@ -135,12 +144,12 @@ export function EnrollmentTokensPage() {
           <CardHeader className="pb-3 border-b border-slate-100">
             <CardTitle className="text-base font-bold text-slate-900">Issue Enrollment Token</CardTitle>
             <CardDescription className="text-xs text-slate-500">
-              The secret token will be shown only once upon creation. Copy and configure it on the target host as <code className="text-blue-600 font-mono bg-blue-50 px-1 py-0.5 rounded border border-blue-200">ENROLLMENT_TOKEN</code>.
+              Create a token, copy it, then run the agent on the target Windows device and enter the token when prompted.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-4 space-y-4">
             {createdToken && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 space-y-2 shadow-xs animate-in fade-in duration-200">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 space-y-3 shadow-xs animate-in fade-in duration-200">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -159,6 +168,17 @@ export function EnrollmentTokensPage() {
                 <code className="block text-xs text-emerald-950 font-mono bg-white p-2.5 rounded-lg border border-emerald-200 break-all font-semibold select-all">
                   {createdToken}
                 </code>
+                <div className="space-y-2 pt-2 border-t border-emerald-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-emerald-900">Windows agent command</span>
+                    <Button variant="outline" size="sm" onClick={handleCopyCommand} className="h-7 text-xs border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 gap-1">
+                      {copiedCommand ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedCommand ? 'Copied!' : 'Copy command'}
+                    </Button>
+                  </div>
+                  <code className="block text-xs text-slate-800 font-mono bg-white p-2.5 rounded-lg border border-emerald-200 break-all select-all">{windowsCommand}</code>
+                  <p className="text-[11px] text-emerald-800">Run from the agent folder on a machine with Node.js 20+ and the agent dependencies installed. The agent will prompt for the token and enroll the device automatically.</p>
+                </div>
               </div>
             )}
 

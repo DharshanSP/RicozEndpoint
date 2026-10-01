@@ -16,7 +16,7 @@ Requires Node.js 20+ and the workspace installed via pnpm.
 
 ```bash
 cd apps/agent
-cp .env.example .env   # set API_URL + ENROLLMENT_TOKEN
+cp .env.example .env   # optionally set API_URL + ENROLLMENT_TOKEN
 pnpm install
 npx tsx src/index.ts
 ```
@@ -26,7 +26,7 @@ npx tsx src/index.ts
 | Variable                | Default                                  | Description                             |
 |-------------------------|------------------------------------------|-----------------------------------------|
 | `API_URL`               | `http://localhost:3001/api`              | Backend base URL                        |
-| `ENROLLMENT_TOKEN`      | *(required)*                             | One-time enrollment code                |
+| `ENROLLMENT_TOKEN`      | *(optional)*                             | One-time enrollment code for noninteractive starts; interactive first starts prompt for a token |
 | `HEARTBEAT_INTERVAL_MS` | `30000`                                  | Heartbeat interval                      |
 | `TELEMETRY_INTERVAL_MS` | `300000`                                 | Inventory (hardware/software) interval  |
 | `AGENT_STATE_FILE`      | `%APPDATA%\RicozEndpoint\agent.json`     | Persisted device id + agent token       |
@@ -57,7 +57,7 @@ file. It runs a heartbeat loop and sends hardware/software telemetry on the
 
 ## Registration Flow
 
-1. Agent reads the enrollment token from `.env`
+1. Agent prompts for a token on interactive first start, or reads `ENROLLMENT_TOKEN` in noninteractive runs
 2. Agent collects hostname, serial number, OS (via PowerShell/CIM)
 3. Agent sends `POST /api/enroll` with the enrollment token and system info
 4. Backend validates the token, creates/reuses the `Device` and issues an agent token

@@ -1,5 +1,6 @@
+import { createInterface } from 'node:readline/promises';
 import { config } from './config';
-import { loadState, saveState, type AgentState } from './state';
+import { clearState, loadState, saveState, type AgentState } from './state';
 import { collectInstalledPatches, collectInstalledSoftware, collectSecurityState, collectSystemInfo } from './inventory';
 import { AgentApiError, enrollDevice, reportCommandResult, sendHeartbeat } from './api';
 import { executeCommand } from './commands';
@@ -8,6 +9,12 @@ import type { PendingCommand } from './api';
 const startedAt = Date.now();
 let lastTelemetryAt = 0;
 let forceTelemetry = false;
+
+/** Auth failures that only a fresh enrollment can fix. */
+const REENROLL_CODES = new Set(['INVALID_AGENT_TOKEN', 'EXPIRED_AGENT_TOKEN', 'AGENT_TOKEN_REQUIRED']);
+
+let state: AgentState | null = loadState(config.agentStateFile);
+let enrolling = false;
 
 function log(level: 'info' | 'warn' | 'error', message: string): void {
   const ts = new Date().toISOString();
@@ -21,15 +28,86 @@ function log(level: 'info' | 'warn' | 'error', message: string): void {
   }
 }
 
+async function promptForEnrollmentToken(): Promise<string> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('ENROLLMENT_TOKEN is not set and no interactive terminal is available.');
+  }
+
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const token = (await terminal.question('Paste enrollment token from the web page: ')).trim();
+    if (!token) throw new Error('Enrollment token cannot be empty.');
+    return token;
+  } finally {
+    terminal.close();
+  }
+}
+
 async function enroll(): Promise<AgentState> {
   log('info', 'Collecting system inventory for enrollment...');
   const info = await collectSystemInfo();
   log('info', `Enrolling device ${info.hostname} (${info.serialNumber})`);
   const result = await enrollDevice(info);
-  const state: AgentState = { deviceId: result.deviceId, agentToken: result.agentToken };
-  saveState(config.agentStateFile, state);
-  log('info', `Enrolled successfully. Device id ${state.deviceId}`);
-  return state;
+  const enrolled: AgentState = { deviceId: result.deviceId, agentToken: result.agentToken };
+  saveState(config.agentStateFile, enrolled);
+  log('info', `Enrolled successfully. Device id ${enrolled.deviceId}`);
+  return enrolled;
+}
+
+/**
+ * Drops cached credentials and enrolls again with ENROLLMENT_TOKEN.
+ * The state file is cleared first so a restart also re-enrolls instead of
+ * retrying with dead credentials forever.
+ */
+function startEnrollment(reason: string): void {
+  if (enrolling) return;
+
+  const interactive = process.stdin.isTTY && process.stdout.isTTY;
+  if (!interactive && !config.enrollmentToken) {
+    log('error', `${reason}, and ENROLLMENT_TOKEN is not set. Set it in .env and restart the agent.`);
+    process.exit(1);
+    return;
+  }
+
+  enrolling = true;
+  clearState(config.agentStateFile);
+  state = null;
+  log('warn', `${reason}. Re-enrollment required.`);
+  let needsToken = true;
+
+  const attempt = async (): Promise<void> => {
+    try {
+      if (needsToken) {
+        if (interactive) {
+          config.enrollmentToken = await promptForEnrollmentToken();
+        }
+        needsToken = false;
+      }
+      state = await enroll();
+      enrolling = false;
+      lastTelemetryAt = 0; // full telemetry on the first healthy heartbeat
+      log('info', 'Re-enrollment complete; resuming heartbeat loop');
+    } catch (error) {
+      if (
+        error instanceof AgentApiError &&
+        ['INVALID_ENROLLMENT_TOKEN', 'ENROLLMENT_TOKEN_EXPIRED', 'ENROLLMENT_TOKEN_EXHAUSTED'].includes(error.code)
+      ) {
+        log('error', `Enrollment token rejected: ${error.message}`);
+        if (!interactive) {
+          log('error', 'Set a fresh ENROLLMENT_TOKEN and restart the agent.');
+          process.exit(1);
+          return;
+        }
+        config.enrollmentToken = '';
+        needsToken = true;
+        void attempt();
+        return;
+      }
+      log('error', `Enrollment failed (${(error as Error).message}). Retrying in 30s.`);
+      setTimeout(() => void attempt(), 30_000);
+    }
+  };
+  void attempt();
 }
 
 export async function processCommands(state: AgentState, pending: PendingCommand[]): Promise<void> {
@@ -101,19 +179,25 @@ async function heartbeat(
   }
 }
 
-async function loop(state: AgentState): Promise<void> {
+async function loop(): Promise<void> {
+  const activeState = state;
+  if (!activeState || enrolling) {
+    setTimeout(() => void loop(), config.heartbeatIntervalMs);
+    return;
+  }
+
   try {
     const includeTelemetry =
       forceTelemetry || Date.now() - lastTelemetryAt >= config.telemetryIntervalMs;
-    await heartbeat(state, includeTelemetry);
+    await heartbeat(activeState, includeTelemetry);
   } catch (error) {
-    if (error instanceof AgentApiError && error.code === 'INVALID_AGENT_TOKEN') {
-      log('error', 'Agent token rejected by platform. Re-enrollment required.');
+    if (error instanceof AgentApiError && REENROLL_CODES.has(error.code)) {
+      startEnrollment(`Agent credentials rejected (${error.code})`);
     } else {
       log('error', `Heartbeat failed: ${(error as Error).message}`);
     }
   } finally {
-    setTimeout(() => void loop(state), config.heartbeatIntervalMs);
+    setTimeout(() => void loop(), config.heartbeatIntervalMs);
   }
 }
 
@@ -125,17 +209,27 @@ async function main(): Promise<void> {
 
   log('info', `RicozEndpoint agent ${config.agentVersion} starting (api=${config.apiUrl})`);
 
-  let state = loadState(config.agentStateFile);
+  const cachedState = loadState(config.agentStateFile);
+  state = cachedState;
 
   if (!state) {
-    if (!config.enrollmentToken) {
-      log('error', 'No credentials cached and ENROLLMENT_TOKEN is not set. Refusing to start.');
-      process.exit(1);
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      config.enrollmentToken = await promptForEnrollmentToken();
+    } else if (!config.enrollmentToken) {
+      throw new Error('No interactive terminal or ENROLLMENT_TOKEN is available.');
     }
     const enrollLoop = async (): Promise<void> => {
       try {
         state = await enroll();
       } catch (error) {
+        if (
+          error instanceof AgentApiError &&
+          ['INVALID_ENROLLMENT_TOKEN', 'ENROLLMENT_TOKEN_EXPIRED', 'ENROLLMENT_TOKEN_EXHAUSTED'].includes(error.code)
+        ) {
+          log('error', `Enrollment token rejected: ${(error as Error).message}`);
+          config.enrollmentToken = await promptForEnrollmentToken();
+          return enrollLoop();
+        }
         log('error', `Enrollment failed (${(error as Error).message}). Retrying in 30s.`);
         setTimeout(() => void enrollLoop(), 30_000);
       }
@@ -146,10 +240,9 @@ async function main(): Promise<void> {
     }
   }
 
-  lastTelemetryAt = startedAt;
+  lastTelemetryAt = cachedState ? startedAt : 0;
   log('info', `Starting heartbeat loop (interval=${config.heartbeatIntervalMs}ms)`);
-  const activeState = state;
-  setTimeout(() => void loop(activeState), 1000);
+  setTimeout(() => void loop(), 1000);
 }
 
 main().catch((error) => {
