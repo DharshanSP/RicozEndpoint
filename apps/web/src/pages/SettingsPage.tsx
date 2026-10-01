@@ -18,7 +18,9 @@ import { getSettings, updateSettings, OrgSettings } from '../lib/api/settingsApi
 import { useAuth } from '../context/AuthContext';
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
+  // Mirrors the API: organization settings may only be written by ORG_ADMIN+.
+  const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN']);
   const [settings, setSettings] = useState<OrgSettings>({
     agentHeartbeatIntervalSeconds: 60,
     alertRetentionDays: 30,
@@ -29,12 +31,17 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetchSettings = async () => {
     setLoading(true);
+    setLoadError(null);
     const res = await getSettings();
     if (res.success && res.data) {
       setSettings(res.data.settings);
+    } else {
+      setLoadError(res.error?.message ?? 'Failed to load organization settings.');
     }
     setLoading(false);
   };
@@ -45,8 +52,10 @@ export function SettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     setSaving(true);
     setSavedSuccess(false);
+    setSaveError(null);
 
     const res = await updateSettings(settings);
     if (res.success && res.data) {
@@ -54,7 +63,7 @@ export function SettingsPage() {
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } else {
-      alert(res.error?.message || 'Failed to update organization settings');
+      setSaveError(res.error?.message || 'Failed to update organization settings');
     }
     setSaving(false);
   };
@@ -96,6 +105,20 @@ export function SettingsPage() {
         </div>
       ) : (
         <form onSubmit={handleSave} className="space-y-6">
+          {loadError && (
+            <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700 flex items-center justify-between gap-3">
+              <span>{loadError}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void fetchSettings()}>
+                Retry
+              </Button>
+            </div>
+          )}
+
+          {!canManage && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+              You have read-only access to organization settings. Ask an ORG_ADMIN or SUPER_ADMIN to make changes.
+            </div>
+          )}
           {/* Organization Profile Card */}
           <Card className="border-slate-200 shadow-xs">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 py-3 flex flex-row items-center gap-2">
@@ -144,6 +167,7 @@ export function SettingsPage() {
                   type="number"
                   min={10}
                   max={3600}
+                  disabled={!canManage}
                   value={settings.agentHeartbeatIntervalSeconds}
                   onChange={(e) =>
                     setSettings((s) => ({
@@ -166,6 +190,7 @@ export function SettingsPage() {
                   <input
                     type="number"
                     min={1}
+                    disabled={!canManage}
                     value={settings.alertRetentionDays}
                     onChange={(e) =>
                       setSettings((s) => ({
@@ -184,6 +209,7 @@ export function SettingsPage() {
                   <input
                     type="number"
                     min={30}
+                    disabled={!canManage}
                     value={settings.auditRetentionDays}
                     onChange={(e) =>
                       setSettings((s) => ({
@@ -218,6 +244,7 @@ export function SettingsPage() {
                 </div>
                 <input
                   type="checkbox"
+                  disabled={!canManage}
                   checked={settings.requireMfa}
                   onChange={(e) => setSettings((s) => ({ ...s, requireMfa: e.target.checked }))}
                   className="rounded text-blue-600 focus:ring-blue-500"
@@ -235,6 +262,7 @@ export function SettingsPage() {
                 </div>
                 <input
                   type="checkbox"
+                  disabled={!canManage}
                   checked={settings.autoApproveCriticalPatches}
                   onChange={(e) =>
                     setSettings((s) => ({ ...s, autoApproveCriticalPatches: e.target.checked }))
@@ -276,10 +304,14 @@ export function SettingsPage() {
           </Card>
 
           {/* Submit */}
-          <div className="flex justify-end">
+          {saveError && (
+            <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{saveError}</div>
+          )}
+          <div className="flex items-center justify-end gap-3">
+            {!canManage && <span className="text-xs text-slate-500">Editing disabled for your role</span>}
             <Button
               type="submit"
-              disabled={saving}
+              disabled={saving || !canManage}
               className="h-9 text-xs px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-xs font-semibold"
             >
               <Save className="w-4 h-4 mr-1.5" />

@@ -1,15 +1,15 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { requireMinRole, JwtPayload } from '../../middleware/rbac.middleware';
-import { authenticateAgent, hashAgentToken } from '../../middleware/agent-auth.middleware';
 import { UserRole } from '@ricoz/shared-types';
-import crypto from 'crypto';
 import { z } from 'zod';
 import { verifyPassword } from '../../utils/password';
 
 const deviceListQuerySchema = z.object({
   search: z.string().optional(),
   status: z.string().optional(),
+  complianceStatus: z.enum(['COMPLIANT', 'NON_COMPLIANT', 'UNTESTED']).optional(),
   os: z.string().optional(),
+  manufacturer: z.string().optional(),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
   page: z.preprocess(
@@ -22,198 +22,51 @@ const deviceListQuerySchema = z.object({
   ).optional().default(20),
 });
 
+type ComplianceBucket = 'COMPLIANT' | 'NON_COMPLIANT' | 'UNTESTED';
+
+/**
+ * Derives each device's compliance bucket from its current results:
+ * any NON_COMPLIANT result wins, otherwise a device with results is COMPLIANT,
+ * and a device that has never been evaluated is UNTESTED.
+ */
+function buildComplianceStatusMap(
+  rows: Array<{ deviceId: string; status: string }>
+): Map<string, ComplianceBucket> {
+  const map = new Map<string, { total: number; nonCompliant: number }>();
+  for (const row of rows) {
+    const entry = map.get(row.deviceId) ?? { total: 0, nonCompliant: 0 };
+    entry.total += 1;
+    if (row.status === 'NON_COMPLIANT') entry.nonCompliant += 1;
+    map.set(row.deviceId, entry);
+  }
+
+  const result = new Map<string, ComplianceBucket>();
+  for (const [deviceId, entry] of map) {
+    result.set(
+      deviceId,
+      entry.nonCompliant > 0 ? 'NON_COMPLIANT' : entry.total > 0 ? 'COMPLIANT' : 'UNTESTED'
+    );
+  }
+  return result;
+}
+
+function complianceWhere(bucket: ComplianceBucket): Record<string, unknown> {
+  if (bucket === 'NON_COMPLIANT') {
+    return { complianceResults: { some: { status: 'NON_COMPLIANT' } } };
+  }
+  if (bucket === 'UNTESTED') {
+    return { complianceResults: { none: {} } };
+  }
+  return {
+    AND: [{ complianceResults: { some: {} } }, { complianceResults: { none: { status: 'NON_COMPLIANT' } } }],
+  };
+}
+
 export async function devicesRoutes(app: FastifyInstance): Promise<void> {
-  // Device Agent Enrollment Endpoint (Public agent registration)
-  app.post('/enroll', {
-    schema: {
-      description: 'Enroll an endpoint device using an organization enrollment token',
-      tags: ['Devices'],
-      body: {
-        type: 'object',
-        required: ['enrollmentToken', 'hostname', 'serialNumber', 'os', 'osVersion', 'architecture', 'agentVersion'],
-        properties: {
-          enrollmentToken: { type: 'string' },
-          hostname: { type: 'string' },
-          serialNumber: { type: 'string' },
-          os: { type: 'string' },
-          osVersion: { type: 'string' },
-          architecture: { type: 'string' },
-          agentVersion: { type: 'string' },
-          manufacturer: { type: 'string' },
-          model: { type: 'string' },
-          ipAddress: { type: 'string' },
-        },
-      },
-    },
-    handler: async (request, reply) => {
-      const {
-        enrollmentToken,
-        hostname,
-        serialNumber,
-        os,
-        osVersion,
-        architecture,
-        agentVersion,
-        manufacturer = '',
-        model = '',
-        ipAddress = request.ip || '127.0.0.1',
-      } = request.body as {
-        enrollmentToken: string;
-        hostname: string;
-        serialNumber: string;
-        os: string;
-        osVersion: string;
-        architecture: string;
-        agentVersion: string;
-        manufacturer?: string;
-        model?: string;
-        ipAddress?: string;
-      };
-
-      let targetOrg = await app.prisma.organization.findFirst();
-      if (!targetOrg) {
-        targetOrg = await app.prisma.organization.create({
-          data: { name: 'Default Managed Organization' },
-        });
-      }
-
-      if (!enrollmentToken.startsWith('RICOZ-ENROLL-') && enrollmentToken !== 'DEMO-TOKEN-123') {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'INVALID_ENROLLMENT_TOKEN',
-            message: 'Invalid or malformed enrollment token format',
-          },
-        });
-      }
-
-      const device = await app.prisma.device.upsert({
-        where: {
-          organizationId_serialNumber: {
-            organizationId: targetOrg.id,
-            serialNumber,
-          },
-        },
-        update: {
-          hostname,
-          deviceName: hostname,
-          os,
-          osVersion,
-          architecture,
-          agentVersion,
-          manufacturer,
-          model,
-          ipAddress,
-          status: 'ONLINE',
-          lastSeenAt: new Date(),
-        },
-        create: {
-          organizationId: targetOrg.id,
-          deviceName: hostname,
-          hostname,
-          serialNumber,
-          os,
-          osVersion,
-          architecture,
-          agentVersion,
-          manufacturer,
-          model,
-          ipAddress,
-          status: 'ONLINE',
-          lastSeenAt: new Date(),
-        },
-      });
-
-      const rawAgentToken = `agtoken_${crypto.randomBytes(32).toString('hex')}`;
-      const tokenHash = hashAgentToken(rawAgentToken);
-
-      await app.prisma.agentToken.create({
-        data: {
-          organizationId: targetOrg.id,
-          deviceId: device.id,
-          tokenHash,
-          isActive: true,
-        },
-      });
-
-      // Note: no audit log here as enrollment is unauthenticated (no user context)
-
-
-
-      return reply.status(201).send({
-        success: true,
-        data: {
-          deviceId: device.id,
-          organizationId: targetOrg.id,
-          agentToken: rawAgentToken,
-          heartbeatIntervalSeconds: 60,
-          status: 'ONLINE',
-        },
-      });
-    },
-  });
-
-  // Agent Heartbeat Endpoint (Protected by AgentToken)
-  app.post('/heartbeat', {
-    preHandler: [authenticateAgent],
-    schema: {
-      description: 'Periodic device agent heartbeat transmission',
-      tags: ['Devices'],
-      body: {
-        type: 'object',
-        properties: {
-          agentVersion: { type: 'string' },
-          ipAddress: { type: 'string' },
-        },
-      },
-    },
-    handler: async (request, reply) => {
-      const agentContext = request.agent!;
-      const { agentVersion = '', ipAddress = '' } = (request.body as { agentVersion?: string; ipAddress?: string }) || {};
-      const now = new Date();
-
-      const device = await app.prisma.device.update({
-        where: { id: agentContext.deviceId },
-        data: {
-          status: 'ONLINE',
-          lastSeenAt: now,
-          ...(agentVersion ? { agentVersion } : {}),
-          ...(ipAddress ? { ipAddress } : {}),
-        },
-      });
-
-      await app.prisma.deviceHeartbeat.create({
-        data: {
-          deviceId: device.id,
-          agentVersion: agentVersion || device.agentVersion,
-          timestamp: now,
-          status: 'ONLINE',
-        },
-      });
-
-      const pendingCommands = await app.prisma.command.findMany({
-        where: {
-          deviceId: device.id,
-          status: 'PENDING',
-        },
-        take: 5,
-        orderBy: { createdAt: 'asc' },
-      });
-
-      return reply.send({
-        success: true,
-        data: {
-          status: 'ACKNOWLEDGED',
-          serverTime: now.toISOString(),
-          pendingCommands: pendingCommands.map((cmd) => ({
-            id: cmd.id,
-            type: cmd.type,
-            createdAt: cmd.createdAt,
-          })),
-        },
-      });
-    },
-  });
+  // Note: enrollment lives on POST /api/enroll (enrollment module), which
+  // validates the token against the database. The former public
+  // POST /api/devices/enroll accepted any `RICOZ-ENROLL-*` string and wrote
+  // into the first organization, so it was removed.
 
   // List organization devices (Dashboard Endpoint)
   app.get('/', {
@@ -240,23 +93,30 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const { search, status, os, sortBy, sortOrder = 'asc', page = 1, limit = 20 } = parsed.data;
+      const {
+        search,
+        status,
+        complianceStatus,
+        os,
+        manufacturer,
+        sortBy,
+        sortOrder = 'asc',
+        page = 1,
+        limit = 20,
+      } = parsed.data;
 
-      const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000);
-
-      await app.prisma.device.updateMany({
-        where: {
-          organizationId: jwtUser.organizationId,
-          status: 'ONLINE',
-          lastSeenAt: { lt: threeMinutesAgo },
-        },
-        data: { status: 'OFFLINE' },
-      });
+      // `NON_COMPLIANT` is a compliance bucket rather than a device status, so
+      // it is translated into a compliance filter instead of a status filter.
+      const deviceStatus = status && status !== 'NON_COMPLIANT' ? status : undefined;
+      const bucket: ComplianceBucket | undefined =
+        complianceStatus ?? (status === 'NON_COMPLIANT' ? 'NON_COMPLIANT' : undefined);
 
       const whereClause: Record<string, unknown> = {
-        organizationId: jwtUser.role === 'SUPER_ADMIN' ? undefined : jwtUser.organizationId,
-        ...(status ? { status } : {}),
+        ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+        ...(deviceStatus ? { status: deviceStatus } : {}),
+        ...(bucket ? complianceWhere(bucket) : {}),
         ...(os ? { os: { contains: os } } : {}),
+        ...(manufacturer ? { manufacturer: { contains: manufacturer, mode: 'insensitive' } } : {}),
         ...(search
           ? {
               OR: [
@@ -290,6 +150,17 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         app.prisma.device.count({ where: whereClause }),
       ]);
 
+      const pageIds = devices.map((device) => device.id);
+      const resultRows =
+        pageIds.length === 0
+          ? []
+          : await app.prisma.complianceResult.groupBy({
+              by: ['deviceId', 'status'],
+              where: { deviceId: { in: pageIds } },
+              _count: { _all: true },
+            });
+      const complianceMap = buildComplianceStatusMap(resultRows);
+
       const formattedDevices = devices.map((d) => ({
         id: d.id,
         organizationId: d.organizationId,
@@ -304,7 +175,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         ipAddress: d.ipAddress,
         agentVersion: d.agentVersion,
         status: d.status,
-        complianceStatus: (d as { complianceStatus?: string }).complianceStatus || 'COMPLIANT',
+        complianceStatus: complianceMap.get(d.id) ?? 'UNTESTED',
         lastSeenAt: d.lastSeenAt,
         registeredAt: d.registeredAt,
         createdAt: d.createdAt,
@@ -366,6 +237,18 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Real compliance bucket from stored evaluation results.
+      const complianceRows = await app.prisma.complianceResult.groupBy({
+        by: ['status'],
+        where: { deviceId: device.id },
+        _count: { _all: true },
+      });
+      const totalResults = complianceRows.reduce((sum, row) => sum + row._count._all, 0);
+      const nonCompliantResults =
+        complianceRows.find((row) => row.status === 'NON_COMPLIANT')?._count._all ?? 0;
+      const complianceStatus: ComplianceBucket =
+        totalResults === 0 ? 'UNTESTED' : nonCompliantResults > 0 ? 'NON_COMPLIANT' : 'COMPLIANT';
+
       // Fetch audit logs as activity
       const auditLogs = await app.prisma.auditLog.findMany({
         where: {
@@ -416,7 +299,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
             ipAddress: device.ipAddress,
             agentVersion: device.agentVersion,
             status: device.status,
-            complianceStatus: (device as { complianceStatus?: string }).complianceStatus || 'COMPLIANT',
+            complianceStatus,
             lastSeenAt: device.lastSeenAt,
             registeredAt: device.registeredAt,
             createdAt: device.createdAt,
@@ -563,6 +446,86 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  // Update editable device attributes (rename / correct inventory metadata)
+  app.patch('/:id', {
+    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Update device display name, hostname or hardware metadata',
+      tags: ['Devices'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          deviceName: { type: 'string', minLength: 1, maxLength: 255 },
+          hostname: { type: 'string', minLength: 1, maxLength: 255 },
+          ipAddress: { type: 'string', maxLength: 64 },
+          manufacturer: { type: 'string', maxLength: 255 },
+          model: { type: 'string', maxLength: 255 },
+        },
+      },
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+      const body = (request.body ?? {}) as Record<string, string | undefined>;
+
+      const changed: Record<string, string> = {};
+      for (const field of ['deviceName', 'hostname', 'ipAddress', 'manufacturer', 'model'] as const) {
+        const value = body[field];
+        if (typeof value === 'string' && value.trim() !== '') {
+          changed[field] = value.trim();
+        }
+      }
+
+      if (Object.keys(changed).length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'No updatable fields supplied' },
+        });
+      }
+
+      const device = await app.prisma.device.findUnique({ where: { id } });
+      if (!device || (jwtUser.role !== 'SUPER_ADMIN' && device.organizationId !== jwtUser.organizationId)) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Device not found' },
+        });
+      }
+
+      const updated = await app.prisma.device.update({ where: { id: device.id }, data: changed });
+
+      await app.prisma.auditLog.create({
+        data: {
+          organizationId: device.organizationId,
+          actorId: jwtUser.sub,
+          action: 'DEVICE_UPDATED',
+          resource: 'DEVICE',
+          resourceId: device.id,
+          ipAddress: request.ip,
+          metadata: JSON.stringify({ changed: Object.keys(changed) }),
+        },
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          id: updated.id,
+          deviceName: updated.deviceName,
+          hostname: updated.hostname,
+          ipAddress: updated.ipAddress,
+          manufacturer: updated.manufacturer,
+          model: updated.model,
+          updatedAt: updated.updatedAt.toISOString(),
+        },
+      });
+    },
+  });
+
   // Delete/Unenroll device
   app.delete('/:id', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
@@ -597,14 +560,6 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const isValid = await verifyPassword(password, user.passwordHash);
-      if (!isValid) {
-        return reply.status(403).send({
-          success: false,
-          error: { code: 'FORBIDDEN', message: 'Invalid admin password' },
-        });
-      }
-
       const device = await app.prisma.device.findUnique({ where: { id } });
       if (!device) {
         return reply.status(404).send({
@@ -619,6 +574,30 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
           error: { code: 'NOT_FOUND', message: 'Device not found' },
         });
       }
+
+      const isValid = await verifyPassword(password, user.passwordHash);
+      if (!isValid) {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Invalid admin password' },
+        });
+      }
+
+      await app.prisma.auditLog.create({
+        data: {
+          organizationId: device.organizationId,
+          actorId: jwtUser.sub,
+          action: 'DEVICE_DELETED',
+          resource: 'DEVICE',
+          resourceId: device.id,
+          ipAddress: request.ip,
+          metadata: JSON.stringify({
+            hostname: device.hostname,
+            serialNumber: device.serialNumber,
+            deviceName: device.deviceName,
+          }),
+        },
+      });
 
       // Manually handle relations that don't have onDelete: Cascade in the schema
       await app.prisma.alert.deleteMany({ where: { deviceId: id } });

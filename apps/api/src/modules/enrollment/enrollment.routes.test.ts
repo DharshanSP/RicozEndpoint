@@ -318,15 +318,15 @@ describe('Device Enrollment API', () => {
       url: '/api/enrollment-tokens?limit=100&includeRevoked=true',
       headers: headers(operatorBody.data!.token!),
     });
-    assert.equal(res.statusCode, 200);
-    const body = res.json() as { data?: { label: string }[] };
-    assert.ok(!body.data?.some((t) => t.label === 'encapsulated'), 'operator must not see foreign org tokens');
+    // Listing enrollment tokens requires IT_ADMIN or above.
+    assert.equal(res.statusCode, 403);
 
     const asAdmin = await app.inject({
       method: 'GET',
       url: '/api/enrollment-tokens?limit=100&includeRevoked=true',
       headers: headers(adminToken),
     });
+    assert.equal(asAdmin.statusCode, 200);
     const adminBody = asAdmin.json() as { data?: { label: string }[] };
     assert.ok(adminBody.data?.some((t) => t.label === 'encapsulated'), 'SUPER_ADMIN sees tokens of all orgs');
   });

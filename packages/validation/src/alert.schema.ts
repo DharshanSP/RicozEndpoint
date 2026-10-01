@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const alertSeverityEnum = z.enum(['INFO', 'WARNING', 'CRITICAL']);
 export type AlertSeverity = z.infer<typeof alertSeverityEnum>;
 
-export const alertStatusEnum = z.enum(['OPEN', 'RESOLVED']);
+export const alertStatusEnum = z.enum(['OPEN', 'ACKNOWLEDGED', 'RESOLVED']);
 export type AlertStatus = z.infer<typeof alertStatusEnum>;
 
 export const alertTypeEnum = z.enum([
@@ -24,6 +24,9 @@ export const alertListQuerySchema = z.object({
   type: alertTypeEnum.optional(),
   deviceId: z.string().uuid().optional(),
   search: z.string().optional(),
+  unresolved: z
+    .preprocess((value) => (value === 'true' ? true : value === 'false' ? false : value), z.boolean())
+    .optional(),
 });
 export type AlertListQueryInput = z.infer<typeof alertListQuerySchema>;
 
@@ -36,8 +39,19 @@ export const alertResolveSchema = z.object({
 });
 export type AlertResolveInput = z.infer<typeof alertResolveSchema>;
 
+export const alertAcknowledgeSchema = z.object({
+  note: z.string().max(1000).optional(),
+});
+export type AlertAcknowledgeInput = z.infer<typeof alertAcknowledgeSchema>;
+
+export const alertBatchResolveSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(200),
+  note: z.string().max(1000).optional(),
+});
+export type AlertBatchResolveInput = z.infer<typeof alertBatchResolveSchema>;
+
 export const alertCreateSchema = z.object({
-  deviceId: z.string().uuid(),
+  deviceId: z.string().uuid().optional().nullable(),
   type: alertTypeEnum,
   severity: alertSeverityEnum,
   title: z.string().min(1).max(255),

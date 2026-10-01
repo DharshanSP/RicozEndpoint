@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authenticateAgent } from '../../middleware/agent-auth.middleware';
 import { agentHeartbeatSchema, commandResultSchema, deviceParamsSchema } from '@ricoz/validation';
 import { evaluateDeviceCompliance } from '../compliance/compliance.service';
+import { markDeviceOnline } from '../../services/device-status.service';
+import { createAlertDedup } from '../alerts/alerts.service';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -108,6 +110,16 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           data: { deviceId: agentDevice.id, agentVersion, timestamp: heartbeatTime, status },
         }),
       ]);
+
+      // A device that reports back is no longer offline: close its alerts.
+      if (status === 'ONLINE') {
+        await markDeviceOnline(app.prisma, {
+          id: agentDevice.id,
+          organizationId: agentDevice.organizationId,
+        }).catch((error) => {
+          app.log.error({ error, context: 'offline_alert_resolution' }, 'Failed to resolve offline alerts');
+        });
+      }
 
       // Re-evaluate compliance against assigned policies using latest security telemetry.
       if (security && (typeof security.firewallEnabled === 'boolean' || typeof security.antivirusEnabled === 'boolean')) {
@@ -354,6 +366,24 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
         return command;
       });
+
+      // Operational alerting: a failed command surfaces as an alert so the
+      // dashboard's failed-actions counter becomes actionable.
+      if (updated.status === 'FAILED') {
+        await createAlertDedup(app.prisma, {
+          organizationId: existing.organizationId,
+          deviceId: agentDevice.id,
+          type: 'COMMAND_FAILED',
+          severity: 'WARNING',
+          title: `Command failed: ${updated.type}`,
+          message:
+            updated.errorMessage ||
+            `The agent reported a failure while executing command ${updated.id} (${updated.type}).`,
+          dedupKey: `command:${updated.id}`,
+        }).catch((error) => {
+          app.log.error({ error, context: 'command_failure_alert' }, 'Failed to raise command failure alert');
+        });
+      }
 
       return reply.send({
         success: true,

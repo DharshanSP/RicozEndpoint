@@ -59,7 +59,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'enrollment-tokens',
-        element: <EnrollmentTokensPage />,
+        element: (
+          <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']}>
+            <EnrollmentTokensPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: 'policies',
@@ -91,7 +95,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'users',
-        element: <UsersPage />,
+        element: (
+          <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']}>
+            <UsersPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: 'settings',

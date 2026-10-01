@@ -27,15 +27,14 @@ import {
   Trash2,
   Copy,
   Check,
-  Terminal,
-  MonitorCheck,
+  Download,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
-import { fetchApi } from '../lib/api';
+import { fetchApi, apiBaseUrl } from '../lib/api';
 
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
@@ -95,18 +94,48 @@ function getStatusBadge(devStatus: string) {
   );
 }
 
+function getComplianceBadge(complianceStatus?: string) {
+  const s = (complianceStatus || '').toUpperCase();
+  if (s === 'NON_COMPLIANT') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-rose-200 bg-rose-50 text-rose-700">
+        <ShieldAlert className="w-3 h-3 text-rose-600" />
+        Non-Compliant
+      </span>
+    );
+  }
+  if (s === 'COMPLIANT') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-emerald-200 bg-emerald-50 text-emerald-700">
+        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+        Compliant
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium border border-slate-200 bg-slate-50 text-slate-600">
+      <Clock className="w-3 h-3 text-slate-500" />
+      Not Evaluated
+    </span>
+  );
+}
+
 export function DevicesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { hasRole } = useAuth();
   const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const deleteDevice = useDeleteDevice();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deletePassword, setDeletePassword] = useState<string>('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Filter & pagination state
   const paramStatus = searchParams.get('status') || 'ALL';
   const paramSearch = searchParams.get('search') || '';
   const [search, setSearch] = useState<string>(paramSearch);
   const [status, setStatus] = useState<string>(paramStatus);
+  const [compliance, setCompliance] = useState<string>('ALL');
   const [os, setOs] = useState<string>('ALL');
   const [manufacturer, setManufacturer] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
@@ -133,19 +162,12 @@ export function DevicesPage() {
   const [showMoreFilters, setShowMoreFilters] = useState<boolean>(false);
 
   // Enrollment modal state
-  const [enrollTab, setEnrollTab] = useState<'token' | 'manual'>('token');
   const [enrollLabel, setEnrollLabel] = useState('');
   const [enrollMaxUses, setEnrollMaxUses] = useState(5);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // Manual device form state
-  const [manualForm, setManualForm] = useState({ hostname: '', serialNumber: '', os: 'Windows', osVersion: '', manufacturer: '', model: '', ipAddress: '', architecture: 'x64' });
-  const [manualLoading, setManualLoading] = useState(false);
-  const [manualError, setManualError] = useState<string | null>(null);
-  const [manualSuccess, setManualSuccess] = useState(false);
 
   const handleGenerateToken = async () => {
     setEnrollLoading(true);
@@ -172,35 +194,38 @@ export function DevicesPage() {
   };
 
   const curlCommand = generatedToken
-    ? `curl -X POST http://localhost:3001/api/enroll -H \"Content-Type: application/json\" -d '{\"enrollmentToken\":\"${generatedToken}\",\"hostname\":\"my-device\",\"serialNumber\":\"SN-001\",\"os\":\"Windows\",\"osVersion\":\"11\",\"architecture\":\"x64\",\"agentVersion\":\"1.0.0\"}'`
+    ? `curl -X POST ${apiBaseUrl}/enroll -H "Content-Type: application/json" -d '{"enrollmentToken":"${generatedToken}","hostname":"my-device","serialNumber":"SN-001","os":"Windows","osVersion":"11","architecture":"x64","agentVersion":"1.0.0"}'`
     : '';
 
-  const handleManualSubmit = async () => {
-    if (!manualForm.hostname || !manualForm.serialNumber || !manualForm.osVersion) {
-      setManualError('Hostname, Serial Number, and OS Version are required.');
-      return;
-    }
-    setManualLoading(true);
-    setManualError(null);
-    setManualSuccess(false);
+  const handleDownloadAgentFile = () => {
+    const link = document.createElement('a');
+    link.href = '/downloads/RicozEndpointAgent.exe';
+    link.download = 'RicozEndpointAgent.exe';
+    link.click();
+  };
+
+  const openDeleteConfirm = (device: { id: string; deviceName?: string; hostname?: string }) => {
+    setDeleteTarget({ id: device.id, name: device.deviceName || device.hostname || device.id });
+    setDeletePassword('');
+    setDeleteError(null);
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeleteTarget(null);
+    setDeletePassword('');
+    setDeleteError(null);
+    deleteDevice.reset();
+  };
+
+  const confirmDeleteDevice = async () => {
+    if (!deleteTarget || !deletePassword.trim()) return;
+    setDeleteError(null);
     try {
-      const tokenRes = await fetchApi<{ token: string }>('/enrollment-tokens', {
-        method: 'POST',
-        body: JSON.stringify({ label: `Manual: ${manualForm.hostname}`, maxUses: 1 }),
-      });
-      if (!tokenRes.success || !tokenRes.data) throw new Error(tokenRes.error?.message ?? 'Failed to create token');
-      const enrollRes = await fetchApi('/enroll', {
-        method: 'POST',
-        body: JSON.stringify({ enrollmentToken: tokenRes.data.token, ...manualForm, agentVersion: '1.0.0' }),
-      });
-      if (!enrollRes.success) throw new Error(enrollRes.error?.message ?? 'Enrollment failed');
-      setManualSuccess(true);
-      setManualForm({ hostname: '', serialNumber: '', os: 'Windows', osVersion: '', manufacturer: '', model: '', ipAddress: '', architecture: 'x64' });
+      await deleteDevice.mutateAsync({ id: deleteTarget.id, password: deletePassword.trim() });
+      closeDeleteConfirm();
       refetch();
     } catch (e) {
-      setManualError(e instanceof Error ? e.message : 'Enrollment failed');
-    } finally {
-      setManualLoading(false);
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete device');
     }
   };
 
@@ -211,12 +236,13 @@ export function DevicesPage() {
       limit: pageSize,
       search: search.trim() || undefined,
       status: status !== 'ALL' ? (status as DeviceStatus) : undefined,
+      complianceStatus: compliance !== 'ALL' ? compliance : undefined,
       os: os !== 'ALL' ? os : undefined,
       manufacturer: manufacturer !== 'ALL' ? manufacturer : undefined,
       sortBy,
       sortOrder,
     }),
-    [page, pageSize, search, status, os, manufacturer, sortBy, sortOrder]
+    [page, pageSize, search, status, compliance, os, manufacturer, sortBy, sortOrder]
   );
 
   const { data, isLoading, isFetching, error, refetch } = useDeviceList(query);
@@ -257,7 +283,11 @@ export function DevicesPage() {
   }, [pagination.total, rawDevices, status]);
 
   const hasActiveFilters =
-    search.trim() !== '' || status !== 'ALL' || os !== 'ALL' || manufacturer !== 'ALL';
+    search.trim() !== '' ||
+    status !== 'ALL' ||
+    compliance !== 'ALL' ||
+    os !== 'ALL' ||
+    manufacturer !== 'ALL';
 
   const manufacturerOptions = useMemo(
     () => ['ALL', 'Dell Inc.', 'Apple', 'Lenovo', 'HP Inc.', 'Framework', 'Microsoft Corporation'],
@@ -295,6 +325,11 @@ export function DevicesPage() {
     setPage(1);
   };
 
+  const handleComplianceChange = (val: string) => {
+    setCompliance(val);
+    setPage(1);
+  };
+
   const handleOsChange = (val: string) => {
     setOs(val);
     setPage(1);
@@ -313,6 +348,7 @@ const handlePageSizeChange = (val: number) => {
   const clearFilters = () => {
     setSearch('');
     setStatus('ALL');
+    setCompliance('ALL');
     setOs('ALL');
     setManufacturer('ALL');
     setPage(1);
@@ -362,6 +398,52 @@ const handlePageSizeChange = (val: number) => {
           )}
         </div>
       </div>
+
+      {/* Enrollment Guide */}
+      <Card className="border-blue-200 bg-blue-50/40 shadow-xs">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-blue-100 border border-blue-200 text-blue-700">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <h2 className="text-sm font-bold text-slate-900">Add devices to your fleet</h2>
+              </div>
+              <p className="text-xs text-slate-600 mt-1.5">
+                Enroll Windows devices securely with a one-time token and the RicozEndpoint agent.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 flex-1 lg:max-w-3xl">
+              {[
+                'Open Enroll Device',
+                'Generate a token',
+                'Download the agent EXE',
+                'Run it and paste the token',
+              ].map((step, index) => (
+                <div key={step} className="flex items-center gap-2 rounded-md border border-blue-100 bg-white/80 px-2.5 py-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                    {index + 1}
+                  </span>
+                  <span className="text-[11px] font-medium leading-tight text-slate-700">{step}</span>
+                </div>
+              ))}
+            </div>
+
+            {canManageDevices && (
+              <Button
+                size="sm"
+                onClick={() => setShowEnrollModal(true)}
+                className="h-9 shrink-0 bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700 gap-1.5"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Start enrollment
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Fleet KPI Metric Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -487,7 +569,21 @@ const handlePageSizeChange = (val: number) => {
                   <option value="ONLINE">Online</option>
                   <option value="OFFLINE">Offline</option>
                   <option value="PENDING">Pending</option>
+                </select>
+              </div>
+
+              {/* Compliance Filter Dropdown */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 text-xs">
+                <span className="text-slate-500 text-[11px] font-medium">Compliance:</span>
+                <select
+                  value={compliance}
+                  onChange={(e) => handleComplianceChange(e.target.value)}
+                  className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
+                >
+                  <option value="ALL">All</option>
+                  <option value="COMPLIANT">Compliant</option>
                   <option value="NON_COMPLIANT">Non-Compliant</option>
+                  <option value="UNTESTED">Not Evaluated</option>
                 </select>
               </div>
 
@@ -748,6 +844,11 @@ const handlePageSizeChange = (val: number) => {
                     </div>
                   </th>
 
+                  {/* Compliance Header */}
+                  <th className="py-3 px-4 hidden md:table-cell">
+                    <span>Compliance</span>
+                  </th>
+
                   {/* IP Address Header */}
                   <th className="py-3 px-4 hidden md:table-cell">
                     <span>IP Address</span>
@@ -825,6 +926,11 @@ const handlePageSizeChange = (val: number) => {
                         {getStatusBadge(device.status)}
                       </td>
 
+                      {/* Compliance */}
+                      <td className="py-3 px-4 hidden md:table-cell">
+                        {getComplianceBadge(device.complianceStatus)}
+                      </td>
+
                       {/* IP Address */}
                       <td className="py-3 px-4 hidden md:table-cell">
                         <span className="font-mono text-[11px] text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-200">
@@ -872,16 +978,7 @@ const handlePageSizeChange = (val: number) => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={async () => {
-                  if (window.confirm('Are you sure you want to delete this device?')) {
-                    const pwd = prompt('Enter admin password to confirm deletion:', '');
-                    if (pwd !== null && pwd.trim() !== '') {
-                      await deleteDevice.mutateAsync({ id: device.id, password: pwd });
-                      alert('Device deletion initiated.');
-                      refetch();
-                    }
-                  }
-                }}
+                onClick={() => openDeleteConfirm(device)}
                 disabled={deleteDevice.isPending}
                 className="h-7 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1"
                 title="Delete Device"
@@ -979,6 +1076,70 @@ const handlePageSizeChange = (val: number) => {
         </div>
       )}
 
+      {/* Delete Device Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-rose-50">
+              <div className="p-2 rounded-xl bg-rose-600 text-white shadow">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete Device</h3>
+                <p className="text-xs text-slate-500">This action requires password confirmation</p>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-1.5">
+                <p className="text-xs text-rose-700 font-semibold">
+                  Permanently delete &quot;{deleteTarget.name}&quot;?
+                </p>
+                <p className="text-xs text-rose-600">
+                  This removes the device with all of its hardware/software inventory, compliance
+                  results, commands and audit data. This action is irreversible.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Admin password</label>
+                <input
+                  type="password"
+                  autoFocus
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void confirmDeleteDevice();
+                  }}
+                  placeholder="Enter your password to confirm"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 outline-none"
+                />
+              </div>
+
+              {deleteError && (
+                <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  {deleteError}
+                </p>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={closeDeleteConfirm} disabled={deleteDevice.isPending} className="text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void confirmDeleteDevice()}
+                disabled={deleteDevice.isPending || !deletePassword.trim()}
+                className="text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1.5"
+              >
+                {deleteDevice.isPending ? 'Deleting...' : 'Confirm & Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Enroll Device Modal Dialog */}
       {showEnrollModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
@@ -991,161 +1152,94 @@ const handlePageSizeChange = (val: number) => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Add Device</h3>
-                  <p className="text-xs text-slate-500">Generate a token or add manually</p>
+                  <p className="text-xs text-slate-500">Generate a token and enroll a Windows device</p>
                 </div>
               </div>
-              <button onClick={() => { setShowEnrollModal(false); setGeneratedToken(null); setEnrollError(null); setManualSuccess(false); setManualError(null); }} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/70 transition-colors">
+              <button onClick={() => { setShowEnrollModal(false); setGeneratedToken(null); setEnrollError(null); }} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/70 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-slate-100">
-              <button
-                onClick={() => setEnrollTab('token')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
-                  enrollTab === 'token' ? 'border-b-2 border-blue-600 text-blue-700 bg-blue-50/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                }`}
-              >
-                <Terminal className="w-4 h-4" />
-                Agent Enrollment
-              </button>
-              <button
-                onClick={() => setEnrollTab('manual')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
-                  enrollTab === 'manual' ? 'border-b-2 border-blue-600 text-blue-700 bg-blue-50/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                }`}
-              >
-                <MonitorCheck className="w-4 h-4" />
-                Manual Registration
-              </button>
-            </div>
-
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-              {enrollTab === 'token' ? (
-                <>
-                  <p className="text-xs text-slate-500">Generate a secure enrollment token and run the command on the target machine to register it with Ricoz.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-700">Label (optional)</label>
-                      <input
-                        value={enrollLabel}
-                        onChange={(e) => setEnrollLabel(e.target.value)}
-                        placeholder="e.g. Finance Laptops"
-                        className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-700">Max Uses</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={enrollMaxUses}
-                        onChange={(e) => setEnrollMaxUses(Number(e.target.value))}
-                        className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
+              <p className="text-xs text-slate-500">Generate a secure enrollment token, then download the Windows enrollment file for the target machine.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Label (optional)</label>
+                  <input
+                    value={enrollLabel}
+                    onChange={(e) => setEnrollLabel(e.target.value)}
+                    placeholder="e.g. Finance Laptops"
+                    className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Max Uses</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={enrollMaxUses}
+                    onChange={(e) => setEnrollMaxUses(Number(e.target.value))}
+                    className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
 
-                  {enrollError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{enrollError}</p>}
+              {enrollError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{enrollError}</p>}
 
-                  {!generatedToken ? (
-                    <Button onClick={handleGenerateToken} disabled={enrollLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                      {enrollLoading ? 'Generating...' : <><KeyRound className="w-4 h-4" /> Generate Enrollment Token</>}
-                    </Button>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Token Generated
-                          </span>
-                          <button onClick={() => handleCopy(generatedToken)} className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center gap-1 font-medium">
-                            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                            {copied ? 'Copied!' : 'Copy token'}
-                          </button>
-                        </div>
-                        <code className="text-[11px] font-mono text-emerald-800 break-all block">{generatedToken}</code>
-                      </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadAgentFile}
+                className="w-full text-xs border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                    Download RicozEndpoint Agent (.exe)
+              </Button>
+              <p className="text-[11px] text-slate-500">
+                Run the downloaded EXE on the target Windows machine and paste the token when prompted.
+              </p>
 
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-slate-700">Run on target machine (curl)</span>
-                          <button onClick={() => handleCopy(curlCommand)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium">
-                            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                            Copy command
-                          </button>
-                        </div>
-                        <pre className="text-[10px] font-mono bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">{curlCommand}</pre>
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setGeneratedToken(null); setEnrollLabel(''); setEnrollMaxUses(5); }}
-                        className="w-full text-xs border-slate-200"
-                      >
-                        Generate another token
-                      </Button>
-                    </div>
-                  )}
-                </>
+              {!generatedToken ? (
+                <Button onClick={handleGenerateToken} disabled={enrollLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                  {enrollLoading ? 'Generating...' : <><KeyRound className="w-4 h-4" /> Generate Enrollment Token</>}
+                </Button>
               ) : (
-                <>
-                  <p className="text-xs text-slate-500">Register a device directly without deploying an agent. Useful for pre-provisioning or demo devices.</p>
-
-                  {manualSuccess && (
-                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      Device registered successfully! It will appear in the device list.
-                    </p>
-                  )}
-                  {manualError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{manualError}</p>}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: 'Hostname *', key: 'hostname', placeholder: 'LAPTOP-001' },
-                      { label: 'Serial Number *', key: 'serialNumber', placeholder: 'SN-ABC-001' },
-                      { label: 'OS Version *', key: 'osVersion', placeholder: 'Windows 11 Pro 23H2' },
-                      { label: 'IP Address', key: 'ipAddress', placeholder: '192.168.1.100' },
-                      { label: 'Manufacturer', key: 'manufacturer', placeholder: 'Dell' },
-                      { label: 'Model', key: 'model', placeholder: 'OptiPlex 7090' },
-                    ].map(({ label, key, placeholder }) => (
-                      <div key={key} className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700">{label}</label>
-                        <input
-                          value={manualForm[key as keyof typeof manualForm]}
-                          onChange={(e) => setManualForm(f => ({ ...f, [key]: e.target.value }))}
-                          placeholder={placeholder}
-                          className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        />
-                      </div>
-                    ))}
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-700">OS</label>
-                      <select value={manualForm.os} onChange={(e) => setManualForm(f => ({ ...f, os: e.target.value }))} className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
-                        <option>Windows</option>
-                        <option>macOS</option>
-                        <option>Linux</option>
-                        <option>Windows Server</option>
-                      </select>
+                <div className="space-y-3">
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Token Generated
+                      </span>
+                      <button onClick={() => handleCopy(generatedToken)} className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center gap-1 font-medium">
+                        {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copied ? 'Copied!' : 'Copy token'}
+                      </button>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-700">Architecture</label>
-                      <select value={manualForm.architecture} onChange={(e) => setManualForm(f => ({ ...f, architecture: e.target.value }))} className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
-                        <option>x64</option>
-                        <option>x86</option>
-                        <option>arm64</option>
-                      </select>
-                    </div>
+                    <code className="text-[11px] font-mono text-emerald-800 break-all block">{generatedToken}</code>
                   </div>
 
-                  <Button onClick={handleManualSubmit} disabled={manualLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                    {manualLoading ? 'Registering...' : <><MonitorCheck className="w-4 h-4" /> Register Device</>}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700">Run on target machine (curl)</span>
+                      <button onClick={() => handleCopy(curlCommand)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium">
+                        {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copied ? 'Copied!' : 'Copy command'}
+                      </button>
+                    </div>
+                    <pre className="text-[10px] font-mono bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">{curlCommand}</pre>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setGeneratedToken(null); setEnrollLabel(''); setEnrollMaxUses(5); }}
+                    className="w-full text-xs border-slate-200"
+                  >
+                    Generate another token
                   </Button>
-                </>
+                </div>
               )}
             </div>
 

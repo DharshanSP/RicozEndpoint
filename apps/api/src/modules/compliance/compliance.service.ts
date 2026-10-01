@@ -1,5 +1,5 @@
 ﻿import type { PrismaClient } from '@prisma/client';
-import { createAlertDedup } from '../alerts/alerts.service';
+import { createAlertDedup, resolveAlertsMatching } from '../alerts/alerts.service';
 
 interface PolicySettings {
   firewallRequired?: boolean;
@@ -237,6 +237,16 @@ export async function evaluateDeviceCompliance(
         title: `Policy violation: ${policy.name}`,
         message: `Device is non-compliant with policy "${policy.name}": ${result.reason}`,
         dedupKey: `policy:${policy.id}`,
+      });
+    } else {
+      // The policy is satisfied again: close any alert still open for it.
+      await resolveAlertsMatching(prisma, {
+        organizationId: orgId,
+        deviceId: device.id,
+        type: 'COMPLIANCE_VIOLATION',
+        dedupKey: `policy:${policy.id}`,
+        resolvedBy: null,
+        note: `Policy "${policy.name}" requirements satisfied`,
       });
     }
   }

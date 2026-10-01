@@ -1,6 +1,7 @@
 import { fetchApi } from '../api';
 import type {
   ActivityEvent,
+  DeviceComplianceStatus,
   DeviceDetail,
   DeviceHardware,
   DeviceListResponse,
@@ -43,6 +44,7 @@ export interface DeviceListQuery {
   pageSize?: number;
   search?: string;
   status?: DeviceStatus | string;
+  complianceStatus?: DeviceComplianceStatus | string;
   os?: string;
   manufacturer?: string;
   sortBy?: DeviceSortField;
@@ -80,6 +82,9 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
   if (limit) params.set('limit', String(limit));
   if (query.search) params.set('search', query.search);
   if (query.status && query.status !== 'ALL') params.set('status', query.status);
+  if (query.complianceStatus && query.complianceStatus !== 'ALL') {
+    params.set('complianceStatus', query.complianceStatus);
+  }
   if (query.os && query.os !== 'ALL') params.set('os', query.os);
   if (query.manufacturer && query.manufacturer !== 'ALL') params.set('manufacturer', query.manufacturer);
   if (query.sortBy) params.set('sortBy', query.sortBy);

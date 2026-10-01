@@ -6,7 +6,7 @@
 
 export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | 'PENDING' | 'NON_COMPLIANT';
 
-export type DeviceComplianceStatus = 'COMPLIANT' | 'NON_COMPLIANT' | 'NOT_EVALUATED';
+export type DeviceComplianceStatus = 'COMPLIANT' | 'NON_COMPLIANT' | 'UNTESTED' | 'NOT_EVALUATED';
 
 export type DeviceSortField =
   | 'deviceName'

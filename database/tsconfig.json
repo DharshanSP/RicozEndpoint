@@ -5,6 +5,7 @@
     "rootDir": ".",
     "module": "commonjs",
     "moduleResolution": "node",
+    "types": ["node"],
     "declaration": false,
     "declarationMap": false
   },

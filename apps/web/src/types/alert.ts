@@ -1,5 +1,5 @@
 export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
-export type AlertStatus = 'OPEN' | 'RESOLVED';
+export type AlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 export type AlertType =
   | 'DEVICE_OFFLINE'
   | 'COMMAND_FAILED'
@@ -26,6 +26,10 @@ export interface AlertItem {
   status: AlertStatus | string;
   createdAt: string;
   resolvedAt: string | null;
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: string | null;
+  resolvedBy?: string | null;
+  resolvedNote?: string | null;
   device?: AlertDeviceRef | null;
 }
 
@@ -44,10 +48,17 @@ export interface ResolveAlertPayload {
   note?: string;
 }
 
+export interface BatchResolveAlertPayload {
+  ids: string[];
+  note?: string;
+}
+
 export interface AlertListQuery {
   page?: number;
   limit?: number;
   status?: AlertStatus | 'ALL';
   severity?: AlertSeverity | 'ALL';
+  type?: AlertType | 'ALL';
+  unresolved?: boolean;
   search?: string;
 }

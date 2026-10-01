@@ -3,7 +3,15 @@ import { requireMinRole, JwtPayload } from '../../middleware/rbac.middleware';
 import { hashPassword } from '../../utils/password';
 import { writeAudit } from '../../utils/audit';
 import { UserRole } from '@ricoz/shared-types';
-import { adminResetPasswordSchema } from '@ricoz/validation';
+import { adminResetPasswordSchema, createUserSchema, updateUserSchema } from '@ricoz/validation';
+
+const ROLE_WEIGHT: Record<UserRole, number> = {
+  SUPER_ADMIN: 5,
+  ORG_ADMIN: 4,
+  IT_ADMIN: 3,
+  OPERATOR: 2,
+  VIEWER: 1,
+};
 
 export async function usersRoutes(app: FastifyInstance): Promise<void> {
   // List users in organization
@@ -58,13 +66,30 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     },
     handler: async (request, reply) => {
       const jwtUser = request.user as JwtPayload;
-      const { email, name, password, role, organizationId } = request.body as {
-        email: string;
-        name: string;
-        password: string;
-        role: UserRole;
-        organizationId?: string;
-      };
+      const parsed = createUserSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid user payload',
+          },
+        });
+      }
+
+      const { email, name, password, role, organizationId } = parsed.data;
+
+      // Privilege escalation guard: nobody may mint an account at or above
+      // their own level (only SUPER_ADMIN can create ORG_ADMIN/SUPER_ADMIN).
+      if (jwtUser.role !== 'SUPER_ADMIN' && ROLE_WEIGHT[role] >= ROLE_WEIGHT[jwtUser.role]) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: `Forbidden: cannot create a user with role '${role}'`,
+          },
+        });
+      }
 
       const targetOrgId = jwtUser.role === 'SUPER_ADMIN' && organizationId ? organizationId : jwtUser.organizationId;
 
@@ -104,6 +129,16 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      await writeAudit(
+        app.prisma,
+        jwtUser,
+        'USER_CREATED',
+        'USER',
+        newUser.id,
+        { email: newUser.email, role: newUser.role },
+        request
+      );
+
       return reply.status(201).send({
         success: true,
         data: newUser,
@@ -128,11 +163,17 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     handler: async (request, reply) => {
       const jwtUser = request.user as JwtPayload;
       const { id } = request.params as { id: string };
-      const { name, role, isActive } = request.body as {
-        name?: string;
-        role?: UserRole;
-        isActive?: boolean;
-      };
+      const parsed = updateUserSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid update payload',
+          },
+        });
+      }
+      const { name, role, isActive } = parsed.data;
 
       const user = await app.prisma.user.findUnique({ where: { id } });
       if (!user) {
@@ -150,6 +191,43 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      if (jwtUser.role !== 'SUPER_ADMIN' && user.role === 'SUPER_ADMIN') {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Cannot modify a super administrator' },
+        });
+      }
+
+      // Privilege escalation guard: no promoting peers/self above own level.
+      if (
+        jwtUser.role !== 'SUPER_ADMIN' &&
+        role !== undefined &&
+        ROLE_WEIGHT[role] >= ROLE_WEIGHT[jwtUser.role]
+      ) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: `Forbidden: cannot assign role '${role}'`,
+          },
+        });
+      }
+
+      if (id === jwtUser.sub && isActive === false) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'You cannot deactivate your own account',
+          },
+        });
+      }
+
+      const changes: Record<string, unknown> = {};
+      if (name !== undefined) changes.name = name;
+      if (role !== undefined) changes.role = role;
+      if (isActive !== undefined) changes.isActive = isActive;
+
       const updatedUser = await app.prisma.user.update({
         where: { id },
         data: {
@@ -166,6 +244,21 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
           updatedAt: true,
         },
       });
+
+      await writeAudit(
+        app.prisma,
+        jwtUser,
+        'USER_UPDATED',
+        'USER',
+        updatedUser.id,
+        {
+          email: updatedUser.email,
+          changed: Object.keys(changes),
+          role: updatedUser.role,
+          isActive: updatedUser.isActive,
+        },
+        request
+      );
 
       return reply.send({
         success: true,

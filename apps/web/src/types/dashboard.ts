@@ -43,6 +43,7 @@ export interface DashboardTelemetryData {
   complianceScore: number;
   compliantDevices: number;
   nonCompliantDevices: number;
+  untestedDevices?: number;
   openAlertsCount: number;
   criticalAlertsCount: number;
   warningAlertsCount: number;

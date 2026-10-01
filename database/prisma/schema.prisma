@@ -353,12 +353,18 @@ model Alert {
   organizationId String
   deviceId       String?
   type           String    @default("")
+  /// Stable de-duplication key (e.g. `policy:<id>`, `offline:<deviceId>`).
+  dedupKey       String?
   severity       String
   title          String
   message        String
   status         String    @default("OPEN")
   createdAt      DateTime  @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
   resolvedAt     DateTime?
+  resolvedBy     String?
+  resolvedNote   String?
 
   organization Organization @relation(fields: [organizationId], references: [id])
   device       Device?      @relation(fields: [deviceId], references: [id])
@@ -367,6 +373,7 @@ model Alert {
   @@index([deviceId])
   @@index([severity])
   @@index([status])
+  @@index([organizationId, type, status])
   @@map("alerts")
 }
 
