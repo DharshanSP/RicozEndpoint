@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDeviceList } from '../hooks/useDeviceQueries';
 import { formatRelativeTime } from '../lib/format';
 import type { DeviceSortField, DeviceSortOrder, DeviceStatus } from '../types/device';
@@ -98,19 +98,36 @@ function getStatusBadge(devStatus: string) {
 
 export function DevicesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { hasRole } = useAuth();
   const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const deleteDevice = useDeleteDevice();
 
   // Filter & pagination state
-  const [search, setSearch] = useState<string>('');
-  const [status, setStatus] = useState<string>('ALL');
+  const paramStatus = searchParams.get('status') || 'ALL';
+  const paramSearch = searchParams.get('search') || '';
+  const [search, setSearch] = useState<string>(paramSearch);
+  const [status, setStatus] = useState<string>(paramStatus);
   const [os, setOs] = useState<string>('ALL');
   const [manufacturer, setManufacturer] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
   const [sortOrder, setSortOrder] = useState<DeviceSortOrder>('desc');
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  // Sync state if URL query params change
+  useEffect(() => {
+    const urlStatus = searchParams.get('status');
+    if (urlStatus && urlStatus !== status) {
+      setStatus(urlStatus);
+      setPage(1);
+    }
+    const urlSearch = searchParams.get('search');
+    if (urlSearch !== null && urlSearch !== search) {
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   // UI state
   const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);

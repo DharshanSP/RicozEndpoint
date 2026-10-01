@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Layers,
   Search,
@@ -338,9 +339,18 @@ export function DeviceGroupsPage() {
                               <Laptop className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="text-xs font-semibold text-slate-900">
-                                {member.device?.deviceName || 'Unknown Device'}
-                              </p>
+                              {member.device ? (
+                                <Link
+                                  to={`/devices/${member.device.id}`}
+                                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors block"
+                                >
+                                  {member.device.deviceName || 'Unknown Device'}
+                                </Link>
+                              ) : (
+                                <p className="text-xs font-semibold text-slate-900">
+                                  Unknown Device
+                                </p>
+                              )}
                               <p className="text-[11px] text-slate-500 font-mono">
                                 Host: {member.device?.hostname || 'N/A'}
                               </p>

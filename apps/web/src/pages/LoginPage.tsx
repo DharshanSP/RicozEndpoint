@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye } from 'lucide-react';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -13,7 +13,19 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const from = (location.state as { from?: Location })?.from?.pathname || '/';
+  // Compute destination preserving query params if available
+  const stateFrom = (location.state as { from?: { pathname: string; search?: string; hash?: string } | string })?.from;
+  const destination = typeof stateFrom === 'string'
+    ? stateFrom
+    : stateFrom
+    ? `${stateFrom.pathname}${stateFrom.search || ''}${stateFrom.hash || ''}`
+    : '/';
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(destination, { replace: true });
+    }
+  }, [isAuthenticated, navigate, destination]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -23,7 +35,7 @@ export function LoginPage() {
     try {
       const result = await login(email, password);
       if (result.success) {
-        navigate(from, { replace: true });
+        navigate(destination, { replace: true });
       } else {
         setError(result.message || 'Invalid credentials');
       }
