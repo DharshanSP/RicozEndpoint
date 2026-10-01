@@ -11,9 +11,25 @@ const startedAt = Date.now();
 let lastTelemetryAt = 0;
 let forceTelemetry = false;
 
+const colors = {
+  reset: '\x1b[0m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  dim: '\x1b[2m',
+};
+
+function printBanner(): void {
+  console.log(`${colors.cyan}================================================${colors.reset}`);
+  console.log(`${colors.cyan}  RicozEndpoint Windows Agent${colors.reset}`);
+  console.log(`${colors.dim}  Secure device enrollment and endpoint telemetry${colors.reset}`);
+  console.log(`${colors.cyan}================================================${colors.reset}`);
+}
+
 function log(level: 'info' | 'warn' | 'error', message: string): void {
-  const ts = new Date().toISOString();
-  const line = `[ricoz-agent ${ts}] ${message}`;
+  const prefix = level === 'error' ? `${colors.red}ERROR${colors.reset}` : level === 'warn' ? `${colors.yellow}WARN${colors.reset}` : `${colors.green}OK${colors.reset}`;
+  const line = `[${prefix}] ${message}`;
   if (level === 'error') {
     console.error(line);
   } else if (level === 'warn') {
@@ -24,13 +40,13 @@ function log(level: 'info' | 'warn' | 'error', message: string): void {
 }
 
 async function enroll(): Promise<AgentState> {
-  log('info', 'Collecting system inventory for enrollment...');
+  log('info', 'Collecting device information...');
   const info = await collectSystemInfo();
-  log('info', `Enrolling device ${info.hostname} (${info.serialNumber})`);
+  log('info', `Registering ${info.hostname} (${info.serialNumber})`);
   const result = await enrollDevice(info);
   const state: AgentState = { deviceId: result.deviceId, agentToken: result.agentToken };
   saveState(config.agentStateFile, state);
-  log('info', `Enrolled successfully. Device id ${state.deviceId}`);
+  log('info', `Device enrolled successfully (${state.deviceId})`);
   return state;
 }
 
@@ -121,6 +137,10 @@ async function loop(state: AgentState): Promise<void> {
 
 async function promptForEnrollmentToken(): Promise<void> {
   if (config.enrollmentToken || !input.isTTY) return;
+  console.clear();
+  printBanner();
+  console.log('\nThis one-time setup connects this Windows device to your RicozEndpoint organization.');
+  console.log(`${colors.dim}Paste the enrollment token from the admin console below.${colors.reset}\n`);
   const readline = createInterface({ input, output });
   try {
     config.enrollmentToken = (await readline.question('Paste enrollment token: ')).trim();
@@ -130,12 +150,14 @@ async function promptForEnrollmentToken(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (input.isTTY && output.isTTY) printBanner();
+
   if (!config.apiUrl) {
     log('error', 'API_URL is not configured');
     process.exit(1);
   }
 
-  log('info', `RicozEndpoint agent ${config.agentVersion} starting (api=${config.apiUrl})`);
+  log('info', `Agent ${config.agentVersion} starting`);
 
   let state = loadState(config.agentStateFile);
 
@@ -149,7 +171,8 @@ async function main(): Promise<void> {
       try {
         state = await enroll();
       } catch (error) {
-        log('error', `Enrollment failed (${(error as Error).message}). Retrying in 30s.`);
+        log('error', `Enrollment failed: ${(error as Error).message}`);
+        log('warn', 'Retrying automatically in 30 seconds...');
         setTimeout(() => void enrollLoop(), 30_000);
       }
     };
@@ -160,7 +183,7 @@ async function main(): Promise<void> {
   }
 
   lastTelemetryAt = startedAt;
-  log('info', `Starting heartbeat loop (interval=${config.heartbeatIntervalMs}ms)`);
+  log('info', `Connected. Heartbeat every ${Math.round(config.heartbeatIntervalMs / 1000)} seconds.`);
   const activeState = state;
   setTimeout(() => void loop(activeState), 1000);
 }
