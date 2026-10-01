@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { RootLayout } from '../layouts/RootLayout';
 import { DashboardPage } from '../pages/DashboardPage';
 import { DevicesPage } from '../pages/DevicesPage';
@@ -38,12 +38,20 @@ export const router = createBrowserRouter([
         element: <DashboardPage />,
       },
       {
+        path: 'dashboard',
+        element: <Navigate to="/" replace />,
+      },
+      {
         path: 'devices',
         element: <DevicesPage />,
       },
       {
         path: 'devices/groups',
         element: <DeviceGroupsPage />,
+      },
+      {
+        path: 'device-groups',
+        element: <Navigate to="/devices/groups" replace />,
       },
       {
         path: 'devices/:id',
@@ -89,6 +97,14 @@ export const router = createBrowserRouter([
         path: 'settings',
         element: <SettingsPage />,
       },
+      {
+        path: '*',
+        element: <RouteErrorBoundary />,
+      },
     ],
+  },
+  {
+    path: '*',
+    element: <RouteErrorBoundary />,
   },
 ]);

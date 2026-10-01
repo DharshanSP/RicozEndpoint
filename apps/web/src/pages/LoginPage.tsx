@@ -1,16 +1,19 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye } from 'lucide-react';
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState('admin@ricoz.local');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const from = (location.state as { from?: Location })?.from?.pathname || '/';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -20,7 +23,7 @@ export function LoginPage() {
     try {
       const result = await login(email, password);
       if (result.success) {
-        navigate('/');
+        navigate(from, { replace: true });
       } else {
         setError(result.message || 'Invalid credentials');
       }

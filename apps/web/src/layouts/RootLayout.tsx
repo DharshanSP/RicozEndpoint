@@ -188,21 +188,57 @@ export function RootLayout() {
   // Helper to compute dynamic breadcrumbs from location
   const getBreadcrumbTitle = () => {
     const path = location.pathname;
-    if (path === '/' || path === '') return { section: 'Overview', page: 'Dashboard' };
-    if (path.startsWith('/devices/groups')) return { section: 'Devices', page: 'Device Groups' };
-    if (path !== '/devices' && path.startsWith('/devices/')) return { section: 'Devices', page: 'Device Details' };
-    if (path.startsWith('/enrollment-tokens')) return { section: 'Devices', page: 'Enrollment Tokens' };
-    if (path.startsWith('/devices')) return { section: 'Devices', page: 'Fleet Devices' };
-    if (path.startsWith('/policies')) return { section: 'Management', page: 'Policies' };
-    if (path.startsWith('/software')) return { section: 'Management', page: 'Software Catalog' };
-    if (path.startsWith('/patches')) return { section: 'Management', page: 'Patch Management' };
-    if (path.startsWith('/compliance')) return { section: 'Security', page: 'Compliance Rules' };
-    if (path.startsWith('/alerts')) return { section: 'Security', page: 'Security Alerts' };
-    if (path.startsWith('/reports')) return { section: 'Insights', page: 'Reports & Analytics' };
-    if (path.startsWith('/audit-logs')) return { section: 'Insights', page: 'Audit Logs' };
-    if (path.startsWith('/users')) return { section: 'Administration', page: 'Users & Roles' };
-    if (path.startsWith('/settings')) return { section: 'Administration', page: 'Settings' };
-    return { section: 'RicozEndpoint', page: 'Overview' };
+    if (path === '/' || path === '' || path === '/dashboard') {
+      return { section: 'Overview', page: 'Dashboard', sectionTo: '/', pageTo: '/' };
+    }
+    if (path.startsWith('/devices/groups') || path.startsWith('/device-groups')) {
+      return { section: 'Devices', page: 'Device Groups', sectionTo: '/devices', pageTo: '/devices/groups' };
+    }
+    if (path !== '/devices' && path.startsWith('/devices/')) {
+      return { section: 'Devices', page: 'Device Details', sectionTo: '/devices', pageTo: path };
+    }
+    if (path.startsWith('/enrollment-tokens')) {
+      return { section: 'Devices', page: 'Enrollment Tokens', sectionTo: '/devices', pageTo: '/enrollment-tokens' };
+    }
+    if (path.startsWith('/devices')) {
+      return { section: 'Devices', page: 'Fleet Devices', sectionTo: '/devices', pageTo: '/devices' };
+    }
+    if (path.startsWith('/policies')) {
+      return { section: 'Management', page: 'Policies', sectionTo: '/policies', pageTo: '/policies' };
+    }
+    if (path.startsWith('/software')) {
+      return { section: 'Management', page: 'Software Catalog', sectionTo: '/software', pageTo: '/software' };
+    }
+    if (path.startsWith('/patches')) {
+      return { section: 'Management', page: 'Patch Management', sectionTo: '/patches', pageTo: '/patches' };
+    }
+    if (path.startsWith('/compliance')) {
+      return { section: 'Security', page: 'Compliance Rules', sectionTo: '/compliance', pageTo: '/compliance' };
+    }
+    if (path.startsWith('/alerts')) {
+      return { section: 'Security', page: 'Security Alerts', sectionTo: '/alerts', pageTo: '/alerts' };
+    }
+    if (path.startsWith('/reports')) {
+      return { section: 'Insights', page: 'Reports & Analytics', sectionTo: '/reports', pageTo: '/reports' };
+    }
+    if (path.startsWith('/audit-logs')) {
+      return { section: 'Insights', page: 'Audit Logs', sectionTo: '/audit-logs', pageTo: '/audit-logs' };
+    }
+    if (path.startsWith('/users')) {
+      return { section: 'Administration', page: 'Users & Roles', sectionTo: '/users', pageTo: '/users' };
+    }
+    if (path.startsWith('/settings')) {
+      return { section: 'Administration', page: 'Settings', sectionTo: '/settings', pageTo: '/settings' };
+    }
+    return { section: 'RicozEndpoint', page: 'Overview', sectionTo: '/', pageTo: '/' };
+  };
+
+  const isItemActive = (to: string) => {
+    const path = location.pathname;
+    if (to === '/') return path === '/' || path === '/dashboard';
+    if (to === '/devices') return path === '/devices' || (path.startsWith('/devices/') && !path.startsWith('/devices/groups'));
+    if (to === '/devices/groups' || to === '/device-groups') return path.startsWith('/devices/groups') || path.startsWith('/device-groups');
+    return path === to || path.startsWith(`${to}/`);
   };
 
   const breadcrumbs = getBreadcrumbTitle();
@@ -356,18 +392,18 @@ export function RootLayout() {
                   <div className="space-y-0.5">
                     {visibleItems.map((item) => {
                       const Icon = item.icon;
+                      const active = isItemActive(item.to);
                       return (
                         <NavLink
                           key={item.name}
                           to={item.to}
-                          end={item.to === '/'}
                           title={item.name}
                           onClick={() => setMobileMenuOpen(false)}
-                          className={({ isActive }) =>
+                          className={
                             `flex items-center ${
                               isCollapsed ? 'justify-center p-2' : 'justify-between px-2.5 py-1.5'
                             } rounded-md text-xs font-medium transition-colors ${
-                              isActive
+                              active
                                 ? 'bg-blue-50 text-blue-600 font-semibold border border-blue-100 shadow-xs'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`
@@ -461,7 +497,12 @@ export function RootLayout() {
 
             {/* Breadcrumb Trail */}
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-medium text-slate-500">{breadcrumbs.section}</span>
+              <NavLink
+                to={breadcrumbs.sectionTo}
+                className="font-medium text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                {breadcrumbs.section}
+              </NavLink>
               <span className="text-slate-300">/</span>
               <span className="font-semibold text-slate-900">{breadcrumbs.page}</span>
             </div>
