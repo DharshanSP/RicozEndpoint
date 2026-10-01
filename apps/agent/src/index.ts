@@ -1,4 +1,6 @@
 import { config } from './config';
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 import { loadState, saveState, type AgentState } from './state';
 import { collectInstalledPatches, collectInstalledSoftware, collectSecurityState, collectSystemInfo } from './inventory';
 import { AgentApiError, enrollDevice, reportCommandResult, sendHeartbeat } from './api';
@@ -117,6 +119,16 @@ async function loop(state: AgentState): Promise<void> {
   }
 }
 
+async function promptForEnrollmentToken(): Promise<void> {
+  if (config.enrollmentToken || !input.isTTY) return;
+  const readline = createInterface({ input, output });
+  try {
+    config.enrollmentToken = (await readline.question('Paste enrollment token: ')).trim();
+  } finally {
+    readline.close();
+  }
+}
+
 async function main(): Promise<void> {
   if (!config.apiUrl) {
     log('error', 'API_URL is not configured');
@@ -128,6 +140,7 @@ async function main(): Promise<void> {
   let state = loadState(config.agentStateFile);
 
   if (!state) {
+    await promptForEnrollmentToken();
     if (!config.enrollmentToken) {
       log('error', 'No credentials cached and ENROLLMENT_TOKEN is not set. Refusing to start.');
       process.exit(1);

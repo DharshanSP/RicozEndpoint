@@ -6,6 +6,7 @@
   "scripts": {
     "dev:web": "pnpm --filter @ricoz/web dev",
     "dev:api": "pnpm --filter @ricoz/api dev",
+    "build:agent:exe": "node scripts/build-agent-exe.mjs",
     "dev": "pnpm run dev:api & pnpm run dev:web",
     "build": "pnpm -r build",
     "build:types": "pnpm --filter @ricoz/shared-types build",
@@ -28,5 +29,9 @@
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@9.15.4"
+  "packageManager": "pnpm@9.15.4",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "1.0.0-alpha.6"
+  }
 }
