@@ -256,14 +256,14 @@ export function RootLayout() {
       {/* Sidebar Navigation */}
       <aside
         data-testid="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 border-r border-slate-200 bg-white flex flex-col justify-between transition-all duration-200 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 border-r border-slate-200 bg-white flex flex-col justify-between transition-all duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full'
         } ${isCollapsed ? 'lg:w-16' : 'lg:w-64'}`}
       >
         <div className="flex flex-col h-full overflow-hidden">
           {/* Logo & Brand Header */}
           <div
-            className={`p-3 border-b border-slate-200 flex items-center ${
+            className={`p-3 border-b border-slate-200 flex items-center shrink-0 ${
               isCollapsed ? 'justify-center' : 'justify-between'
             } min-h-[56px]`}
           >
@@ -307,7 +307,7 @@ export function RootLayout() {
           </div>
 
           {/* Org Selector Box */}
-          <div className="px-2.5 pt-2.5 pb-1">
+          <div className="px-2.5 pt-2.5 pb-1 shrink-0">
             {canSwitchOrg ? (
               isCollapsed ? (
                 <div
@@ -370,7 +370,7 @@ export function RootLayout() {
           </div>
 
           {/* Scrollable Nav Items */}
-          <nav className="flex-1 overflow-y-auto px-2.5 py-2 space-y-3">
+          <nav className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2 space-y-3">
             {navigationSections.map((section) => {
               // Filter items based on RBAC permissions
               const visibleItems = section.items.filter((item) => {
@@ -428,7 +428,7 @@ export function RootLayout() {
           </nav>
 
           {/* User Profile & Footer Section */}
-          <div className="p-2.5 border-t border-slate-200 bg-slate-50/70 space-y-2">
+          <div className="p-2.5 border-t border-slate-200 bg-slate-50/70 space-y-2 shrink-0">
             {user && (
               <div
                 className={`rounded-lg bg-white border border-slate-200 shadow-xs ${
