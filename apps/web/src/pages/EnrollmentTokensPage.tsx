@@ -12,7 +12,7 @@ import {
 import type { EnrollmentTokenSummary } from '../types/enrollment';
 
 const inputClass =
-  'w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
+  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
 
 function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: 'success' | 'warning' | 'secondary' } {
   if (!token.isActive) return { label: 'Revoked', variant: 'secondary' };

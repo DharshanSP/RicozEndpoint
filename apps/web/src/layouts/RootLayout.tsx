@@ -27,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   User,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 
@@ -272,30 +273,47 @@ export function RootLayout() {
           {/* Org Selector Box */}
           <div className="px-2.5 pt-2.5 pb-1">
             {canSwitchOrg ? (
-              <div
-                className={`p-2 rounded-lg bg-slate-50 border border-slate-200 ${
-                  isCollapsed ? 'flex justify-center' : ''
-                }`}
-                title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
-              >
-                <label className="sr-only" htmlFor="org-switcher">
-                  Active organization
-                </label>
-                <select
-                  id="org-switcher"
-                  value={user?.organizationId ?? ''}
-                  onChange={handleOrgChange}
-                  disabled={switchingOrg}
-                  className="w-full bg-transparent text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 rounded cursor-pointer disabled:opacity-60"
-                  title="Switch active organization"
+              isCollapsed ? (
+                <div
+                  className="p-2 rounded-lg bg-slate-50 border border-slate-200 flex justify-center text-xs"
+                  title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
                 >
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                </div>
+              ) : (
+                <div
+                  className="relative rounded-lg bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors"
+                  title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
+                >
+                  <label className="sr-only" htmlFor="org-switcher">
+                    Active organization
+                  </label>
+                  <div className="flex items-center px-2 py-1.5 gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
+                    <select
+                      id="org-switcher"
+                      value={user?.organizationId ?? ''}
+                      onChange={handleOrgChange}
+                      disabled={switchingOrg}
+                      className="w-full bg-transparent text-xs text-slate-700 font-medium focus:outline-none cursor-pointer disabled:opacity-60 appearance-none pr-5 truncate"
+                      title="Switch active organization"
+                    >
+                      {organizations.length === 0 && user?.organizationId ? (
+                        <option value={user.organizationId} className="bg-white text-slate-900 py-1">
+                          {user.organizationName || 'Current Organization'}
+                        </option>
+                      ) : (
+                        organizations.map((org) => (
+                          <option key={org.id} value={org.id} className="bg-white text-slate-900 py-1">
+                            {org.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0 pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              )
             ) : (
               <div
                 className={`p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center ${

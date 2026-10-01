@@ -25,7 +25,7 @@ export const PlaceholderPage: FC<PlaceholderPageProps> = ({
   plannedFeatures = [],
 }) => {
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top Breadcrumb & Status Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div className="space-y-1">
@@ -35,11 +35,11 @@ export const PlaceholderPage: FC<PlaceholderPageProps> = ({
             <span className="text-slate-900 font-semibold">{title}</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-50 border border-blue-100 text-blue-600">
+            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
               <Icon className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h1>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
               <p className="text-xs text-slate-500 mt-0.5">{description}</p>
             </div>
           </div>
@@ -51,7 +51,7 @@ export const PlaceholderPage: FC<PlaceholderPageProps> = ({
             <span>Planned Module</span>
           </Badge>
           <Link to="/">
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm">
+            <Button variant="outline" size="sm" className="gap-1.5 h-9 text-xs border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-xs">
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Dashboard</span>
             </Button>

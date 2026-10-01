@@ -12,7 +12,7 @@ import { formatDateTime, formatRelativeTime } from '../lib/format';
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple';
 
 const inputClass =
-  'w-full rounded-md bg-white border border-slate-300 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/50';
+  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
 
 function severityBadgeVariant(severity: string): BadgeVariant {
   switch (severity) {
@@ -69,24 +69,28 @@ export function AlertsPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Bell className="w-5 h-5 text-blue-600" />
-              Security &amp; Operational Alerts
-            </h1>
-            <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
-              {total} matching
-            </Badge>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+            <Bell className="w-5 h-5" />
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Real-time incident detection, severity classification, and administrator triage workflows.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                Security &amp; Operational Alerts
+              </h1>
+              <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
+                {total} matching
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Real-time incident detection, severity classification, and administrator triage workflows.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {listQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />}
-          <Button variant="outline" size="sm" onClick={() => void listQuery.refetch()}>
+          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={() => void listQuery.refetch()}>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
           </Button>
         </div>
@@ -126,14 +130,14 @@ export function AlertsPage() {
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
-            className={`${inputClass} pl-9`}
+            className={`${inputClass} pl-9 h-9`}
             placeholder="Search alert titles..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <select
-          className={`${inputClass} w-auto`}
+          className={`${inputClass} w-auto h-9`}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as AlertStatus | 'ALL')}
         >
@@ -142,7 +146,7 @@ export function AlertsPage() {
           <option value="RESOLVED">Resolved</option>
         </select>
         <select
-          className={`${inputClass} w-auto`}
+          className={`${inputClass} w-auto h-9`}
           value={severityFilter}
           onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | 'ALL')}
         >

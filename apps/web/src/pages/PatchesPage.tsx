@@ -132,44 +132,55 @@ export function PatchesPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Wrench className="w-5 h-5 text-blue-600" />
-              Patch Management
-            </h1>
-            <Badge
-              variant="outline"
-              className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50"
-            >
-              {summary?.total ?? 0} patches
-            </Badge>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
+              <Wrench className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  Patch Management
+                </h1>
+                <Badge
+                  variant="outline"
+                  className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50"
+                >
+                  {summary?.total ?? 0} patches
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Review OS updates reported by agent scans, approve critical KBs and track deployment coverage.
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Review OS updates reported by agent scans, approve critical KBs and track deployment
-            coverage.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void listQuery.refetch()} disabled={isStale}>
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isStale ? 'animate-spin' : ''}`} />
-            {isStale ? 'Syncing...' : 'Sync'}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void listQuery.refetch()}
+            disabled={isStale}
+            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isStale ? 'animate-spin' : ''}`} />
+            <span>{isStale ? 'Syncing...' : 'Sync'}</span>
           </Button>
 
           {canManage && (
             <Button
               size="sm"
               onClick={() => setShowAdd((value) => !value)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
             >
               {showAdd ? (
-                <X className="w-3.5 h-3.5 mr-1.5" />
+                <X className="w-4 h-4" />
               ) : (
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                <Plus className="w-4 h-4" />
               )}
-              {showAdd ? 'Cancel' : 'Add Patch'}
+              <span>{showAdd ? 'Cancel' : 'Add Patch'}</span>
             </Button>
           )}
         </div>
@@ -189,7 +200,7 @@ export function PatchesPage() {
           <CardContent className="p-5 pt-4">
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-3">
-                <label className="text-xs font-medium text-slate-600" htmlFor="patch-kb">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-kb">
                   KB number
                 </label>
                 <input
@@ -198,11 +209,11 @@ export function PatchesPage() {
                   placeholder="KB5034441"
                   value={form.kbNumber}
                   onChange={(event) => setForm({ ...form, kbNumber: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
                 />
               </div>
               <div className="sm:col-span-6">
-                <label className="text-xs font-medium text-slate-600" htmlFor="patch-title">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-title">
                   Title
                 </label>
                 <input
@@ -211,11 +222,11 @@ export function PatchesPage() {
                   placeholder="Cumulative Security Update for Windows 11"
                   value={form.title}
                   onChange={(event) => setForm({ ...form, title: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
                 />
               </div>
               <div className="sm:col-span-3">
-                <label className="text-xs font-medium text-slate-600" htmlFor="patch-severity">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-severity">
                   Severity
                 </label>
                 <select
@@ -224,7 +235,7 @@ export function PatchesPage() {
                   onChange={(event) =>
                     setForm({ ...form, severity: event.target.value as PatchSeverity })
                   }
-                  className="mt-1 w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 >
                   <option value="CRITICAL">CRITICAL</option>
                   <option value="IMPORTANT">IMPORTANT</option>
@@ -233,13 +244,16 @@ export function PatchesPage() {
               </div>
 
               {formError && (
-                <div className="sm:col-span-12 text-sm text-rose-600 border border-rose-200 bg-rose-50 rounded-lg px-3 py-2">
+                <div className="sm:col-span-12 text-xs text-rose-600 border border-rose-200 bg-rose-50 rounded-lg px-3 py-2">
                   {formError}
                 </div>
               )}
 
-              <div className="sm:col-span-12 flex justify-end">
-                <Button type="submit" size="sm" disabled={createMutation.isPending}>
+              <div className="sm:col-span-12 flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowAdd(false)} className="text-xs border-slate-200">
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={createMutation.isPending} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
                   {createMutation.isPending ? 'Adding...' : 'Add Patch'}
                 </Button>
               </div>
@@ -250,16 +264,16 @@ export function PatchesPage() {
 
       {/* Feedback banners */}
       {updateMutation.isSuccess && (
-        <Card className="border-emerald-200 bg-emerald-50/50 shadow-xs">
-          <CardContent className="p-4 text-sm text-emerald-700">
-            {updateMutation.data.kbNumber} is now {updateMutation.data.status.toLowerCase()}.
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-800 flex items-center gap-2 shadow-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{updateMutation.data.kbNumber} is now {updateMutation.data.status.toLowerCase()}.</span>
+        </div>
       )}
 
       {deployMutation.isSuccess && (
-        <Card className="border-emerald-200 bg-emerald-50/50 shadow-xs">
-          <CardContent className="p-4 text-sm text-emerald-700">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-800 flex items-center gap-2 shadow-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>
             Queued installation of {deployMutation.data.patch.kbNumber} on{' '}
             {deployMutation.data.queued} device{deployMutation.data.queued === 1 ? '' : 's'}
             {deployMutation.data.skippedInstalled > 0 &&
@@ -267,84 +281,88 @@ export function PatchesPage() {
             {deployMutation.data.skippedInFlight > 0 &&
               ` · ${deployMutation.data.skippedInFlight} already in flight`}
             . Agents pick commands up on their next heartbeat.
-          </CardContent>
-        </Card>
+          </span>
+        </div>
       )}
 
       {(updateMutation.isError || deployMutation.isError) && (
-        <Card className="border-rose-200 bg-rose-50/50 shadow-xs">
-          <CardContent className="p-4 text-sm text-rose-700">
-            {((updateMutation.error ?? deployMutation.error) as Error).message}
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs">
+          {((updateMutation.error ?? deployMutation.error) as Error).message}
+        </div>
       )}
 
       {error && (
-        <Card className="border-rose-200 bg-rose-50/50 shadow-xs">
-          <CardContent className="p-4 text-sm text-rose-700">{error}</CardContent>
-        </Card>
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs">{error}</div>
       )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <Card className="border-red-200 bg-red-50/50 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">
+        <Card className="border-slate-200 bg-white shadow-xs">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Critical Patches
-              </p>
-              <h3 className="text-2xl font-bold text-red-900 mt-0.5">{summary?.critical ?? 0}</h3>
+              </span>
+              <ShieldAlert className="w-4 h-4 text-red-600" />
             </div>
-            <div className="p-2.5 rounded-lg bg-red-100 text-red-700">
-              <ShieldAlert className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-amber-200 bg-amber-50/50 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
-                Important
-              </p>
-              <h3 className="text-2xl font-bold text-amber-900 mt-0.5">
-                {summary?.important ?? 0}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-lg bg-amber-100 text-amber-700">
-              <AlertTriangle className="w-6 h-6" />
+            <div className="text-2xl font-bold text-red-600 tracking-tight">{summary?.critical ?? 0}</div>
+            <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Security Hotfixes</span>
+              <span className="text-red-700 font-semibold">Immediate</span>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Optional
-              </p>
-              <h3 className="text-2xl font-bold text-slate-900 mt-0.5">{summary?.optional ?? 0}</h3>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Important
+              </span>
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
             </div>
-            <div className="p-2.5 rounded-lg bg-slate-100 text-slate-600">
-              <Wrench className="w-6 h-6" />
+            <div className="text-2xl font-bold text-amber-600 tracking-tight">
+              {summary?.important ?? 0}
+            </div>
+            <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Quality &amp; Drivers</span>
+              <span className="text-amber-700 font-semibold">Recommended</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-emerald-200 bg-emerald-50/50 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">
-                Up-To-Date Fleet
-              </p>
-              <h3 className="text-2xl font-bold text-emerald-900 mt-0.5">
-                {summary?.upToDatePercent === null || summary?.upToDatePercent === undefined
-                  ? '—'
-                  : `${summary.upToDatePercent}%`}
-              </h3>
+        <Card className="border-slate-200 bg-white shadow-xs">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Optional
+              </span>
+              <Wrench className="w-4 h-4 text-slate-500" />
             </div>
-            <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-700">
-              <CheckCircle2 className="w-6 h-6" />
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">{summary?.optional ?? 0}</div>
+            <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Feature Updates</span>
+              <span className="text-slate-600 font-medium">Staged</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 bg-white shadow-xs">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Up-To-Date Fleet
+              </span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-bold text-emerald-600 tracking-tight">
+              {summary?.upToDatePercent === null || summary?.upToDatePercent === undefined
+                ? '—'
+                : `${summary.upToDatePercent}%`}
+            </div>
+            <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Target &gt;95%</span>
+              <span className="text-emerald-700 font-semibold">Healthy</span>
             </div>
           </CardContent>
         </Card>
@@ -353,14 +371,14 @@ export function PatchesPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Search by KB number or update title..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             aria-label="Search patches"
-            className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
           />
         </div>
 
@@ -368,7 +386,7 @@ export function PatchesPage() {
           value={severity}
           onChange={(event) => setSeverity(event.target.value as (typeof SEVERITY_OPTIONS)[number])}
           aria-label="Severity filter"
-          className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
         >
           {SEVERITY_OPTIONS.map((option) => (
             <option key={option} value={option}>
@@ -381,7 +399,7 @@ export function PatchesPage() {
           value={status}
           onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}
           aria-label="Status filter"
-          className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
         >
           {STATUS_OPTIONS.map((option) => (
             <option key={option} value={option}>

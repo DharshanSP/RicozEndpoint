@@ -50,41 +50,41 @@ export function AuditLogsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-              <History className="w-5 h-5" />
-            </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+            <History className="w-5 h-5" />
+          </div>
+          <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               System Audit Logs
             </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Immutable chronological audit record of administrator operations, policy modifications, enrollment events, and privileged API requests.
+            </p>
           </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Immutable chronological audit record of administrator operations, policy modifications, enrollment events, and privileged API requests.
-          </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={fetchLogs} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={fetchLogs} disabled={loading}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
       </div>
 
       {/* Search & Action Filters */}
-      <div className="flex flex-col sm:flex-row items-center gap-4">
-        <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+      <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative flex-1 w-full max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Search by actor email, resource ID, or action..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs h-9"
           />
         </div>
 
@@ -92,7 +92,7 @@ export function AuditLogsPage() {
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
-            className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
           >
             <option value="">All Action Types</option>
             <option value="LOGIN">LOGIN</option>
@@ -204,7 +204,7 @@ export function AuditLogsPage() {
 
       {/* Modal: View Log Payload */}
       {selectedLog && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -250,7 +250,7 @@ export function AuditLogsPage() {
             </div>
 
             <div className="flex justify-end pt-2 border-t border-slate-100">
-              <Button size="sm" onClick={() => setSelectedLog(null)}>
+              <Button size="sm" className="h-9 text-xs px-4" onClick={() => setSelectedLog(null)}>
                 Close
               </Button>
             </div>

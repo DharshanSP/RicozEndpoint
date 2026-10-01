@@ -64,21 +64,21 @@ export function SettingsPage() {
     : 'http://localhost:3001/docs';
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-              <Settings className="w-5 h-5" />
-            </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+            <Settings className="w-5 h-5" />
+          </div>
+          <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               Organization Settings
             </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Global endpoint telemetry parameters, retention rules, security baselines, and developer API specs.
+            </p>
           </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Global endpoint telemetry parameters, retention rules, security baselines, and developer API specs.
-          </p>
         </div>
 
         {savedSuccess && (
@@ -280,9 +280,9 @@ export function SettingsPage() {
             <Button
               type="submit"
               disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+              className="h-9 text-xs px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-xs font-semibold"
             >
-              <Save className="w-4 h-4 mr-2" />
+              <Save className="w-4 h-4 mr-1.5" />
               {saving ? 'Saving...' : 'Save Organization Settings'}
             </Button>
           </div>
@@ -353,7 +353,7 @@ function PasswordSection() {
               autoComplete="current-password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
             />
           </div>
 
@@ -366,7 +366,7 @@ function PasswordSection() {
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
             />
             {tooShort && (
               <p className="text-[11px] text-rose-600 mt-1">Use at least 8 characters.</p>
@@ -382,7 +382,7 @@ function PasswordSection() {
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
             />
             {mismatch && (
               <p className="text-[11px] text-rose-600 mt-1">Passwords do not match.</p>
@@ -404,7 +404,7 @@ function PasswordSection() {
           <Button
             type="submit"
             disabled={!canSubmit}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            className="h-9 text-xs px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-xs font-semibold"
           >
             {submitting ? 'Updating...' : 'Update Password'}
           </Button>

@@ -15,6 +15,7 @@ import {
   Users,
   PlusCircle,
   CheckSquare,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -72,17 +73,22 @@ export function DashboardPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Header & Operational Control Bar */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">System Admin Dashboard</h1>
-            <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
-              {user?.organizationName || 'Ricoz Organization'}
-            </Badge>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+            <LayoutDashboard className="w-5 h-5" />
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Centralized visibility into organization endpoints, operational fleet health, and security posture.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System Admin Dashboard</h1>
+              <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
+                {user?.organizationName || 'Ricoz Organization'}
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Centralized visibility into organization endpoints, operational fleet health, and security posture.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto">

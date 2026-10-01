@@ -31,7 +31,7 @@ import { Badge } from '../components/ui/badge';
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple';
 
 const inputClass =
-  'w-full rounded-md bg-white border border-slate-300 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/50';
+  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs';
 
 const typeOptions: PolicyType[] = ['SECURITY', 'CONFIGURATION', 'COMPLIANCE'];
 
@@ -243,27 +243,46 @@ export function PoliciesPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-blue-600" />
-              Configuration Policies
-            </h1>
-            <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
-              {total} policies
-            </Badge>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  Configuration Policies
+                </h1>
+                <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
+                  {total} policies
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Create, assign, and enforce endpoint configuration profiles and security baselines.
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Create, assign, and enforce endpoint configuration profiles and security baselines.
-          </p>
         </div>
         <div className="flex items-center gap-2">
-          {listQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void listQuery.refetch()}
+            disabled={listQuery.isFetching}
+            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${listQuery.isFetching ? 'animate-spin' : ''}`} />
+            <span>{listQuery.isFetching ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
           {canManage && (
-            <Button onClick={showForm && !editingId ? closeForm : openCreate}>
-              {showForm && !editingId ? <X className="w-4 h-4 mr-1.5" /> : <Plus className="w-4 h-4 mr-1.5" />}
-              {showForm && !editingId ? 'Cancel' : 'New Policy'}
+            <Button
+              size="sm"
+              onClick={showForm && !editingId ? closeForm : openCreate}
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+            >
+              {showForm && !editingId ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              <span>{showForm && !editingId ? 'Cancel' : 'New Policy'}</span>
             </Button>
           )}
         </div>
@@ -446,11 +465,11 @@ export function PoliciesPage() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={closeForm}>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button variant="outline" size="sm" onClick={closeForm} className="text-xs border-slate-200">
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} disabled={pending || !form.name.trim()}>
+              <Button size="sm" onClick={handleSubmit} disabled={pending || !form.name.trim()} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
                 {pending ? 'Saving...' : editingId ? 'Save Changes' : 'Create Policy'}
               </Button>
             </div>
@@ -537,13 +556,15 @@ export function PoliciesPage() {
               })}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAssignPolicyId(null)}>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button variant="outline" size="sm" onClick={() => setAssignPolicyId(null)} className="text-xs border-slate-200">
                 Close
               </Button>
               <Button
+                size="sm"
                 onClick={handleAssign}
                 disabled={assignMutation.isPending || assignDeviceIds.length === 0}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {removeMode ? 'Remove' : 'Assign'} ({assignDeviceIds.length}){' '}
                 {assignMutation.isPending ? '...' : ''}
