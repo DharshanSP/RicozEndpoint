@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useDeviceList } from '../hooks/useDeviceQueries';
+import { useDeviceList, useDeleteDevice } from '../hooks/useDeviceQueries';
 import { formatRelativeTime } from '../lib/format';
 import type { DeviceSortField, DeviceSortOrder, DeviceStatus } from '../types/device';
 import {
@@ -35,7 +35,6 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
-import { useDeleteDevice } from '../hooks/useDeviceQueries';
 import { fetchApi } from '../lib/api';
 
 // OS Badge Icon & Label helper
