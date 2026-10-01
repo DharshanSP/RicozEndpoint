@@ -399,6 +399,52 @@ const handlePageSizeChange = (val: number) => {
         </div>
       </div>
 
+      {/* Enrollment Guide */}
+      <Card className="border-blue-200 bg-blue-50/40 shadow-xs">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-blue-100 border border-blue-200 text-blue-700">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <h2 className="text-sm font-bold text-slate-900">Add devices to your fleet</h2>
+              </div>
+              <p className="text-xs text-slate-600 mt-1.5">
+                Enroll Windows devices securely with a one-time token and the RicozEndpoint agent.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 flex-1 lg:max-w-3xl">
+              {[
+                'Open Enroll Device',
+                'Generate a token',
+                'Download the agent EXE',
+                'Run it and paste the token',
+              ].map((step, index) => (
+                <div key={step} className="flex items-center gap-2 rounded-md border border-blue-100 bg-white/80 px-2.5 py-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                    {index + 1}
+                  </span>
+                  <span className="text-[11px] font-medium leading-tight text-slate-700">{step}</span>
+                </div>
+              ))}
+            </div>
+
+            {canManageDevices && (
+              <Button
+                size="sm"
+                onClick={() => setShowEnrollModal(true)}
+                className="h-9 shrink-0 bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700 gap-1.5"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Start enrollment
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Fleet KPI Metric Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {/* Total */}
