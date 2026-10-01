@@ -29,6 +29,7 @@ import {
   Check,
   Terminal,
   MonitorCheck,
+  Download,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -204,6 +205,61 @@ export function DevicesPage() {
   const curlCommand = generatedToken
     ? `curl -X POST ${apiBaseUrl}/enroll -H "Content-Type: application/json" -d '{"enrollmentToken":"${generatedToken}","hostname":"my-device","serialNumber":"SN-001","os":"Windows","osVersion":"11","architecture":"x64","agentVersion":"1.0.0"}'`
     : '';
+
+  const handleDownloadAgentFile = () => {
+    const escapedApiUrl = apiBaseUrl.replace(/'/g, "''");
+    const powershellScript = `
+$ErrorActionPreference = 'Stop'
+try {
+  $enrollmentToken = Read-Host 'Paste the enrollment token'
+  if ([string]::IsNullOrWhiteSpace($enrollmentToken)) { throw 'An enrollment token is required.' }
+
+  $computer = Get-CimInstance Win32_ComputerSystem
+  $operatingSystem = Get-CimInstance Win32_OperatingSystem
+  $bios = Get-CimInstance Win32_BIOS
+  $ipAddress = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+    Select-Object -First 1 -ExpandProperty IPAddress)
+
+  $payload = @{
+    enrollmentToken = $enrollmentToken.Trim()
+    hostname = $env:COMPUTERNAME
+    serialNumber = if ($bios.SerialNumber) { $bios.SerialNumber } else { 'UNKNOWN' }
+    os = 'Windows'
+    osVersion = $operatingSystem.Caption
+    architecture = $env:PROCESSOR_ARCHITECTURE
+    ipAddress = $ipAddress
+    manufacturer = $computer.Manufacturer
+    model = $computer.Model
+    agentVersion = '1.0.0'
+  } | ConvertTo-Json -Depth 4
+
+  $result = Invoke-RestMethod -Uri '${escapedApiUrl}/enroll' -Method Post -ContentType 'application/json' -Body $payload
+  Write-Host ('Device enrolled successfully. Device ID: ' + $result.data.deviceId) -ForegroundColor Green
+  Write-Host 'The device is now visible in RicozEndpoint.'
+} catch {
+  Write-Host ('Enrollment failed: ' + $_.Exception.Message) -ForegroundColor Red
+}
+Read-Host 'Press Enter to close'
+`;
+    const bytes = new Uint8Array(powershellScript.length * 2);
+    for (let index = 0; index < powershellScript.length; index += 1) {
+      const code = powershellScript.charCodeAt(index);
+      bytes[index * 2] = code & 0xff;
+      bytes[index * 2 + 1] = code >> 8;
+    }
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const encodedCommand = btoa(binary);
+    const batchFile = `@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encodedCommand}\r\n`;
+    const blob = new Blob([batchFile], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'RicozEndpoint-Agent-Enrollment.bat';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const openDeleteConfirm = (device: { id: string; deviceName?: string; hostname?: string }) => {
     setDeleteTarget({ id: device.id, name: device.deviceName || device.hostname || device.id });
@@ -1214,6 +1270,19 @@ const handlePageSizeChange = (val: number) => {
                         </div>
                         <code className="text-[11px] font-mono text-emerald-800 break-all block">{generatedToken}</code>
                       </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDownloadAgentFile}
+                        className="w-full text-xs border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download Agent Enrollment (.bat)
+                      </Button>
+                      <p className="text-[11px] text-slate-500">
+                        Double-click the downloaded file and paste this token. It collects the Windows device details and enrolls the device automatically.
+                      </p>
 
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
