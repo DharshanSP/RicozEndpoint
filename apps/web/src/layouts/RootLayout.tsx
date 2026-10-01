@@ -485,30 +485,30 @@ export function RootLayout() {
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md px-6">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 sm:px-6">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 mr-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden text-slate-500 hover:text-slate-800 p-1.5 rounded-md hover:bg-slate-100"
+              className="lg:hidden text-slate-500 hover:text-slate-800 p-1.5 rounded-md hover:bg-slate-100 shrink-0"
               title="Open Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             {/* Breadcrumb Trail */}
-            <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-slate-500 min-w-0 truncate">
               <NavLink
                 to={breadcrumbs.sectionTo}
-                className="font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                className="font-medium text-slate-500 hover:text-slate-800 transition-colors shrink-0"
               >
                 {breadcrumbs.section}
               </NavLink>
-              <span className="text-slate-300">/</span>
-              <span className="font-semibold text-slate-900">{breadcrumbs.page}</span>
+              <span className="text-slate-300 shrink-0">/</span>
+              <span className="font-semibold text-slate-900 truncate">{breadcrumbs.page}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             {/* Search Trigger Mockup */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-500 w-64 justify-between">
               <div className="flex items-center gap-2">
@@ -521,7 +521,7 @@ export function RootLayout() {
             </div>
 
             {/* Environment Telemetry Status Indicator */}
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700">
+            <div className="hidden xs:flex sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600" />
@@ -531,7 +531,7 @@ export function RootLayout() {
 
             {/* Org Badge */}
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700">
-              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+              <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span className="text-slate-700 font-medium text-xs max-w-[130px] truncate">
                 {user?.organizationName || 'Default Org'}
               </span>
@@ -540,7 +540,7 @@ export function RootLayout() {
         </header>
 
         {/* Page Content Body */}
-        <main className="flex-1 p-6 lg:p-8 bg-slate-50/70 overflow-x-hidden">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50/70 overflow-x-hidden">
           <Outlet />
         </main>
       </div>

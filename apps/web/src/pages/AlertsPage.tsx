@@ -251,7 +251,7 @@ function AlertRow({
 
   return (
     <div className="py-4 first:pt-1 last:pb-1">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
         <div className="min-w-0 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant={severityBadgeVariant(String(alert.severity))} className="text-[10px] uppercase font-semibold tracking-wider">
@@ -288,7 +288,7 @@ function AlertRow({
           </div>
         </div>
 
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="shrink-0 flex items-center gap-2 self-end sm:self-auto">
           {alert.device && (
             <Link to={`/devices/${alert.device.id}`}>
               <Button variant="outline" size="sm" className="h-7 text-[11px] border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
