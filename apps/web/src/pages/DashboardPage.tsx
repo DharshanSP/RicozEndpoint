@@ -15,6 +15,7 @@ import {
   Users,
   PlusCircle,
   CheckSquare,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -72,17 +73,22 @@ export function DashboardPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Header & Operational Control Bar */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">System Admin Dashboard</h1>
-            <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
-              {user?.organizationName || 'Ricoz Organization'}
-            </Badge>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+            <LayoutDashboard className="w-5 h-5" />
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Centralized visibility into organization endpoints, operational fleet health, and security posture.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System Admin Dashboard</h1>
+              <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
+                {user?.organizationName || 'Ricoz Organization'}
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Centralized visibility into organization endpoints, operational fleet health, and security posture.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto">
@@ -139,107 +145,117 @@ export function DashboardPage() {
       {/* 5 Core Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* Total Endpoints */}
-        <Card className="border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Managed</span>
-              <Laptop className="w-4 h-4 text-blue-600" />
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.totalDevices}</span>
-              <span className="text-[11px] text-slate-500 font-medium">Endpoints</span>
-            </div>
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Enrolled Fleet</span>
-              <span className="text-blue-600 font-semibold">100% Configured</span>
-            </div>
-          </CardContent>
-        </Card>
+        <Link to="/devices" className="block group">
+          <Card className="border-slate-200 bg-white shadow-xs group-hover:border-blue-300 group-hover:shadow-sm transition-all h-full">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-blue-600 transition-colors">Total Managed</span>
+                <Laptop className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.totalDevices}</span>
+                <span className="text-[11px] text-slate-500 font-medium">Endpoints</span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Enrolled Fleet</span>
+                <span className="text-blue-600 font-semibold">100% Configured</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Online Devices */}
-        <Card className="border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Online / Active</span>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-              </span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-emerald-600 tracking-tight">
-                {telemetryData.onlineDevices}
-              </span>
-              <span className="text-[11px] text-emerald-700 font-medium">
-                {((telemetryData.onlineDevices / telemetryData.totalDevices) * 100).toFixed(0)}%
-              </span>
-            </div>
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Streaming Heartbeats</span>
-              <span className="text-emerald-700 font-semibold">Active</span>
-            </div>
-          </CardContent>
-        </Card>
+        <Link to="/devices?status=ONLINE" className="block group">
+          <Card className="border-slate-200 bg-white shadow-xs group-hover:border-emerald-300 group-hover:shadow-sm transition-all h-full">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-emerald-700 transition-colors">Online / Active</span>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-bold text-emerald-600 tracking-tight">
+                  {telemetryData.onlineDevices}
+                </span>
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  {((telemetryData.onlineDevices / telemetryData.totalDevices) * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Streaming Heartbeats</span>
+                <span className="text-emerald-700 font-semibold">Active</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Offline Devices */}
-        <Card className="border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Offline / Inactive</span>
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-amber-600 tracking-tight">
-                {telemetryData.offlineDevices}
-              </span>
-              <span className="text-[11px] text-slate-500">
-                +1 Pending
-              </span>
-            </div>
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Threshold: &gt; 5m</span>
-              <span className="text-amber-700 font-semibold">Review Needed</span>
-            </div>
-          </CardContent>
-        </Card>
+        <Link to="/devices?status=OFFLINE" className="block group">
+          <Card className="border-slate-200 bg-white shadow-xs group-hover:border-amber-300 group-hover:shadow-sm transition-all h-full">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-amber-700 transition-colors">Offline / Inactive</span>
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-bold text-amber-600 tracking-tight">
+                  {telemetryData.offlineDevices}
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  +1 Pending
+                </span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Threshold: &gt; 5m</span>
+                <span className="text-amber-700 font-semibold">Review Needed</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Fleet Compliance */}
-        <Card className="border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Compliance Rate</span>
-              <CheckSquare className="w-4 h-4 text-blue-600" />
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.complianceScore}%</span>
-              <span className="text-[11px] text-emerald-700 font-medium">Target &gt;90%</span>
-            </div>
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Security Baseline</span>
-              <span className="text-emerald-700 font-semibold">Passing</span>
-            </div>
-          </CardContent>
-        </Card>
+        <Link to="/compliance" className="block group">
+          <Card className="border-slate-200 bg-white shadow-xs group-hover:border-blue-300 group-hover:shadow-sm transition-all h-full">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-blue-600 transition-colors">Compliance Rate</span>
+                <CheckSquare className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.complianceScore}%</span>
+                <span className="text-[11px] text-emerald-700 font-medium">Target &gt;90%</span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Security Baseline</span>
+                <span className="text-emerald-700 font-semibold">Passing</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Open Alerts */}
-        <Card className="border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Active Alerts</span>
-              <ShieldAlert className="w-4 h-4 text-red-600" />
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-red-600 tracking-tight">{telemetryData.openAlertsCount}</span>
-              <span className="text-[11px] text-red-700 font-medium">
-                {telemetryData.criticalAlertsCount} Critical
-              </span>
-            </div>
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Triage Required</span>
-              <span className="text-red-700 font-semibold">Actionable</span>
-            </div>
-          </CardContent>
-        </Card>
+        <Link to="/alerts" className="block group">
+          <Card className="border-slate-200 bg-white shadow-xs group-hover:border-red-300 group-hover:shadow-sm transition-all h-full">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-red-700 transition-colors">Active Alerts</span>
+                <ShieldAlert className="w-4 h-4 text-red-600" />
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-bold text-red-600 tracking-tight">{telemetryData.openAlertsCount}</span>
+                <span className="text-[11px] text-red-700 font-medium">
+                  {telemetryData.criticalAlertsCount} Critical
+                </span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Triage Required</span>
+                <span className="text-red-700 font-semibold">Actionable</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Main Operational Section: Health Distribution & Compliance Posture */}
@@ -419,13 +435,15 @@ export function DashboardPage() {
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-[11px] border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    >
-                      Triage
-                    </Button>
+                    <Link to="/alerts">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px] border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      >
+                        Triage
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               ))}

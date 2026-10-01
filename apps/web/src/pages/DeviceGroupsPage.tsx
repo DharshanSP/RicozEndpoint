@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Layers,
   Search,
@@ -147,25 +148,33 @@ export function DeviceGroupsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
               <Layers className="w-5 h-5" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Device Groups</h1>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Device Groups</h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Organize computers into logical groups for targeted policies, deployments, and compliance monitoring.
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Organize computers into logical groups for targeted policies, deployments, and compliance monitoring.
-          </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={fetchGroups} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchGroups}
+            disabled={loading}
+            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
           </Button>
           <Button
             size="sm"
@@ -173,10 +182,10 @@ export function DeviceGroupsPage() {
               setSelectedDeviceIds([]);
               setShowCreateModal(true);
             }}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
           >
-            <FolderPlus className="w-4 h-4 mr-2" />
-            Create Group
+            <FolderPlus className="w-4 h-4" />
+            <span>Create Group</span>
           </Button>
         </div>
       </div>
@@ -330,9 +339,18 @@ export function DeviceGroupsPage() {
                               <Laptop className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="text-xs font-semibold text-slate-900">
-                                {member.device?.deviceName || 'Unknown Device'}
-                              </p>
+                              {member.device ? (
+                                <Link
+                                  to={`/devices/${member.device.id}`}
+                                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors block"
+                                >
+                                  {member.device.deviceName || 'Unknown Device'}
+                                </Link>
+                              ) : (
+                                <p className="text-xs font-semibold text-slate-900">
+                                  Unknown Device
+                                </p>
+                              )}
                               <p className="text-[11px] text-slate-500 font-mono">
                                 Host: {member.device?.hostname || 'N/A'}
                               </p>
@@ -411,8 +429,8 @@ export function DeviceGroupsPage() {
 
       {/* Modal: Create Group */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <FolderPlus className="w-5 h-5 text-blue-600" />
@@ -518,8 +536,8 @@ export function DeviceGroupsPage() {
 
       {/* Modal: Add Members */}
       {showAddMembersModal && selectedGroup && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" />

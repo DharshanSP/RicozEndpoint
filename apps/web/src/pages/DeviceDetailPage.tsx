@@ -234,7 +234,7 @@ export function DeviceDetailPage() {
   // Invalid / missing device id
   if (!id) {
     return (
-      <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="space-y-6 max-w-7xl mx-auto">
         <Breadcrumbs deviceName="Unknown" />
         <TabError message="This device route is missing a device identifier." onRetry={() => detail.refetch()} />
       </div>
@@ -244,7 +244,7 @@ export function DeviceDetailPage() {
   // Detail error state
   if (detail.isError) {
     return (
-      <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="space-y-6 max-w-7xl mx-auto">
         <Breadcrumbs deviceName="Error" />
         <TabError
           message={
@@ -263,7 +263,7 @@ export function DeviceDetailPage() {
   // Initial detail loading
   if (detail.isLoading || !detail.data) {
     return (
-      <div className="space-y-6 max-w-6xl mx-auto animate-pulse" data-testid="device-detail-loading">
+      <div className="space-y-6 max-w-7xl mx-auto animate-pulse" data-testid="device-detail-loading">
         <div className="h-6 w-48 bg-slate-200 rounded" />
         <div className="h-28 w-full bg-slate-200 rounded-xl border border-slate-300" />
         <div className="h-10 w-full bg-slate-100 rounded-lg border border-slate-200" />
@@ -276,7 +276,7 @@ export function DeviceDetailPage() {
   const statusText = overview.status.replace('_', ' ');
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Breadcrumb Navigation */}
       <Breadcrumbs deviceName={overview.deviceName} />
 

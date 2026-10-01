@@ -1,16 +1,31 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, type FormEvent } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye } from 'lucide-react';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState('admin@ricoz.local');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Compute destination preserving query params if available
+  const stateFrom = (location.state as { from?: { pathname: string; search?: string; hash?: string } | string })?.from;
+  const destination = typeof stateFrom === 'string'
+    ? stateFrom
+    : stateFrom
+    ? `${stateFrom.pathname}${stateFrom.search || ''}${stateFrom.hash || ''}`
+    : '/';
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(destination, { replace: true });
+    }
+  }, [isAuthenticated, navigate, destination]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -20,7 +35,7 @@ export function LoginPage() {
     try {
       const result = await login(email, password);
       if (result.success) {
-        navigate('/');
+        navigate(destination, { replace: true });
       } else {
         setError(result.message || 'Invalid credentials');
       }
@@ -58,7 +73,7 @@ export function LoginPage() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xl shadow-slate-200/50 space-y-6">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xl shadow-slate-200/50 space-y-6">
           {error && (
             <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
               <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />

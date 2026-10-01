@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, History } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { useAuth } from '../context/AuthContext';
 import {
   useCreateEnrollmentToken,
   useEnrollmentHistory,
@@ -12,7 +14,7 @@ import {
 import type { EnrollmentTokenSummary } from '../types/enrollment';
 
 const inputClass =
-  'w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
+  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
 
 function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: 'success' | 'warning' | 'secondary' } {
   if (!token.isActive) return { label: 'Revoked', variant: 'secondary' };
@@ -35,6 +37,8 @@ function formatDate(value: string | null, fallback = 'Never'): string {
 }
 
 export function EnrollmentTokensPage() {
+  const { hasRole } = useAuth();
+  const canManageTokens = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const [showCreate, setShowCreate] = useState(false);
   const [label, setLabel] = useState('');
   const [maxUses, setMaxUses] = useState(1);
@@ -127,14 +131,16 @@ export function EnrollmentTokensPage() {
             <span>{listQuery.isFetching ? 'Refreshing...' : 'Refresh'}</span>
           </Button>
 
-          <Button
-            size="sm"
-            onClick={() => setShowCreate((value) => !value)}
-            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
-          >
-            {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            <span>{showCreate ? 'Cancel' : 'Generate Token'}</span>
-          </Button>
+          {canManageTokens && (
+            <Button
+              size="sm"
+              onClick={() => setShowCreate((value) => !value)}
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+            >
+              {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              <span>{showCreate ? 'Cancel' : 'Generate Token'}</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -308,9 +314,12 @@ export function EnrollmentTokensPage() {
                         <td className="px-5 py-3.5">
                           <span className="text-slate-900 font-semibold block">{token.label || 'Untitled Token'}</span>
                           {token.device && (
-                            <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                            <Link
+                              to={`/devices/${token.device.id}`}
+                              className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-mono block mt-0.5"
+                            >
                               Pre-bound to {token.device.deviceName}
-                            </span>
+                            </Link>
                           )}
                         </td>
                         <td className="px-5 py-3.5 text-slate-700 font-mono font-medium">
@@ -336,7 +345,7 @@ export function EnrollmentTokensPage() {
                           {token.createdBy?.name ?? token.createdBy?.email ?? 'System'}
                         </td>
                         <td className="px-5 py-3.5 text-right">
-                          {token.isActive && (
+                          {token.isActive && canManageTokens && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -424,9 +433,12 @@ function EnrollmentHistoryCard() {
                 {entries.map((entry) => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5">
-                      <div className="text-slate-900 font-semibold">
+                      <Link
+                        to={`/devices/${entry.device.id}`}
+                        className="text-slate-900 font-semibold hover:text-blue-600 hover:underline transition-colors block"
+                      >
                         {entry.device.deviceName}
-                      </div>
+                      </Link>
                       <div className="text-[10px] text-slate-500 font-mono">
                         {entry.device.hostname}
                       </div>

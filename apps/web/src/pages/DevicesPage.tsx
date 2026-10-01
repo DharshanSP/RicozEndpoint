@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useDeviceList } from '../hooks/useDeviceQueries';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useDeviceList, useDeleteDevice } from '../hooks/useDeviceQueries';
 import { formatRelativeTime } from '../lib/format';
 import type { DeviceSortField, DeviceSortOrder, DeviceStatus } from '../types/device';
 import {
@@ -35,7 +35,6 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
-import { useDeleteDevice } from '../hooks/useDeviceQueries';
 import { fetchApi } from '../lib/api';
 
 // OS Badge Icon & Label helper
@@ -98,21 +97,36 @@ function getStatusBadge(devStatus: string) {
 
 export function DevicesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { hasRole } = useAuth();
   const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const deleteDevice = useDeleteDevice();
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
-  const [deletePassword, setDeletePassword] = useState<string>('');
 
   // Filter & pagination state
-  const [search, setSearch] = useState<string>('');
-  const [status, setStatus] = useState<string>('ALL');
+  const paramStatus = searchParams.get('status') || 'ALL';
+  const paramSearch = searchParams.get('search') || '';
+  const [search, setSearch] = useState<string>(paramSearch);
+  const [status, setStatus] = useState<string>(paramStatus);
   const [os, setOs] = useState<string>('ALL');
   const [manufacturer, setManufacturer] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
   const [sortOrder, setSortOrder] = useState<DeviceSortOrder>('desc');
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  // Sync state if URL query params change
+  useEffect(() => {
+    const urlStatus = searchParams.get('status');
+    if (urlStatus && urlStatus !== status) {
+      setStatus(urlStatus);
+      setPage(1);
+    }
+    const urlSearch = searchParams.get('search');
+    if (urlSearch !== null && urlSearch !== search) {
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   // UI state
   const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);
@@ -309,14 +323,14 @@ const handlePageSizeChange = (val: number) => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Header & Page Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
               <Laptop className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Devices</h1>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Devices</h1>
               <p className="text-xs text-slate-500 mt-0.5">
                 Manage and monitor organization endpoints.
               </p>
@@ -440,7 +454,7 @@ const handlePageSizeChange = (val: number) => {
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             {/* Search Input */}
-            <div className="relative flex-1 min-w-[260px]">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
@@ -1044,7 +1058,10 @@ const handlePageSizeChange = (val: number) => {
                     <div className="space-y-3">
                       <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-emerald-700">? Token Generated</span>
+                          <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            Token Generated
+                          </span>
                           <button onClick={() => handleCopy(generatedToken)} className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center gap-1 font-medium">
                             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                             {copied ? 'Copied!' : 'Copy token'}
@@ -1079,7 +1096,12 @@ const handlePageSizeChange = (val: number) => {
                 <>
                   <p className="text-xs text-slate-500">Register a device directly without deploying an agent. Useful for pre-provisioning or demo devices.</p>
 
-                  {manualSuccess && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">? Device registered successfully! It will appear in the device list.</p>}
+                  {manualSuccess && (
+                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Device registered successfully! It will appear in the device list.
+                    </p>
+                  )}
                   {manualError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{manualError}</p>}
 
                   <div className="grid grid-cols-2 gap-3">

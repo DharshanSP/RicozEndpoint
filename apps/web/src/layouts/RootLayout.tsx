@@ -27,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   User,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 
@@ -187,21 +188,57 @@ export function RootLayout() {
   // Helper to compute dynamic breadcrumbs from location
   const getBreadcrumbTitle = () => {
     const path = location.pathname;
-    if (path === '/' || path === '') return { section: 'Overview', page: 'Dashboard' };
-    if (path.startsWith('/devices/groups')) return { section: 'Devices', page: 'Device Groups' };
-    if (path !== '/devices' && path.startsWith('/devices/')) return { section: 'Devices', page: 'Device Details' };
-    if (path.startsWith('/enrollment-tokens')) return { section: 'Devices', page: 'Enrollment Tokens' };
-    if (path.startsWith('/devices')) return { section: 'Devices', page: 'Fleet Devices' };
-    if (path.startsWith('/policies')) return { section: 'Management', page: 'Policies' };
-    if (path.startsWith('/software')) return { section: 'Management', page: 'Software Catalog' };
-    if (path.startsWith('/patches')) return { section: 'Management', page: 'Patch Management' };
-    if (path.startsWith('/compliance')) return { section: 'Security', page: 'Compliance Rules' };
-    if (path.startsWith('/alerts')) return { section: 'Security', page: 'Security Alerts' };
-    if (path.startsWith('/reports')) return { section: 'Insights', page: 'Reports & Analytics' };
-    if (path.startsWith('/audit-logs')) return { section: 'Insights', page: 'Audit Logs' };
-    if (path.startsWith('/users')) return { section: 'Administration', page: 'Users & Roles' };
-    if (path.startsWith('/settings')) return { section: 'Administration', page: 'Settings' };
-    return { section: 'RicozEndpoint', page: 'Overview' };
+    if (path === '/' || path === '' || path === '/dashboard') {
+      return { section: 'Overview', page: 'Dashboard', sectionTo: '/', pageTo: '/' };
+    }
+    if (path.startsWith('/devices/groups') || path.startsWith('/device-groups')) {
+      return { section: 'Devices', page: 'Device Groups', sectionTo: '/devices', pageTo: '/devices/groups' };
+    }
+    if (path !== '/devices' && path.startsWith('/devices/')) {
+      return { section: 'Devices', page: 'Device Details', sectionTo: '/devices', pageTo: path };
+    }
+    if (path.startsWith('/enrollment-tokens')) {
+      return { section: 'Devices', page: 'Enrollment Tokens', sectionTo: '/devices', pageTo: '/enrollment-tokens' };
+    }
+    if (path.startsWith('/devices')) {
+      return { section: 'Devices', page: 'Fleet Devices', sectionTo: '/devices', pageTo: '/devices' };
+    }
+    if (path.startsWith('/policies')) {
+      return { section: 'Management', page: 'Policies', sectionTo: '/policies', pageTo: '/policies' };
+    }
+    if (path.startsWith('/software')) {
+      return { section: 'Management', page: 'Software Catalog', sectionTo: '/software', pageTo: '/software' };
+    }
+    if (path.startsWith('/patches')) {
+      return { section: 'Management', page: 'Patch Management', sectionTo: '/patches', pageTo: '/patches' };
+    }
+    if (path.startsWith('/compliance')) {
+      return { section: 'Security', page: 'Compliance Rules', sectionTo: '/compliance', pageTo: '/compliance' };
+    }
+    if (path.startsWith('/alerts')) {
+      return { section: 'Security', page: 'Security Alerts', sectionTo: '/alerts', pageTo: '/alerts' };
+    }
+    if (path.startsWith('/reports')) {
+      return { section: 'Insights', page: 'Reports & Analytics', sectionTo: '/reports', pageTo: '/reports' };
+    }
+    if (path.startsWith('/audit-logs')) {
+      return { section: 'Insights', page: 'Audit Logs', sectionTo: '/audit-logs', pageTo: '/audit-logs' };
+    }
+    if (path.startsWith('/users')) {
+      return { section: 'Administration', page: 'Users & Roles', sectionTo: '/users', pageTo: '/users' };
+    }
+    if (path.startsWith('/settings')) {
+      return { section: 'Administration', page: 'Settings', sectionTo: '/settings', pageTo: '/settings' };
+    }
+    return { section: 'RicozEndpoint', page: 'Overview', sectionTo: '/', pageTo: '/' };
+  };
+
+  const isItemActive = (to: string) => {
+    const path = location.pathname;
+    if (to === '/') return path === '/' || path === '/dashboard';
+    if (to === '/devices') return path === '/devices' || (path.startsWith('/devices/') && !path.startsWith('/devices/groups'));
+    if (to === '/devices/groups' || to === '/device-groups') return path.startsWith('/devices/groups') || path.startsWith('/device-groups');
+    return path === to || path.startsWith(`${to}/`);
   };
 
   const breadcrumbs = getBreadcrumbTitle();
@@ -219,14 +256,14 @@ export function RootLayout() {
       {/* Sidebar Navigation */}
       <aside
         data-testid="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 border-r border-slate-200 bg-white flex flex-col justify-between transition-all duration-200 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 border-r border-slate-200 bg-white flex flex-col justify-between transition-all duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full'
         } ${isCollapsed ? 'lg:w-16' : 'lg:w-64'}`}
       >
         <div className="flex flex-col h-full overflow-hidden">
           {/* Logo & Brand Header */}
           <div
-            className={`p-3 border-b border-slate-200 flex items-center ${
+            className={`p-3 border-b border-slate-200 flex items-center shrink-0 ${
               isCollapsed ? 'justify-center' : 'justify-between'
             } min-h-[56px]`}
           >
@@ -270,32 +307,49 @@ export function RootLayout() {
           </div>
 
           {/* Org Selector Box */}
-          <div className="px-2.5 pt-2.5 pb-1">
+          <div className="px-2.5 pt-2.5 pb-1 shrink-0">
             {canSwitchOrg ? (
-              <div
-                className={`p-2 rounded-lg bg-slate-50 border border-slate-200 ${
-                  isCollapsed ? 'flex justify-center' : ''
-                }`}
-                title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
-              >
-                <label className="sr-only" htmlFor="org-switcher">
-                  Active organization
-                </label>
-                <select
-                  id="org-switcher"
-                  value={user?.organizationId ?? ''}
-                  onChange={handleOrgChange}
-                  disabled={switchingOrg}
-                  className="w-full bg-transparent text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 rounded cursor-pointer disabled:opacity-60"
-                  title="Switch active organization"
+              isCollapsed ? (
+                <div
+                  className="p-2 rounded-lg bg-slate-50 border border-slate-200 flex justify-center text-xs"
+                  title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
                 >
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                </div>
+              ) : (
+                <div
+                  className="relative rounded-lg bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors"
+                  title={`Organization: ${user?.organizationName || 'Ricoz Primary Organization'}`}
+                >
+                  <label className="sr-only" htmlFor="org-switcher">
+                    Active organization
+                  </label>
+                  <div className="flex items-center px-2 py-1.5 gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
+                    <select
+                      id="org-switcher"
+                      value={user?.organizationId ?? ''}
+                      onChange={handleOrgChange}
+                      disabled={switchingOrg}
+                      className="w-full bg-transparent text-xs text-slate-700 font-medium focus:outline-none cursor-pointer disabled:opacity-60 appearance-none pr-5 truncate"
+                      title="Switch active organization"
+                    >
+                      {organizations.length === 0 && user?.organizationId ? (
+                        <option value={user.organizationId} className="bg-white text-slate-900 py-1">
+                          {user.organizationName || 'Current Organization'}
+                        </option>
+                      ) : (
+                        organizations.map((org) => (
+                          <option key={org.id} value={org.id} className="bg-white text-slate-900 py-1">
+                            {org.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0 pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              )
             ) : (
               <div
                 className={`p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center ${
@@ -316,7 +370,7 @@ export function RootLayout() {
           </div>
 
           {/* Scrollable Nav Items */}
-          <nav className="flex-1 overflow-y-auto px-2.5 py-2 space-y-3">
+          <nav className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2 space-y-3">
             {navigationSections.map((section) => {
               // Filter items based on RBAC permissions
               const visibleItems = section.items.filter((item) => {
@@ -338,18 +392,18 @@ export function RootLayout() {
                   <div className="space-y-0.5">
                     {visibleItems.map((item) => {
                       const Icon = item.icon;
+                      const active = isItemActive(item.to);
                       return (
                         <NavLink
                           key={item.name}
                           to={item.to}
-                          end={item.to === '/'}
                           title={item.name}
                           onClick={() => setMobileMenuOpen(false)}
-                          className={({ isActive }) =>
+                          className={
                             `flex items-center ${
                               isCollapsed ? 'justify-center p-2' : 'justify-between px-2.5 py-1.5'
                             } rounded-md text-xs font-medium transition-colors ${
-                              isActive
+                              active
                                 ? 'bg-blue-50 text-blue-600 font-semibold border border-blue-100 shadow-xs'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`
@@ -374,7 +428,7 @@ export function RootLayout() {
           </nav>
 
           {/* User Profile & Footer Section */}
-          <div className="p-2.5 border-t border-slate-200 bg-slate-50/70 space-y-2">
+          <div className="p-2.5 border-t border-slate-200 bg-slate-50/70 space-y-2 shrink-0">
             {user && (
               <div
                 className={`rounded-lg bg-white border border-slate-200 shadow-xs ${
@@ -431,25 +485,30 @@ export function RootLayout() {
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md px-6">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 sm:px-6">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 mr-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden text-slate-500 hover:text-slate-800 p-1.5 rounded-md hover:bg-slate-100"
+              className="lg:hidden text-slate-500 hover:text-slate-800 p-1.5 rounded-md hover:bg-slate-100 shrink-0"
               title="Open Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             {/* Breadcrumb Trail */}
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-medium text-slate-500">{breadcrumbs.section}</span>
-              <span className="text-slate-300">/</span>
-              <span className="font-semibold text-slate-900">{breadcrumbs.page}</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-slate-500 min-w-0 truncate">
+              <NavLink
+                to={breadcrumbs.sectionTo}
+                className="font-medium text-slate-500 hover:text-slate-800 transition-colors shrink-0"
+              >
+                {breadcrumbs.section}
+              </NavLink>
+              <span className="text-slate-300 shrink-0">/</span>
+              <span className="font-semibold text-slate-900 truncate">{breadcrumbs.page}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             {/* Search Trigger Mockup */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-500 w-64 justify-between">
               <div className="flex items-center gap-2">
@@ -462,7 +521,7 @@ export function RootLayout() {
             </div>
 
             {/* Environment Telemetry Status Indicator */}
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700">
+            <div className="hidden xs:flex sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600" />
@@ -472,7 +531,7 @@ export function RootLayout() {
 
             {/* Org Badge */}
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700">
-              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+              <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span className="text-slate-700 font-medium text-xs max-w-[130px] truncate">
                 {user?.organizationName || 'Default Org'}
               </span>
@@ -481,7 +540,7 @@ export function RootLayout() {
         </header>
 
         {/* Page Content Body */}
-        <main className="flex-1 p-6 lg:p-8 bg-slate-50/70 overflow-x-hidden">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50/70 overflow-x-hidden">
           <Outlet />
         </main>
       </div>

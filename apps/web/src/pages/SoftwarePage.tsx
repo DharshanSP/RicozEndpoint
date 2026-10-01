@@ -173,37 +173,45 @@ export function SoftwarePage() {
   const totalAppInstallations = catalog.reduce((acc, item) => acc + (item.deviceCount || 0), 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
               <Package className="w-5 h-5" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Software Inventory & Deployments
-            </h1>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                Software Inventory & Deployments
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Centralized software catalog discovered across fleet computers and remote application deployment engine.
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Centralized software catalog discovered across fleet computers and remote application deployment engine.
-          </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={fetchCatalog} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh Catalog
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchCatalog}
+            disabled={loading}
+            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
           </Button>
           <Button
             size="sm"
             onClick={() => openDeployModal(null)}
             disabled={!canDeploy}
             title={canDeploy ? undefined : 'Only IT administrators can deploy software'}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
+            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs disabled:opacity-50"
           >
-            <Send className="w-4 h-4 mr-2" />
-            New Deployment
+            <Send className="w-4 h-4" />
+            <span>New Deployment</span>
           </Button>
         </div>
       </div>
@@ -448,8 +456,8 @@ export function SoftwarePage() {
 
       {/* Modal: New Deployment */}
       {showDeployModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Send className="w-5 h-5 text-blue-600" />

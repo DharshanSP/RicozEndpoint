@@ -97,35 +97,35 @@ export function ReportsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-              <BarChart3 className="w-5 h-5" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Reports & Analytics
-            </h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
+            <BarChart3 className="w-5 h-5" />
           </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Generate, review, and export comprehensive enterprise endpoint asset, compliance, and audit reports.
-          </p>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              Reports &amp; Analytics
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Generate, review, and export comprehensive enterprise endpoint asset, compliance, and audit reports.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={loadReportData} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={loadReportData} disabled={loading}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
 
           <Button
             size="sm"
             onClick={handleExportCsv}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+            className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
           >
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-3.5 h-3.5 mr-1.5" />
             Export CSV
           </Button>
         </div>
