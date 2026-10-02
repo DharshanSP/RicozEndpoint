@@ -11,6 +11,7 @@ import {
   X,
   Copy,
   Eye,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDeviceList } from '../hooks/useDeviceQueries';
@@ -31,6 +32,7 @@ import type {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple';
 
@@ -124,6 +126,10 @@ export function PoliciesPage() {
   const [removeMode, setRemoveMode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [policyToDelete, setPolicyToDelete] = useState<PolicySummary | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  const [assignNotice, setAssignNotice] = useState<string | null>(null);
 
   const listQuery = usePoliciesList({ page: 1, limit: 100, search, type: typeFilter, includeAssignments: true });
   const createMutation = useCreatePolicy();
@@ -181,11 +187,13 @@ export function PoliciesPage() {
   };
 
   const handleDuplicate = (policy: PolicySummary) => {
+    setDuplicateNotice(null);
     duplicateMutation.mutate(
       { id: policy.id },
       {
         onSuccess: (created) => {
           if (created?.id) setDetailId(created.id);
+          setDuplicateNotice(`Policy "${policy.name}" was duplicated successfully.`);
         },
       },
     );
@@ -232,9 +240,22 @@ export function PoliciesPage() {
     }
   };
 
-  const handleDelete = (policy: PolicySummary) => {
-    if (!window.confirm(`Delete policy "${policy.name}"? This also removes its assignments.`)) return;
-    deleteMutation.mutate(policy.id);
+  const handleDeleteClick = (policy: PolicySummary) => {
+    setPolicyToDelete(policy);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!policyToDelete) return;
+    deleteMutation.mutate(policyToDelete.id, {
+      onSuccess: () => {
+        const name = policyToDelete.name;
+        setDeleteNotice(`Policy "${name}" was successfully deleted.`);
+        if (detailId === policyToDelete.id) {
+          setDetailId(null);
+        }
+        setPolicyToDelete(null);
+      },
+    });
   };
 
   const toggleDevice = (deviceId: string) => {
@@ -244,10 +265,14 @@ export function PoliciesPage() {
   };
 
   const handleAssign = () => {
-    if (assignDeviceIds.length === 0) return;
+    if (assignDeviceIds.length === 0 || !assignPolicyId) return;
+    const count = assignDeviceIds.length;
+    const targetName = assignPolicy?.name || 'Policy';
+    const isRemove = removeMode;
+    setAssignNotice(null);
     assignMutation.mutate(
       {
-        id: assignPolicyId!,
+        id: assignPolicyId,
         payload: {
           deviceIds: assignDeviceIds,
           groupIds: [],
@@ -259,13 +284,18 @@ export function PoliciesPage() {
         onSuccess: () => {
           setAssignDeviceIds([]);
           setAssignPolicyId(null);
+          setAssignNotice(
+            isRemove
+              ? `Successfully removed assignments for ${count} device${count === 1 ? '' : 's'} on "${targetName}".`
+              : `Successfully assigned ${count} device${count === 1 ? '' : 's'} to "${targetName}".`,
+          );
         },
       },
     );
   };
 
   const pending = createMutation.isPending || updateMutation.isPending;
-  const actionPending = deleteMutation.isPending || assignMutation.isPending;
+  const actionPending = deleteMutation.isPending || assignMutation.isPending || duplicateMutation.isPending;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -314,6 +344,99 @@ export function PoliciesPage() {
           )}
         </div>
       </div>
+
+      {/* Deletion success banner */}
+      {deleteNotice && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{deleteNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Deletion error banner */}
+      {deleteMutation.isError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
+          <span>Failed to delete policy: {(deleteMutation.error as Error).message}</span>
+          <button
+            type="button"
+            onClick={() => deleteMutation.reset()}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Duplication success banner */}
+      {duplicateNotice && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{duplicateNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDuplicateNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Duplication error banner */}
+      {duplicateMutation.isError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
+          <span>Failed to duplicate policy: {(duplicateMutation.error as Error).message}</span>
+          <button
+            type="button"
+            onClick={() => duplicateMutation.reset()}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Assignment success banner */}
+      {assignNotice && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{assignNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAssignNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Assignment error banner */}
+      {assignMutation.isError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
+          <span>Failed to update assignments: {(assignMutation.error as Error).message}</span>
+          <button
+            type="button"
+            onClick={() => assignMutation.reset()}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Create / Edit Form */}
       {showForm && (
@@ -591,10 +714,18 @@ export function PoliciesPage() {
                 size="sm"
                 onClick={handleAssign}
                 disabled={assignMutation.isPending || assignDeviceIds.length === 0}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
               >
-                {removeMode ? 'Remove' : 'Assign'} ({assignDeviceIds.length}){' '}
-                {assignMutation.isPending ? '...' : ''}
+                {assignMutation.isPending ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>
+                    {removeMode ? 'Remove' : 'Assign'} ({assignDeviceIds.length})
+                  </span>
+                )}
               </Button>
             </div>
             {assignMutation.isError && (
@@ -857,9 +988,9 @@ export function PoliciesPage() {
                               className="text-slate-500 hover:text-blue-600"
                               onClick={() => handleDuplicate(policy)}
                               title="Duplicate"
-                              disabled={duplicateMutation.isPending}
+                              disabled={actionPending}
                             >
-                              <Copy className="w-3.5 h-3.5" />
+                              <Copy className={`w-3.5 h-3.5 ${duplicateMutation.isPending ? 'animate-pulse' : ''}`} />
                             </Button>
                           )}
                           {canManage && (
@@ -878,7 +1009,7 @@ export function PoliciesPage() {
                               variant="ghost"
                               size="sm"
                               className="text-slate-500 hover:text-rose-600"
-                              onClick={() => handleDelete(policy)}
+                              onClick={() => handleDeleteClick(policy)}
                               title="Delete"
                               disabled={actionPending}
                             >
@@ -895,6 +1026,27 @@ export function PoliciesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Policy Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(policyToDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setPolicyToDelete(null);
+          }
+        }}
+        title="Delete Policy"
+        description={
+          policyToDelete
+            ? `Are you sure you want to delete policy "${policyToDelete.name}"? This action is irreversible and will immediately remove all endpoint and group assignments for this policy.`
+            : ''
+        }
+        icon={Trash2}
+        variant="danger"
+        confirmLabel="Delete Policy"
+        loading={deleteMutation.isPending}
+        onConfirm={handleConfirmDelete}
+      />
 
       {/* Endpoint quick links */}
       {policies.length > 0 && (

@@ -35,6 +35,7 @@ import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ErrorState } from '../components/ErrorState';
 import type { CommandType } from '../types/command';
 import type {
@@ -200,10 +201,57 @@ function TabSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
+interface CommandAction {
+  type: CommandType;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  destructive: boolean;
+}
+
+const COMMAND_ACTIONS: CommandAction[] = [
+  {
+    type: 'REFRESH_INVENTORY',
+    label: 'Refresh Inventory',
+    description: 'Ask the agent to re-collect hardware and software inventory.',
+    icon: RefreshCw,
+    destructive: false,
+  },
+  {
+    type: 'SYNC_POLICY',
+    label: 'Sync Policy',
+    description: 'Force the agent to re-fetch and apply its effective policies immediately.',
+    icon: ShieldCheck,
+    destructive: false,
+  },
+  {
+    type: 'LOCK_DEVICE',
+    label: 'Lock Device',
+    description: 'Immediately lock the workstation session. Requires confirmation.',
+    icon: Lock,
+    destructive: true,
+  },
+  {
+    type: 'RESTART_DEVICE',
+    label: 'Restart Device',
+    description: 'Force a system restart of the endpoint. Requires confirmation.',
+    icon: RotateCcw,
+    destructive: true,
+  },
+  {
+    type: 'SHUTDOWN_DEVICE',
+    label: 'Shutdown Device',
+    description: 'Power the endpoint down. Requires confirmation.',
+    icon: PowerOff,
+    destructive: true,
+  },
+];
+
 export function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { hasRole } = useAuth();
+  const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const [activeTab, setActiveTab] = useState<TabValue>('overview');
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
   // Sub-tab search and filter states
@@ -217,12 +265,36 @@ export function DeviceDetailPage() {
   const software = useDeviceSoftware(id, activeTab === 'software');
   const activity = useDeviceActivity(id, activeTab === 'activity');
 
-  const handleTabChange = (value: string) => setActiveTab(value as TabValue);
+  // Command mutation and confirmation state
+  const createCommand = useCreateCommand(id);
+  const [pendingType, setPendingType] = useState<CommandType | null>(null);
 
-  const handleActionClick = (actionName: string) => {
-    setActionNotice(`Remote action '${actionName}' initiated for this device.`);
-    setTimeout(() => setActionNotice(null), 4000);
+  const pendingAction = COMMAND_ACTIONS.find((action) => action.type === pendingType) ?? null;
+
+  const dispatch = (type: CommandType) => {
+    if (!canManage || !id) return;
+    const action = COMMAND_ACTIONS.find((a) => a.type === type);
+    if (!action) return;
+    if (action.destructive) {
+      setPendingType(type);
+      return;
+    }
+    createCommand.mutate({ deviceId: id, type, confirmed: false });
   };
+
+  const confirmDispatch = () => {
+    if (!pendingAction || !id) return;
+    createCommand.mutate(
+      { deviceId: id, type: pendingAction.type, confirmed: true },
+      {
+        onSuccess: () => {
+          setPendingType(null);
+        },
+      },
+    );
+  };
+
+  const handleTabChange = (value: string) => setActiveTab(value as TabValue);
 
   const copyDeviceId = () => {
     if (!id) return;
@@ -280,20 +352,54 @@ export function DeviceDetailPage() {
       {/* Breadcrumb Navigation */}
       <Breadcrumbs deviceName={overview.deviceName} />
 
-      {/* Action Notification Banner */}
-      {actionNotice && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs shadow-xs animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-            <span className="font-medium">{actionNotice}</span>
-          </div>
+      {/* Command Feedback Notification */}
+      {createCommand.isError && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <span className="font-medium">{(createCommand.error as Error).message}</span>
           <button
-            onClick={() => setActionNotice(null)}
-            className="text-blue-500 hover:text-blue-700 font-semibold"
+            onClick={() => createCommand.reset()}
+            className="text-rose-500 hover:text-rose-700 font-semibold"
           >
             Dismiss
           </button>
         </div>
+      )}
+      {createCommand.isSuccess && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">
+              Command {String((createCommand.data as { data?: { type?: string } })?.data?.type ?? '')} queued for this device.
+            </span>
+          </div>
+          <button
+            onClick={() => createCommand.reset()}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Shared Command Confirmation Dialog */}
+      {pendingAction && (
+        <ConfirmDialog
+          open={Boolean(pendingAction)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingType(null);
+            }
+          }}
+          title={`Confirm ${pendingAction.label}`}
+          description={`${pendingAction.description} This action is destructive and irreversible once the agent executes it. The server will reject it without an explicit confirmation.`}
+          icon={pendingAction.icon}
+          variant="danger"
+          requireCheckbox
+          checkboxLabel="I understand the consequences and confirm this action."
+          confirmLabel="Confirm & Send"
+          loading={createCommand.isPending}
+          onConfirm={confirmDispatch}
+        />
       )}
 
       {/* Device Header Card */}
@@ -341,7 +447,8 @@ export function DeviceDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleActionClick('Lock Workstation')}
+              onClick={() => dispatch('LOCK_DEVICE')}
+              disabled={!canManage || createCommand.isPending}
               className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             >
               <Lock className="w-3.5 h-3.5 text-amber-600" />
@@ -350,7 +457,8 @@ export function DeviceDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleActionClick('Restart Host')}
+              onClick={() => dispatch('RESTART_DEVICE')}
+              disabled={!canManage || createCommand.isPending}
               className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
@@ -359,7 +467,8 @@ export function DeviceDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleActionClick('Shutdown Host')}
+              onClick={() => dispatch('SHUTDOWN_DEVICE')}
+              disabled={!canManage || createCommand.isPending}
               className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             >
               <Power className="w-3.5 h-3.5 text-rose-600" />
@@ -368,7 +477,8 @@ export function DeviceDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleActionClick('Sync Policies')}
+              onClick={() => dispatch('SYNC_POLICY')}
+              disabled={!canManage || createCommand.isPending}
               className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
@@ -496,7 +606,11 @@ export function DeviceDetailPage() {
 
         {/* Actions Tab */}
         <TabsContent value="actions">
-          <ActionsTab deviceId={overview.id} />
+          <ActionsTab
+            deviceId={overview.id}
+            dispatch={dispatch}
+            isCommandPending={createCommand.isPending}
+          />
         </TabsContent>
 
         {/* Activity Tab with Category Filter */}
@@ -1046,62 +1160,18 @@ function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
   );
 }
 
-interface CommandAction {
-  type: CommandType;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  destructive: boolean;
+interface ActionsTabProps {
+  deviceId: string;
+  dispatch: (type: CommandType) => void;
+  isCommandPending: boolean;
 }
 
-const COMMAND_ACTIONS: CommandAction[] = [
-  {
-    type: 'REFRESH_INVENTORY',
-    label: 'Refresh Inventory',
-    description: 'Ask the agent to re-collect hardware and software inventory.',
-    icon: RefreshCw,
-    destructive: false,
-  },
-  {
-    type: 'SYNC_POLICY',
-    label: 'Sync Policy',
-    description: 'Force the agent to re-fetch and apply its effective policies immediately.',
-    icon: ShieldCheck,
-    destructive: false,
-  },
-  {
-    type: 'LOCK_DEVICE',
-    label: 'Lock Device',
-    description: 'Immediately lock the workstation session. Requires confirmation.',
-    icon: Lock,
-    destructive: true,
-  },
-  {
-    type: 'RESTART_DEVICE',
-    label: 'Restart Device',
-    description: 'Force a system restart of the endpoint. Requires confirmation.',
-    icon: RotateCcw,
-    destructive: true,
-  },
-  {
-    type: 'SHUTDOWN_DEVICE',
-    label: 'Shutdown Device',
-    description: 'Power the endpoint down. Requires confirmation.',
-    icon: PowerOff,
-    destructive: true,
-  },
-];
-
-function ActionsTab({ deviceId }: { deviceId: string }) {
+function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
   const { hasRole } = useAuth();
   const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const navigate = useNavigate();
-  const createCommand = useCreateCommand(deviceId);
   const deleteDevice = useDeleteDevice();
-  const [pendingType, setPendingType] = useState<CommandType | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
-  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
 
   if (!canManage) {
@@ -1114,150 +1184,66 @@ function ActionsTab({ deviceId }: { deviceId: string }) {
     );
   }
 
-  const pendingAction = COMMAND_ACTIONS.find((action) => action.type === pendingType) ?? null;
-
-  const dispatch = (type: CommandType) => {
-    setConfirmed(false);
-    const action = COMMAND_ACTIONS.find((a) => a.type === type)!;
-    const destructive = action.destructive;
-    if (destructive) {
-      setPendingType(type);
-      return;
-    }
-    createCommand.mutate({ deviceId, type, confirmed: false });
-  };
-
-  const confirmDispatch = () => {
-    if (!pendingAction || !confirmed) return;
-    createCommand.mutate(
-      { deviceId, type: pendingAction.type, confirmed: true },
-      {
-        onSuccess: () => {
-          setPendingType(null);
-          setConfirmed(false);
-        },
-      },
-    );
-  };
-
   const handleDeleteClick = () => {
     setPendingDelete(true);
   };
 
   const confirmDelete = () => {
-    if (!deleteConfirmed || !deletePassword) return;
-    deleteDevice.mutate({ id: deviceId, password: deletePassword }, {
-      onSuccess: () => {
-        setPendingDelete(false);
-        setDeleteConfirmed(false);
-        setDeletePassword('');
-        navigate('/devices');
+    deleteDevice.mutate(
+      { id: deviceId, password: deletePassword || undefined },
+      {
+        onSuccess: () => {
+          setPendingDelete(false);
+          setDeletePassword('');
+          navigate('/devices');
+        },
       },
-    });
+    );
   };
 
-  const running = createCommand.isPending || deleteDevice.isPending;
+  const running = isCommandPending || deleteDevice.isPending;
 
   return (
     <div className="space-y-3">
-      {createCommand.isError && (
-        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
-          {(createCommand.error as Error).message}
-        </div>
-      )}
-      {createCommand.isSuccess && (
-        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
-          Command {String((createCommand.data as { data?: { type?: string } }).data?.type ?? '')} queued for this device.
-        </div>
-      )}
       {deleteDevice.isError && (
         <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
           {(deleteDevice.error as Error).message}
         </div>
       )}
 
-      {pendingAction && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <pendingAction.icon className="w-4 h-4 text-amber-600" />
-            <span className="text-sm font-bold text-slate-900">
-              Confirm {pendingAction.label} ({pendingAction.type})
-            </span>
-          </div>
-          <p className="text-xs text-slate-700">{pendingAction.description}.</p>
-          <p className="text-[11px] text-amber-700">
-            This action is destructive and irreversible once the agent executes it. The server will reject it without an explicit confirmation.
-          </p>
-          <label className="flex items-center gap-2 text-sm text-slate-800">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
-            />
-            I understand the consequences and confirm this action.
+      {/* Device Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        open={pendingDelete}
+        onOpenChange={(open) => {
+          setPendingDelete(open);
+          if (!open) {
+            setDeletePassword('');
+          }
+        }}
+        title="Delete Device"
+        description="This will permanently delete the device and all its related data (hardware, software inventory, policies, compliance results, commands, and audit logs). This action is irreversible."
+        icon={Trash2}
+        variant="danger"
+        confirmLabel="Delete Device"
+        loading={deleteDevice.isPending}
+        requireCheckbox
+        checkboxLabel="I understand this cannot be undone and confirm deletion."
+        onConfirm={confirmDelete}
+      >
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-slate-700">
+            Admin Password (if required):
           </label>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPendingType(null)} disabled={running}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={confirmDispatch}
-              disabled={running || !confirmed}
-            >
-              {running ? 'Confirming...' : 'Confirm & Send'}
-            </Button>
-          </div>
+          <input
+            type="password"
+            placeholder="Enter admin password to confirm"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            disabled={deleteDevice.isPending}
+            className="w-full px-3 py-1.5 text-xs rounded-md border border-slate-300 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 bg-white"
+          />
         </div>
-      )}
-
-      {pendingDelete && (
-        <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Trash2 className="w-4 h-4 text-rose-600" />
-            <span className="text-sm font-bold text-slate-900">Confirm Device Deletion</span>
-          </div>
-          <p className="text-xs text-slate-700">
-            This will permanently delete the device and all its related data (hardware, software inventory, policies, compliance results, commands, and audit logs).
-          </p>
-          <p className="text-[11px] text-rose-700">This action is irreversible.</p>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm text-slate-800">
-              <input
-                type="checkbox"
-                checked={deleteConfirmed}
-                onChange={(e) => setDeleteConfirmed(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
-              />
-              I understand this cannot be undone and confirm deletion.
-            </label>
-            {deleteConfirmed && (
-              <input
-                type="password"
-                placeholder="Enter admin password to confirm"
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-md border border-slate-300 focus:ring-1 focus:ring-rose-500 focus:border-rose-500"
-              />
-            )}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPendingDelete(false)} disabled={running}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={confirmDelete}
-              disabled={running || !deleteConfirmed || !deletePassword}
-            >
-              {running ? 'Deleting...' : 'Confirm & Delete'}
-            </Button>
-          </div>
-        </div>
-      )}
+      </ConfirmDialog>
 
       {COMMAND_ACTIONS.map((action) => (
         <div key={action.type} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3">
