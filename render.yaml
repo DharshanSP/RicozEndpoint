@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     branch: main
-    buildCommand: corepack enable && corepack prepare pnpm@9.15.4 --activate && pnpm install --frozen-lockfile && pnpm --filter @ricoz/shared-types build && pnpm --filter @ricoz/validation build && pnpm --filter @ricoz/database generate && pnpm --filter @ricoz/api build
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @ricoz/shared-types build && pnpm --filter @ricoz/validation build && pnpm --filter @ricoz/database generate && pnpm --filter @ricoz/api build
     startCommand: pnpm --filter @ricoz/database migrate:deploy && pnpm --filter @ricoz/api start
     healthCheckPath: /api/health
     envVars:
