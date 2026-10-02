@@ -12,9 +12,11 @@ import {
   User,
   SlidersHorizontal,
   Edit2,
+  CheckCircle2,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ErrorState } from '../components/ErrorState';
 import { formatDateTime } from '../lib/format';
 import type { UserRole } from '../context/AuthContext';
@@ -61,6 +63,11 @@ export function UsersPage() {
   const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Status Toggle Confirmation & Feedback State
+  const [userToToggle, setUserToToggle] = useState<UserSummary | null>(null);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
   const canManageUsers = hasRole(['SUPER_ADMIN', 'ORG_ADMIN']);
 
   const filteredUsers = useMemo(() => {
@@ -81,6 +88,7 @@ export function UsersPage() {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (createMutation.isPending) return;
     setCreateError(null);
 
     if (!newEmail || !newName || !newPassword) {
@@ -89,8 +97,9 @@ export function UsersPage() {
     }
 
     try {
+      const createdName = newName.trim();
       await createMutation.mutateAsync({
-        name: newName.trim(),
+        name: createdName,
         email: newEmail.trim().toLowerCase(),
         password: newPassword,
         role: newRole,
@@ -100,6 +109,7 @@ export function UsersPage() {
       setNewEmail('');
       setNewPassword('');
       setNewRole('OPERATOR');
+      setStatusNotice(`User account "${createdName}" was successfully created.`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create user');
     }
@@ -115,7 +125,7 @@ export function UsersPage() {
 
   const handleUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser) return;
+    if (!editingUser || updateMutation.isPending) return;
     setEditError(null);
 
     if (!editName.trim()) {
@@ -129,33 +139,46 @@ export function UsersPage() {
     }
 
     try {
+      const updatedName = editName.trim();
       await updateMutation.mutateAsync({
         id: editingUser.id,
         payload: {
-          name: editName.trim(),
+          name: updatedName,
           role: editRole,
           isActive: editIsActive,
         },
       });
       setEditingUser(null);
+      setStatusNotice(`User account "${updatedName}" was successfully updated.`);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Failed to update user');
     }
   };
 
-  const handleToggleStatus = async (userToToggle: UserSummary) => {
-    if (userToToggle.id === currentUser?.id) {
-      alert('You cannot deactivate your own administrative account.');
+  const handleToggleClick = (userToToggleStatus: UserSummary) => {
+    if (userToToggleStatus.id === currentUser?.id && userToToggleStatus.isActive) {
+      setStatusError('You cannot deactivate your own administrative account.');
       return;
     }
+    setStatusError(null);
+    setUserToToggle(userToToggleStatus);
+  };
 
+  const handleConfirmToggle = async () => {
+    if (!userToToggle) return;
+    setStatusError(null);
     try {
+      const willBeActive = !userToToggle.isActive;
       await updateMutation.mutateAsync({
         id: userToToggle.id,
-        payload: { isActive: !userToToggle.isActive },
+        payload: { isActive: willBeActive },
       });
+      const actionWord = willBeActive ? 'activated' : 'deactivated';
+      setStatusNotice(`User account "${userToToggle.name}" was successfully ${actionWord}.`);
+      setUserToToggle(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update user status');
+      setStatusError(err instanceof Error ? err.message : 'Failed to update user status');
+      setUserToToggle(null);
     }
   };
 
@@ -204,6 +227,39 @@ export function UsersPage() {
           )}
         </div>
       </div>
+
+      {/* Status change feedback banners */}
+      {statusNotice && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{statusNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {statusError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <X className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{statusError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusError(null)}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-xl bg-white border border-slate-200 shadow-xs">
@@ -345,7 +401,7 @@ export function UsersPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleToggleStatus(u)}
+                          onClick={() => handleToggleClick(u)}
                           disabled={u.id === currentUser?.id || updateMutation.isPending}
                           className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100"
                         >
@@ -373,8 +429,10 @@ export function UsersPage() {
                 <h3 className="text-base font-bold text-slate-900">Add Organization User</h3>
               </div>
               <button
+                type="button"
+                disabled={createMutation.isPending}
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 disabled:opacity-50"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -461,6 +519,7 @@ export function UsersPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={createMutation.isPending}
                   onClick={() => setShowCreateModal(false)}
                   className="border-slate-200 text-slate-600"
                 >
@@ -470,9 +529,16 @@ export function UsersPage() {
                   type="submit"
                   size="sm"
                   disabled={createMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
                 >
-                  {createMutation.isPending ? 'Creating...' : 'Create Account'}
+                  {createMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <span>Create Account</span>
+                  )}
                 </Button>
               </div>
             </form>
@@ -495,8 +561,10 @@ export function UsersPage() {
                 </div>
               </div>
               <button
+                type="button"
+                disabled={updateMutation.isPending}
                 onClick={() => setEditingUser(null)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 disabled:opacity-50"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -567,6 +635,7 @@ export function UsersPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={updateMutation.isPending}
                   onClick={() => setEditingUser(null)}
                   className="border-slate-200 text-slate-600"
                 >
@@ -576,15 +645,44 @@ export function UsersPage() {
                   type="submit"
                   size="sm"
                   disabled={updateMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
                 >
-                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  {updateMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
                 </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* User Status Toggle Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(userToToggle)}
+        onOpenChange={(open) => {
+          if (!open && !updateMutation.isPending) {
+            setUserToToggle(null);
+          }
+        }}
+        title={userToToggle?.isActive ? 'Deactivate User Account' : 'Activate User Account'}
+        description={
+          userToToggle
+            ? userToToggle.isActive
+              ? `Are you sure you want to deactivate account "${userToToggle.name}" (${userToToggle.email})? This user will immediately lose access to the platform until reactivated.`
+              : `Are you sure you want to activate account "${userToToggle.name}" (${userToToggle.email})? This user will be granted login access according to their assigned role.`
+            : ''
+        }
+        variant={userToToggle?.isActive ? 'danger' : 'warning'}
+        confirmLabel={userToToggle?.isActive ? 'Deactivate User' : 'Activate User'}
+        loading={updateMutation.isPending}
+        onConfirm={handleConfirmToggle}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   Server,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -67,6 +68,10 @@ export function AlertsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkNote, setBulkNote] = useState('');
 
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+
   const listQuery = useAlertsList({
     page,
     limit: PAGE_SIZE,
@@ -99,32 +104,56 @@ export function AlertsPage() {
     });
   };
 
-  const handleResolve = (id: string) => {
+  const handleResolve = (alert: AlertItem) => {
+    if (!canResolve || resolveMutation.isPending || acknowledgingId) return;
+    setActionError(null);
     resolveMutation.mutate(
-      { id, payload: { note: resolveNote.trim() || undefined } },
+      { id: alert.id, payload: { note: resolveNote.trim() || undefined } },
       {
         onSuccess: () => {
           setResolveTarget(null);
           setResolveNote('');
+          setActionSuccess(`Alert "${alert.title}" was successfully resolved.`);
+        },
+        onError: (err) => {
+          setActionError((err as Error).message || 'Failed to resolve alert');
         },
       },
     );
   };
 
-  const handleAcknowledge = (id: string) => {
-    acknowledgeMutation.mutate(id);
+  const handleAcknowledge = (alert: AlertItem) => {
+    if (!canAcknowledge || acknowledgingId || resolveMutation.isPending) return;
+    setAcknowledgingId(alert.id);
+    setActionError(null);
+    acknowledgeMutation.mutate(alert.id, {
+      onSuccess: () => {
+        setActionSuccess(`Alert "${alert.title}" was successfully acknowledged.`);
+        setAcknowledgingId(null);
+      },
+      onError: (err) => {
+        setActionError((err as Error).message || 'Failed to acknowledge alert');
+        setAcknowledgingId(null);
+      },
+    });
   };
 
   const handleBulkResolve = () => {
     const ids = Array.from(selected);
-    if (ids.length === 0) return;
+    if (ids.length === 0 || bulkMutation.isPending) return;
+    setActionError(null);
     bulkMutation.mutate(
       { ids, note: bulkNote.trim() || undefined },
       {
         onSuccess: () => {
+          const count = ids.length;
           setBulkOpen(false);
           setBulkNote('');
           setSelected(new Set());
+          setActionSuccess(`Successfully resolved ${count} alert${count === 1 ? '' : 's'}.`);
+        },
+        onError: (err) => {
+          setActionError((err as Error).message || 'Failed to resolve selected alerts');
         },
       },
     );
@@ -147,12 +176,6 @@ export function AlertsPage() {
     }),
     [alerts],
   );
-
-  const actionError =
-    (resolveMutation.isError && (resolveMutation.error as Error).message) ||
-    (acknowledgeMutation.isError && (acknowledgeMutation.error as Error).message) ||
-    (bulkMutation.isError && (bulkMutation.error as Error).message) ||
-    '';
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -183,6 +206,40 @@ export function AlertsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Success banner */}
+      {actionSuccess && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{actionSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionSuccess(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Error banner */}
+      {actionError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Summary strip */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
@@ -298,10 +355,6 @@ export function AlertsPage() {
         )}
       </div>
 
-      {actionError && (
-        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{actionError}</div>
-      )}
-
       {/* List */}
       <Card className="border-slate-200 bg-white shadow-xs">
         <CardHeader className="pb-3">
@@ -361,7 +414,7 @@ export function AlertsPage() {
                   canResolve={canResolve}
                   canAcknowledge={canAcknowledge}
                   resolving={resolveMutation.isPending && resolveTarget === alert.id}
-                  acknowledging={acknowledgeMutation.isPending && acknowledgeMutation.variables === alert.id}
+                  acknowledging={acknowledgingId === alert.id}
                   expanding={resolveTarget === alert.id}
                   note={resolveNote}
                   onNoteChange={setResolveNote}
@@ -373,8 +426,8 @@ export function AlertsPage() {
                     setResolveTarget(null);
                     setResolveNote('');
                   }}
-                  onConfirmResolve={() => handleResolve(alert.id)}
-                  onAcknowledge={() => handleAcknowledge(alert.id)}
+                  onConfirmResolve={() => handleResolve(alert)}
+                  onAcknowledge={() => handleAcknowledge(alert)}
                 />
               ))}
             </div>
@@ -558,23 +611,33 @@ function AlertRow({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-[11px] border-slate-200 bg-white text-amber-700 hover:bg-amber-50"
+              className="h-7 text-[11px] border-slate-200 bg-white text-amber-700 hover:bg-amber-50 gap-1"
               onClick={onAcknowledge}
-              disabled={acknowledging}
+              disabled={acknowledging || resolving}
             >
-              <Check className="w-3.5 h-3.5 mr-1" />
-              {acknowledging ? 'Acknowledging...' : 'Acknowledge'}
+              {acknowledging ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
+                  <span>Acknowledging...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Acknowledge</span>
+                </>
+              )}
             </Button>
           )}
           {(isOpen || isAcknowledged) && canResolve && !expanding && (
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-[11px] border-slate-200 bg-white text-emerald-700 hover:bg-emerald-50"
+              className="h-7 text-[11px] border-slate-200 bg-white text-emerald-700 hover:bg-emerald-50 gap-1"
               onClick={onStartResolve}
+              disabled={acknowledging || resolving}
             >
-              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-              Resolve
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Resolve</span>
             </Button>
           )}
         </div>
@@ -595,8 +658,23 @@ function AlertRow({
             <Button variant="outline" size="sm" onClick={onCancelResolve} disabled={resolving}>
               Cancel
             </Button>
-            <Button size="sm" onClick={onConfirmResolve} disabled={resolving}>
-              {resolving ? 'Resolving...' : 'Confirm Resolve'}
+            <Button
+              size="sm"
+              onClick={onConfirmResolve}
+              disabled={resolving}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+            >
+              {resolving ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Resolving...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Confirm Resolve</span>
+                </>
+              )}
             </Button>
           </div>
         </div>

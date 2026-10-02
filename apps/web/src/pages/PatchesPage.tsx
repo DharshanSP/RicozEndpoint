@@ -14,6 +14,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import {
   useCreatePatch,
@@ -76,6 +77,9 @@ export function PatchesPage() {
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<PatchCoverage | null>(null);
+  const [approvingPatchId, setApprovingPatchId] = useState<string | null>(null);
+  const [approveNotice, setApproveNotice] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -117,7 +121,22 @@ export function PatchesPage() {
   };
 
   const handleApprove = (patch: PatchCoverage) => {
-    updateMutation.mutate({ patchId: patch.id, payload: { status: 'APPROVED' } });
+    if (!canManage || approvingPatchId) return;
+    setApprovingPatchId(patch.id);
+    setApproveError(null);
+    updateMutation.mutate(
+      { patchId: patch.id, payload: { status: 'APPROVED' } },
+      {
+        onSuccess: (data) => {
+          setApproveNotice(`Patch ${data.kbNumber} ("${patch.title}") was successfully approved.`);
+          setApprovingPatchId(null);
+        },
+        onError: (err) => {
+          setApproveError((err as Error).message || 'Failed to approve patch');
+          setApprovingPatchId(null);
+        },
+      }
+    );
   };
 
   const handleConfirmDeploy = () => {
@@ -185,6 +204,97 @@ export function PatchesPage() {
           )}
         </div>
       </div>
+
+      {/* Approval Feedback Banners */}
+      {approveNotice && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">{approveNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setApproveNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {approveError && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="font-medium">Approval failed: {approveError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setApproveError(null)}
+            className="text-rose-500 hover:text-rose-700 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Deployment Feedback Banner */}
+      {deployMutation.isError && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="font-medium">
+              Deployment failed: {(deployMutation.error as Error).message}
+            </span>
+          </div>
+          <button
+            onClick={() => deployMutation.reset()}
+            className="text-rose-500 hover:text-rose-700 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {deployMutation.isSuccess && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">
+              Deployment queued successfully for {deployMutation.data?.queued ?? 'target'} device
+              {(deployMutation.data?.queued ?? 0) === 1 ? '' : 's'}.
+            </span>
+          </div>
+          <button
+            onClick={() => deployMutation.reset()}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Patch Deployment Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(deployTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeployTarget(null);
+          }
+        }}
+        title={deployTarget ? `Deploy ${deployTarget.kbNumber}` : 'Deploy Patch'}
+        description={
+          deployTarget
+            ? `Deploying "${deployTarget.title}" will issue remote install commands to all ${
+                deployTarget.affectedDevices > 0 ? `${deployTarget.affectedDevices} unpatched` : 'eligible'
+              } endpoints. System restarts may be required on target devices.`
+            : ''
+        }
+        icon={Wrench}
+        variant="warning"
+        confirmLabel="Deploy Patch"
+        loading={deployMutation.isPending}
+        onConfirm={handleConfirmDeploy}
+      />
 
       {/* Add patch panel */}
       {showAdd && (
@@ -262,35 +372,7 @@ export function PatchesPage() {
         </Card>
       )}
 
-      {/* Feedback banners */}
-      {updateMutation.isSuccess && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-800 flex items-center gap-2 shadow-xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{updateMutation.data.kbNumber} is now {updateMutation.data.status.toLowerCase()}.</span>
-        </div>
-      )}
-
-      {deployMutation.isSuccess && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-800 flex items-center gap-2 shadow-xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>
-            Queued installation of {deployMutation.data.patch.kbNumber} on{' '}
-            {deployMutation.data.queued} device{deployMutation.data.queued === 1 ? '' : 's'}
-            {deployMutation.data.skippedInstalled > 0 &&
-              ` · ${deployMutation.data.skippedInstalled} already installed`}
-            {deployMutation.data.skippedInFlight > 0 &&
-              ` · ${deployMutation.data.skippedInFlight} already in flight`}
-            . Agents pick commands up on their next heartbeat.
-          </span>
-        </div>
-      )}
-
-      {(updateMutation.isError || deployMutation.isError) && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs">
-          {((updateMutation.error ?? deployMutation.error) as Error).message}
-        </div>
-      )}
-
+      {/* List error banner */}
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs">{error}</div>
       )}
@@ -502,11 +584,20 @@ export function PatchesPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleApprove(patch)}
-                        disabled={!canManage || updateMutation.isPending}
-                        className="text-blue-600 hover:bg-blue-50 border-blue-200"
+                        disabled={!canManage || Boolean(approvingPatchId)}
+                        className="text-blue-600 hover:bg-blue-50 border-blue-200 gap-1.5"
                       >
-                        <Check className="w-4 h-4 mr-1" />
-                        Approve
+                        {approvingPatchId === patch.id ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Approving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>Approve</span>
+                          </>
+                        )}
                       </Button>
                     ) : patch.status === 'APPROVED' ? (
                       <Button

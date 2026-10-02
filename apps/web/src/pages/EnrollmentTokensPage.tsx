@@ -4,6 +4,7 @@ import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, Histor
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import {
   useCreateEnrollmentToken,
@@ -46,6 +47,8 @@ export function EnrollmentTokensPage() {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const [tokenToRevoke, setTokenToRevoke] = useState<EnrollmentTokenSummary | null>(null);
+  const [revokeNotice, setRevokeNotice] = useState<string | null>(null);
 
   const listQuery = useEnrollmentTokenList({ page: 1, limit: 50 });
   const createMutation = useCreateEnrollmentToken();
@@ -95,10 +98,20 @@ export function EnrollmentTokensPage() {
     setTimeout(() => setCopiedCommand(false), 2000);
   };
 
-  const handleRevoke = (token: EnrollmentTokenSummary) => {
+  const handleRevokeClick = (token: EnrollmentTokenSummary) => {
     if (!token.isActive) return;
-    if (!window.confirm(`Revoke enrollment token '${token.label || token.id.slice(0, 8)}'?`)) return;
-    revokeMutation.mutate(token.id);
+    setTokenToRevoke(token);
+  };
+
+  const handleConfirmRevoke = () => {
+    if (!tokenToRevoke) return;
+    revokeMutation.mutate(tokenToRevoke.id, {
+      onSuccess: () => {
+        const tokenLabel = tokenToRevoke.label || tokenToRevoke.id.slice(0, 8);
+        setRevokeNotice(`Enrollment token "${tokenLabel}" has been revoked.`);
+        setTokenToRevoke(null);
+      },
+    });
   };
 
   return (
@@ -143,6 +156,37 @@ export function EnrollmentTokensPage() {
           )}
         </div>
       </div>
+
+      {/* Revoke feedback banner */}
+      {revokeNotice && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{revokeNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRevokeNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Revoke error banner */}
+      {revokeMutation.isError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
+          <span>Failed to revoke token: {(revokeMutation.error as Error).message}</span>
+          <button
+            type="button"
+            onClick={() => revokeMutation.reset()}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Create Panel */}
       {showCreate && (
@@ -349,7 +393,7 @@ export function EnrollmentTokensPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRevoke(token)}
+                              onClick={() => handleRevokeClick(token)}
                               disabled={revokeMutation.isPending}
                               className="h-7 text-[11px] text-slate-600 hover:text-rose-600 hover:bg-rose-50"
                             >
@@ -367,6 +411,27 @@ export function EnrollmentTokensPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Revoke Token Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(tokenToRevoke)}
+        onOpenChange={(open) => {
+          if (!open && !revokeMutation.isPending) {
+            setTokenToRevoke(null);
+          }
+        }}
+        title="Revoke Enrollment Token"
+        description={
+          tokenToRevoke
+            ? `Are you sure you want to revoke the enrollment token "${tokenToRevoke.label || tokenToRevoke.id.slice(0, 8)}"? This action cannot be undone and any pending or future agent enrollments with this token will be rejected.`
+            : ''
+        }
+        icon={Trash2}
+        variant="danger"
+        confirmLabel="Revoke Token"
+        loading={revokeMutation.isPending}
+        onConfirm={handleConfirmRevoke}
+      />
 
       <EnrollmentHistoryCard />
     </div>

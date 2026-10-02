@@ -32,6 +32,7 @@ import {
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
 import { fetchApi, apiBaseUrl } from '../lib/api';
@@ -129,6 +130,7 @@ export function DevicesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deletePassword, setDeletePassword] = useState<string>('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   // Filter & pagination state
   const paramStatus = searchParams.get('status') || 'ALL';
@@ -221,8 +223,10 @@ export function DevicesPage() {
     if (!deleteTarget || !deletePassword.trim()) return;
     setDeleteError(null);
     try {
+      const deletedName = deleteTarget.name;
       await deleteDevice.mutateAsync({ id: deleteTarget.id, password: deletePassword.trim() });
       closeDeleteConfirm();
+      setDeleteNotice(`Device "${deletedName}" was successfully deleted.`);
       refetch();
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : 'Failed to delete device');
@@ -398,6 +402,23 @@ const handlePageSizeChange = (val: number) => {
           )}
         </div>
       </div>
+
+      {/* Deletion success feedback banner */}
+      {deleteNotice && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{deleteNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Enrollment Guide */}
       <Card className="border-blue-200 bg-blue-50/40 shadow-xs">
@@ -1076,69 +1097,50 @@ const handlePageSizeChange = (val: number) => {
         </div>
       )}
 
-      {/* Delete Device Confirmation Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-rose-50">
-              <div className="p-2 rounded-xl bg-rose-600 text-white shadow">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Delete Device</h3>
-                <p className="text-xs text-slate-500">This action requires password confirmation</p>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-1.5">
-                <p className="text-xs text-rose-700 font-semibold">
-                  Permanently delete &quot;{deleteTarget.name}&quot;?
-                </p>
-                <p className="text-xs text-rose-600">
-                  This removes the device with all of its hardware/software inventory, compliance
-                  results, commands and audit data. This action is irreversible.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Admin password</label>
-                <input
-                  type="password"
-                  autoFocus
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void confirmDeleteDevice();
-                  }}
-                  placeholder="Enter your password to confirm"
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 outline-none"
-                />
-              </div>
-
-              {deleteError && (
-                <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-                  {deleteError}
-                </p>
-              )}
-            </div>
-
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={closeDeleteConfirm} disabled={deleteDevice.isPending} className="text-xs">
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => void confirmDeleteDevice()}
-                disabled={deleteDevice.isPending || !deletePassword.trim()}
-                className="text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1.5"
-              >
-                {deleteDevice.isPending ? 'Deleting...' : 'Confirm & Delete'}
-              </Button>
-            </div>
+      {/* Delete Device Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleteDevice.isPending) {
+            closeDeleteConfirm();
+          }
+        }}
+        title="Delete Device"
+        description={
+          deleteTarget
+            ? `Are you sure you want to permanently delete "${deleteTarget.name}"? This removes the device with all of its hardware/software inventory, compliance results, commands, and audit records. This action is irreversible.`
+            : ''
+        }
+        icon={Trash2}
+        variant="danger"
+        confirmLabel="Delete Device"
+        loading={deleteDevice.isPending}
+        confirmDisabled={!deletePassword.trim()}
+        onConfirm={confirmDeleteDevice}
+      >
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700">Admin password</label>
+            <input
+              type="password"
+              autoFocus
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmDeleteDevice();
+              }}
+              placeholder="Enter your password to confirm"
+              className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 outline-none bg-white text-slate-900"
+            />
           </div>
+
+          {deleteError && (
+            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              {deleteError}
+            </p>
+          )}
         </div>
-      )}
+      </ConfirmDialog>
 
       {/* Enroll Device Modal Dialog */}
       {showEnrollModal && (

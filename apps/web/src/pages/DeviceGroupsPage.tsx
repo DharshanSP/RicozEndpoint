@@ -16,6 +16,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import {
   getDeviceGroups,
   getDeviceGroupDetail,
@@ -34,6 +35,10 @@ export function DeviceGroupsPage() {
   const [search, setSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<DeviceGroup | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<DeviceGroup | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -43,6 +48,8 @@ export function DeviceGroupsPage() {
   const [allDevices, setAllDevices] = useState<Device[]>([]);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  const [removingDeviceId, setRemovingDeviceId] = useState<string | null>(null);
 
   const fetchGroups = useCallback(async () => {
     setLoading(true);
@@ -80,9 +87,10 @@ export function DeviceGroupsPage() {
 
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
+    if (!newGroupName.trim() || submitting) return;
 
     setSubmitting(true);
+    setActionError(null);
     const res = await createDeviceGroup({
       name: newGroupName.trim(),
       description: newGroupDesc.trim(),
@@ -90,55 +98,78 @@ export function DeviceGroupsPage() {
     });
 
     if (res.success) {
+      const createdName = newGroupName.trim();
       setShowCreateModal(false);
       setNewGroupName('');
       setNewGroupDesc('');
       setSelectedDeviceIds([]);
-      fetchGroups();
+      setActionSuccess(`Device group "${createdName}" was successfully created.`);
+      await fetchGroups();
     } else {
-      alert(res.error?.message || 'Failed to create group');
+      setActionError(res.error?.message || 'Failed to create group');
     }
     setSubmitting(false);
   };
 
-  const handleDeleteGroup = async (group: DeviceGroup) => {
-    if (!confirm(`Are you sure you want to delete group "${group.name}"?`)) return;
+  const handleDeleteClick = (group: DeviceGroup) => {
+    setActionError(null);
+    setGroupToDelete(group);
+  };
 
-    const res = await deleteDeviceGroup(group.id);
+  const handleConfirmDelete = async () => {
+    if (!groupToDelete) return;
+    setDeleteLoading(true);
+    setActionError(null);
+    const res = await deleteDeviceGroup(groupToDelete.id);
     if (res.success) {
-      if (selectedGroup?.id === group.id) setSelectedGroup(null);
-      fetchGroups();
+      const deletedName = groupToDelete.name;
+      if (selectedGroup?.id === groupToDelete.id) setSelectedGroup(null);
+      setActionSuccess(`Device group "${deletedName}" was successfully deleted.`);
+      setGroupToDelete(null);
+      await fetchGroups();
     } else {
-      alert(res.error?.message || 'Failed to delete group');
+      setActionError(res.error?.message || 'Failed to delete group');
+      setGroupToDelete(null);
     }
+    setDeleteLoading(false);
   };
 
   const handleAddMembers = async () => {
-    if (!selectedGroup || selectedDeviceIds.length === 0) return;
+    if (!selectedGroup || selectedDeviceIds.length === 0 || submitting) return;
 
     setSubmitting(true);
+    setActionError(null);
+    const count = selectedDeviceIds.length;
+    const groupName = selectedGroup.name;
     const res = await addDeviceGroupMembers(selectedGroup.id, selectedDeviceIds);
     if (res.success) {
       setShowAddMembersModal(false);
       setSelectedDeviceIds([]);
-      loadDetail(selectedGroup.id);
-      fetchGroups();
+      setActionSuccess(`Successfully added ${count} device${count === 1 ? '' : 's'} to group "${groupName}".`);
+      await loadDetail(selectedGroup.id);
+      await fetchGroups();
     } else {
-      alert(res.error?.message || 'Failed to add members');
+      setActionError(res.error?.message || 'Failed to add members');
     }
     setSubmitting(false);
   };
 
-  const handleRemoveMember = async (deviceId: string) => {
-    if (!selectedGroup) return;
+  const handleRemoveMember = async (deviceId: string, deviceName?: string) => {
+    if (!selectedGroup || removingDeviceId) return;
 
+    setRemovingDeviceId(deviceId);
+    setActionError(null);
+    const targetName = deviceName || 'Device';
+    const groupName = selectedGroup.name;
     const res = await removeDeviceGroupMember(selectedGroup.id, deviceId);
     if (res.success) {
-      loadDetail(selectedGroup.id);
-      fetchGroups();
+      setActionSuccess(`Successfully removed "${targetName}" from group "${groupName}".`);
+      await loadDetail(selectedGroup.id);
+      await fetchGroups();
     } else {
-      alert(res.error?.message || 'Failed to remove member');
+      setActionError(res.error?.message || 'Failed to remove member');
     }
+    setRemovingDeviceId(null);
   };
 
   const toggleDeviceSelection = (id: string) => {
@@ -189,6 +220,40 @@ export function DeviceGroupsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Action success banner */}
+      {actionSuccess && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{actionSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionSuccess(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <X className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main Layout: List & Detail */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -304,7 +369,8 @@ export function DeviceGroupsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDeleteGroup(selectedGroup)}
+                    onClick={() => handleDeleteClick(selectedGroup)}
+                    disabled={deleteLoading}
                     className="text-red-600 hover:bg-red-50 hover:border-red-200"
                   >
                     <Trash2 className="w-4 h-4 mr-1.5" />
@@ -366,11 +432,16 @@ export function DeviceGroupsPage() {
                             </Badge>
 
                             <button
-                              onClick={() => member.device && handleRemoveMember(member.device.id)}
+                              onClick={() => member.device && handleRemoveMember(member.device.id, member.device.deviceName)}
+                              disabled={Boolean(removingDeviceId)}
                               title="Remove device from group"
-                              className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors"
+                              className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <X className="w-4 h-4" />
+                              {removingDeviceId === member.device?.id ? (
+                                <RefreshCw className="w-4 h-4 animate-spin text-red-600" />
+                              ) : (
+                                <X className="w-4 h-4" />
+                              )}
                             </button>
                           </div>
                         </div>
@@ -437,8 +508,10 @@ export function DeviceGroupsPage() {
                 Create New Device Group
               </h3>
               <button
+                type="button"
+                disabled={submitting}
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -516,6 +589,7 @@ export function DeviceGroupsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={submitting}
                   onClick={() => setShowCreateModal(false)}
                 >
                   Cancel
@@ -524,9 +598,16 @@ export function DeviceGroupsPage() {
                   type="submit"
                   size="sm"
                   disabled={submitting || !newGroupName.trim()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
                 >
-                  {submitting ? 'Creating...' : 'Create Group'}
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <span>Create Group</span>
+                  )}
                 </Button>
               </div>
             </form>
@@ -544,8 +625,10 @@ export function DeviceGroupsPage() {
                 Add Devices to {selectedGroup.name}
               </h3>
               <button
+                type="button"
+                disabled={submitting}
                 onClick={() => setShowAddMembersModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -595,6 +678,7 @@ export function DeviceGroupsPage() {
               <Button
                 variant="outline"
                 size="sm"
+                disabled={submitting}
                 onClick={() => setShowAddMembersModal(false)}
               >
                 Cancel
@@ -603,14 +687,42 @@ export function DeviceGroupsPage() {
                 size="sm"
                 onClick={handleAddMembers}
                 disabled={submitting || selectedDeviceIds.length === 0}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
               >
-                {submitting ? 'Adding...' : `Add Selected (${selectedDeviceIds.length})`}
+                {submitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Adding...</span>
+                  </>
+                ) : (
+                  <span>Add Selected ({selectedDeviceIds.length})</span>
+                )}
               </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Delete Group Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(groupToDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) {
+            setGroupToDelete(null);
+          }
+        }}
+        title="Delete Device Group"
+        description={
+          groupToDelete
+            ? `Are you sure you want to delete group "${groupToDelete.name}"? Group member devices will not be deleted, but all group policy associations and assignments will be removed.`
+            : ''
+        }
+        icon={Trash2}
+        variant="danger"
+        confirmLabel="Delete Group"
+        loading={deleteLoading}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
