@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { commandResultSchema } from './agent.schema';
+import { commandResultSchema } from './agent.schema.js';
 
 export const commandTypeEnum = z.enum([
   'REFRESH_INVENTORY',

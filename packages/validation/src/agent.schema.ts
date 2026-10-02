@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { hardwareInventorySchema, softwareInventorySchema, patchInventorySchema } from './inventory.schema';
+import { hardwareInventorySchema, softwareInventorySchema, patchInventorySchema } from './inventory.schema.js';
 
 export const registerDeviceSchema = z.object({
   enrollmentToken: z.string().min(1, 'Enrollment token is required'),

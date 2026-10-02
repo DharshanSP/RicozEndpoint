@@ -1,17 +1,17 @@
-export * from './auth.schema';
-export * from './inventory.schema';
-export * from './agent.schema';
-export * from './enrollment.schema';
-export * from './policy.schema';
-export * from './command.schema';
-export * from './alert.schema';
-export * from './device-group.schema';
-export * from './organization-settings.schema';
-export * from './audit-log.schema';
-export * from './software.schema';
-export * from './organization.schema';
-export * from './compliance.schema';
-export * from './patch.schema';
+export * from './auth.schema.js';
+export * from './inventory.schema.js';
+export * from './agent.schema.js';
+export * from './enrollment.schema.js';
+export * from './policy.schema.js';
+export * from './command.schema.js';
+export * from './alert.schema.js';
+export * from './device-group.schema.js';
+export * from './organization-settings.schema.js';
+export * from './audit-log.schema.js';
+export * from './software.schema.js';
+export * from './organization.schema.js';
+export * from './compliance.schema.js';
+export * from './patch.schema.js';
 import { z } from 'zod';
 
 export const paginationSchema = z.object({
