@@ -1,4 +1,4 @@
-import { useState, useEffect, type ElementType } from 'react';
+import { useState, useEffect, useMemo, type ElementType } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listOrganizations, type OrganizationSummary } from '../lib/api/organizationsApi';
@@ -21,7 +21,6 @@ import {
   LogOut,
   Building2,
   UserCheck,
-  Search,
   Menu,
   X,
   PanelLeftClose,
@@ -30,6 +29,7 @@ import {
   ChevronsUpDown,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
+import { GlobalSearch, type SearchItem } from '../components/ui/GlobalSearch';
 
 interface NavItemConfig {
   name: string;
@@ -242,6 +242,121 @@ export function RootLayout() {
   };
 
   const breadcrumbs = getBreadcrumbTitle();
+
+  const searchItems: SearchItem[] = useMemo(() => {
+    const rawItems: (SearchItem & {
+      roles?: ('SUPER_ADMIN' | 'ORG_ADMIN' | 'IT_ADMIN' | 'OPERATOR' | 'VIEWER')[];
+    })[] = [
+      {
+        label: 'Dashboard',
+        description: 'System overview, metrics, and fleet health',
+        path: '/',
+        icon: LayoutDashboard,
+        category: 'Overview',
+        keywords: ['overview', 'metrics', 'fleet', 'status', 'summary'],
+      },
+      {
+        label: 'Devices',
+        description: 'Managed endpoints, status, and telemetry',
+        path: '/devices',
+        icon: Laptop,
+        category: 'Devices',
+        keywords: ['endpoints', 'laptops', 'workstations', 'servers', 'fleet'],
+      },
+      {
+        label: 'Device Groups',
+        description: 'Dynamic and static device grouping',
+        path: '/devices/groups',
+        icon: Layers,
+        category: 'Devices',
+        keywords: ['groups', 'clusters', 'tags', 'departments'],
+      },
+      {
+        label: 'Enrollment Tokens',
+        description: 'Provisioning tokens and agent enrollment keys',
+        path: '/enrollment-tokens',
+        icon: KeyRound,
+        category: 'Devices',
+        roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN'],
+        keywords: ['tokens', 'enrollment', 'provisioning', 'keys', 'agent'],
+      },
+      {
+        label: 'Policies',
+        description: 'Endpoint security and configuration baselines',
+        path: '/policies',
+        icon: ShieldCheck,
+        category: 'Management',
+        keywords: ['rules', 'configuration', 'security', 'profiles', 'baseline'],
+      },
+      {
+        label: 'Software',
+        description: 'Application deployment and repository catalog',
+        path: '/software',
+        icon: Package,
+        category: 'Management',
+        keywords: ['apps', 'packages', 'installations', 'catalog', 'programs'],
+      },
+      {
+        label: 'Patch Management',
+        description: 'OS and third-party updates, patches, and fixes',
+        path: '/patches',
+        icon: Wrench,
+        category: 'Management',
+        keywords: ['patches', 'updates', 'vulnerabilities', 'fixes', 'upgrades'],
+      },
+      {
+        label: 'Compliance',
+        description: 'Compliance evaluations and posture audits',
+        path: '/compliance',
+        icon: CheckSquare,
+        category: 'Security',
+        keywords: ['compliance', 'cis', 'audit', 'standards', 'benchmark'],
+      },
+      {
+        label: 'Alerts',
+        description: 'Security incidents and system notifications',
+        path: '/alerts',
+        icon: Bell,
+        category: 'Security',
+        keywords: ['alerts', 'notifications', 'incidents', 'warnings', 'threats'],
+      },
+      {
+        label: 'Reports',
+        description: 'Analytics, exportable logs, and executive reports',
+        path: '/reports',
+        icon: BarChart3,
+        category: 'Insights',
+        keywords: ['reports', 'analytics', 'statistics', 'charts', 'exports'],
+      },
+      {
+        label: 'Audit Logs',
+        description: 'Historical administrative actions and system events',
+        path: '/audit-logs',
+        icon: History,
+        category: 'Insights',
+        keywords: ['audit', 'logs', 'history', 'events', 'activities', 'trail'],
+      },
+      {
+        label: 'Users & Roles',
+        description: 'User access control, permissions, and invitations',
+        path: '/users',
+        icon: Users,
+        category: 'Administration',
+        roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN'],
+        keywords: ['users', 'roles', 'members', 'rbac', 'permissions', 'access'],
+      },
+      {
+        label: 'Settings',
+        description: 'Organization settings and global preferences',
+        path: '/settings',
+        icon: Settings,
+        category: 'Administration',
+        keywords: ['settings', 'configuration', 'organization', 'preferences', 'tenant'],
+      },
+    ];
+
+    return rawItems.filter((item) => !item.roles || hasRole(item.roles));
+  }, [hasRole]);
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -509,16 +624,13 @@ export function RootLayout() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-            {/* Search Trigger Mockup */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-500 w-64 justify-between">
-              <div className="flex items-center gap-2">
-                <Search className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-slate-500 truncate">Search endpoints, policies...</span>
-              </div>
-              <kbd className="px-1.5 py-0.5 text-[10px] bg-white border border-slate-200 rounded text-slate-500 shadow-xs">
-                Ctrl+K
-              </kbd>
-            </div>
+            {/* Global Search Trigger & Dialog */}
+            <GlobalSearch
+              items={searchItems}
+              placeholder="Search endpoints, policies..."
+              showTrigger
+              className="hidden md:flex"
+            />
 
             {/* Environment Telemetry Status Indicator */}
             <div className="hidden xs:flex sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700">
