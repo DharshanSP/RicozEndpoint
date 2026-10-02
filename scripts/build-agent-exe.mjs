@@ -11,6 +11,7 @@ const seaConfig = join(tempDir, 'sea-config.json');
 const blob = join(tempDir, 'agent.blob');
 const executable = join(webDownloads, 'RicozEndpointAgent.exe');
 const postject = join(root, 'node_modules', 'postject', 'dist', 'cli.js');
+const defaultApiUrl = process.env.RICOZ_AGENT_API_URL || 'https://ricoz-api.onrender.com/api';
 
 mkdirSync(tempDir, { recursive: true });
 mkdirSync(webDownloads, { recursive: true });
@@ -22,6 +23,9 @@ await build({
   format: 'cjs',
   outfile: entry,
   sourcemap: false,
+  define: {
+    __RICOZ_DEFAULT_API_URL__: JSON.stringify(defaultApiUrl),
+  },
 });
 
 writeFileSync(

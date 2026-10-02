@@ -1,6 +1,8 @@
 import path from 'node:path';
 import dotenv from 'dotenv';
 
+declare const __RICOZ_DEFAULT_API_URL__: string | undefined;
+
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 function intFromEnv(value: string | undefined, fallback: number): number {
@@ -9,7 +11,11 @@ function intFromEnv(value: string | undefined, fallback: number): number {
 }
 
 export const config = {
-  apiUrl: (process.env.API_URL || 'http://localhost:3001/api').replace(/\/$/, ''),
+  apiUrl: (
+    (typeof __RICOZ_DEFAULT_API_URL__ === 'undefined' ? undefined : __RICOZ_DEFAULT_API_URL__) ||
+    process.env.API_URL ||
+    'http://localhost:3001/api'
+  ).replace(/\/$/, ''),
   enrollmentToken: process.env.ENROLLMENT_TOKEN || '',
   heartbeatIntervalMs: intFromEnv(process.env.HEARTBEAT_INTERVAL_MS, 60_000),
   telemetryIntervalMs: intFromEnv(process.env.TELEMETRY_INTERVAL_MS, 600_000),

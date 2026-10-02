@@ -1,7 +1,7 @@
 import { config } from './config';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { loadState, saveState, type AgentState } from './state';
+import { clearState, loadState, saveState, type AgentState } from './state';
 import { collectInstalledPatches, collectInstalledSoftware, collectSecurityState, collectSystemInfo } from './inventory';
 import { AgentApiError, enrollDevice, reportCommandResult, sendHeartbeat } from './api';
 import { executeCommand } from './commands';
@@ -10,6 +10,15 @@ import type { PendingCommand } from './api';
 const startedAt = Date.now();
 let lastTelemetryAt = 0;
 let forceTelemetry = false;
+let state: AgentState | null = null;
+let enrolling = false;
+
+const REENROLL_CODES = new Set(['INVALID_AGENT_TOKEN', 'EXPIRED_AGENT_TOKEN', 'AGENT_TOKEN_REQUIRED']);
+const INVALID_ENROLLMENT_CODES = new Set([
+  'INVALID_ENROLLMENT_TOKEN',
+  'ENROLLMENT_TOKEN_EXPIRED',
+  'ENROLLMENT_TOKEN_EXHAUSTED',
+]);
 
 const colors = {
   reset: '\x1b[0m',
@@ -119,34 +128,99 @@ async function heartbeat(
   }
 }
 
-async function loop(state: AgentState): Promise<void> {
+async function loop(): Promise<void> {
+  const activeState = state;
+  if (!activeState || enrolling) {
+    setTimeout(() => void loop(), config.heartbeatIntervalMs);
+    return;
+  }
+
   try {
     const includeTelemetry =
       forceTelemetry || Date.now() - lastTelemetryAt >= config.telemetryIntervalMs;
-    await heartbeat(state, includeTelemetry);
+    await heartbeat(activeState, includeTelemetry);
   } catch (error) {
-    if (error instanceof AgentApiError && error.code === 'INVALID_AGENT_TOKEN') {
-      log('error', 'Agent token rejected by platform. Re-enrollment required.');
+    if (error instanceof AgentApiError && REENROLL_CODES.has(error.code)) {
+      startEnrollment(`Saved agent credentials were rejected (${error.code})`);
     } else {
       log('error', `Heartbeat failed: ${(error as Error).message}`);
     }
   } finally {
-    setTimeout(() => void loop(state), config.heartbeatIntervalMs);
+    setTimeout(() => void loop(), config.heartbeatIntervalMs);
   }
 }
 
-async function promptForEnrollmentToken(): Promise<void> {
-  if (config.enrollmentToken || !input.isTTY) return;
+async function promptForEnrollmentToken(force = false): Promise<void> {
+  if ((!force && config.enrollmentToken) || !input.isTTY || !output.isTTY) return;
   console.clear();
   printBanner();
   console.log('\nThis one-time setup connects this Windows device to your RicozEndpoint organization.');
   console.log(`${colors.dim}Paste the enrollment token from the admin console below.${colors.reset}\n`);
   const readline = createInterface({ input, output });
   try {
-    config.enrollmentToken = (await readline.question('Paste enrollment token: ')).trim();
+    const token = (await readline.question('Paste enrollment token: ')).trim();
+    if (!token) throw new Error('Enrollment token cannot be empty.');
+    config.enrollmentToken = token;
   } finally {
     readline.close();
   }
+}
+
+function startEnrollment(reason: string): void {
+  if (enrolling) return;
+
+  const interactive = input.isTTY && output.isTTY;
+  if (!interactive && !config.enrollmentToken) {
+    log('error', `${reason}, and ENROLLMENT_TOKEN is not configured for noninteractive use.`);
+    process.exit(1);
+    return;
+  }
+
+  enrolling = true;
+  clearState(config.agentStateFile);
+  state = null;
+  if (interactive) config.enrollmentToken = '';
+  log('warn', `${reason}. Starting enrollment...`);
+
+  let shouldPrompt = interactive;
+  const attempt = async (): Promise<void> => {
+    try {
+      if (shouldPrompt) {
+        config.enrollmentToken = '';
+        await promptForEnrollmentToken(true);
+        shouldPrompt = false;
+      } else if (!config.enrollmentToken) {
+        await promptForEnrollmentToken();
+      }
+      if (!config.enrollmentToken) {
+        throw new Error('No enrollment token is available.');
+      }
+
+      state = await enroll();
+      enrolling = false;
+      lastTelemetryAt = 0;
+      forceTelemetry = true;
+      log('info', 'Enrollment complete; device telemetry will be sent on the next heartbeat.');
+    } catch (error) {
+      if (error instanceof AgentApiError && INVALID_ENROLLMENT_CODES.has(error.code)) {
+        log('error', `Enrollment token rejected: ${error.message}`);
+        if (!interactive) {
+          log('error', 'Provide a fresh ENROLLMENT_TOKEN and restart the agent.');
+          process.exit(1);
+          return;
+        }
+        config.enrollmentToken = '';
+        shouldPrompt = true;
+        void attempt();
+        return;
+      }
+      log('error', `Enrollment failed: ${(error as Error).message}`);
+      log('warn', 'Retrying automatically in 30 seconds...');
+      setTimeout(() => void attempt(), 30_000);
+    }
+  };
+
+  void attempt();
 }
 
 async function main(): Promise<void> {
@@ -157,35 +231,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  log('info', `Agent ${config.agentVersion} starting`);
+  log('info', `Agent ${config.agentVersion} starting (api=${config.apiUrl})`);
 
-  let state = loadState(config.agentStateFile);
+  state = loadState(config.agentStateFile);
 
   if (!state) {
-    await promptForEnrollmentToken();
-    if (!config.enrollmentToken) {
-      log('error', 'No credentials cached and ENROLLMENT_TOKEN is not set. Refusing to start.');
-      process.exit(1);
-    }
-    const enrollLoop = async (): Promise<void> => {
-      try {
-        state = await enroll();
-      } catch (error) {
-        log('error', `Enrollment failed: ${(error as Error).message}`);
-        log('warn', 'Retrying automatically in 30 seconds...');
-        setTimeout(() => void enrollLoop(), 30_000);
-      }
-    };
-    await enrollLoop();
-    if (!state) {
-      return;
-    }
+    startEnrollment('No saved device credentials');
+  } else {
+    log('info', `Loaded saved device credentials. Heartbeat every ${Math.round(config.heartbeatIntervalMs / 1000)} seconds.`);
   }
 
-  lastTelemetryAt = startedAt;
-  log('info', `Connected. Heartbeat every ${Math.round(config.heartbeatIntervalMs / 1000)} seconds.`);
-  const activeState = state;
-  setTimeout(() => void loop(activeState), 1000);
+  if (state) lastTelemetryAt = startedAt;
+  setTimeout(() => void loop(), 1000);
 }
 
 main().catch((error) => {
