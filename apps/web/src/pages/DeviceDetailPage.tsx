@@ -1189,8 +1189,9 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
   };
 
   const confirmDelete = () => {
+    if (!deletePassword.trim()) return;
     deleteDevice.mutate(
-      { id: deviceId, password: deletePassword || undefined },
+      { id: deviceId, password: deletePassword.trim() },
       {
         onSuccess: () => {
           setPendingDelete(false);
@@ -1226,13 +1227,14 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
         variant="danger"
         confirmLabel="Delete Device"
         loading={deleteDevice.isPending}
+        confirmDisabled={!deletePassword.trim()}
         requireCheckbox
         checkboxLabel="I understand this cannot be undone and confirm deletion."
         onConfirm={confirmDelete}
       >
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-slate-700">
-            Admin Password (if required):
+            Admin Password:
           </label>
           <input
             type="password"

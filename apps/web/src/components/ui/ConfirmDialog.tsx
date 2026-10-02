@@ -13,6 +13,7 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: 'danger' | 'warning';
   loading?: boolean;
+  confirmDisabled?: boolean;
   requireCheckbox?: boolean;
   checkboxLabel?: string;
   onConfirm: () => void | Promise<void>;
@@ -29,6 +30,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'danger',
   loading = false,
+  confirmDisabled = false,
   requireCheckbox = false,
   checkboxLabel = 'I understand the consequences of this action and wish to proceed.',
   onConfirm,
@@ -89,7 +91,7 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  const isConfirmDisabled = loading || (requireCheckbox && !isChecked);
+  const isConfirmDisabled = loading || confirmDisabled || (requireCheckbox && !isChecked);
 
   const handleClose = () => {
     if (!loading) {

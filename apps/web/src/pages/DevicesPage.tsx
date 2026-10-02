@@ -220,11 +220,11 @@ export function DevicesPage() {
   };
 
   const confirmDeleteDevice = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !deletePassword.trim()) return;
     setDeleteError(null);
     try {
       const deletedName = deleteTarget.name;
-      await deleteDevice.mutateAsync({ id: deleteTarget.id, password: deletePassword.trim() || undefined });
+      await deleteDevice.mutateAsync({ id: deleteTarget.id, password: deletePassword.trim() });
       closeDeleteConfirm();
       setDeleteNotice(`Device "${deletedName}" was successfully deleted.`);
       refetch();
@@ -1115,6 +1115,7 @@ const handlePageSizeChange = (val: number) => {
         variant="danger"
         confirmLabel="Delete Device"
         loading={deleteDevice.isPending}
+        confirmDisabled={!deletePassword.trim()}
         onConfirm={confirmDeleteDevice}
       >
         <div className="space-y-3">
