@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: ricoz-api
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: corepack enable && corepack prepare pnpm@9.15.4 --activate && pnpm install --frozen-lockfile && pnpm --filter @ricoz/shared-types build && pnpm --filter @ricoz/validation build && pnpm --filter @ricoz/database generate && pnpm --filter @ricoz/api build
+    startCommand: pnpm --filter @ricoz/database migrate:deploy && pnpm --filter @ricoz/api start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: "10000"
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AGENT_ENROLLMENT_SECRET
+        generateValue: true
