@@ -6,6 +6,7 @@ export const hardwareInventorySchema = z.object({
   cpuCores: z.number().int().positive(),
   ramBytes: z.number().int().positive(),
   storageBytes: z.number().int().positive(),
+  freeStorageBytes: z.number().int().nonnegative().optional(),
   manufacturer: z.string(),
   model: z.string(),
   serialNumber: z.string(),

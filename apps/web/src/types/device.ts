@@ -79,6 +79,7 @@ export interface DeviceHardware {
   cpuCores: number;
   ramBytes: string | number;
   storageBytes: string | number;
+  freeStorageBytes?: string | number | null;
   manufacturer: string;
   model: string;
   serialNumber: string;

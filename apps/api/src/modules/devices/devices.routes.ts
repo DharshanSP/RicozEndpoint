@@ -279,6 +279,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
             ...device.hardware,
             ramBytes: String(device.hardware.ramBytes),
             storageBytes: String(device.hardware.storageBytes),
+            freeStorageBytes: device.hardware.freeStorageBytes?.toString() ?? null,
           }
         : null;
 
@@ -357,6 +358,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
           ...device.hardware,
           ramBytes: String(device.hardware.ramBytes),
           storageBytes: String(device.hardware.storageBytes),
+          freeStorageBytes: device.hardware.freeStorageBytes?.toString() ?? null,
         },
       });
     },

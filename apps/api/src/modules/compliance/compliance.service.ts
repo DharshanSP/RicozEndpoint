@@ -6,6 +6,8 @@ interface PolicySettings {
   antivirusRequired?: boolean;
   minOsVersion?: string;
   minAgentVersion?: string;
+  minDiskFreeGb?: number;
+  requiredPatches?: string[];
   autoLockMinutes?: number;
 }
 
@@ -88,7 +90,14 @@ export interface ComplianceEvaluationResult {
  */
 export function evaluatePolicy(
   policy: EffectivePolicy,
-  device: { firewallEnabled?: boolean | null; antivirusEnabled?: boolean | null; osVersion?: string | null; agentVersion?: string | null }
+  device: {
+    firewallEnabled?: boolean | null;
+    antivirusEnabled?: boolean | null;
+    osVersion?: string | null;
+    agentVersion?: string | null;
+    freeStorageBytes?: bigint | null;
+    installedPatches?: ReadonlySet<string>;
+  }
 ): ComplianceEvaluationResult {
   const settings = policy.settings ?? {};
   const violations: string[] = [];
@@ -115,6 +124,24 @@ export function evaluatePolicy(
     }
     if (settings.minOsVersion && !device.osVersion) {
       violations.push('OS version is unknown; minimum required version cannot be verified');
+    }
+    if (settings.minDiskFreeGb !== undefined) {
+      if (device.freeStorageBytes === undefined || device.freeStorageBytes === null) {
+        violations.push(`Free disk space is unknown; ${settings.minDiskFreeGb} GB required`);
+      } else {
+        const minimumFreeBytes = BigInt(settings.minDiskFreeGb) * 1024n ** 3n;
+        if (device.freeStorageBytes < minimumFreeBytes) {
+          const freeGb = Number(device.freeStorageBytes / (1024n ** 3n));
+          violations.push(`${freeGb} GB free; ${settings.minDiskFreeGb} GB required`);
+        }
+      }
+    }
+    const requiredPatches = (settings.requiredPatches ?? [])
+      .map((kbNumber) => kbNumber.trim().toUpperCase())
+      .filter(Boolean);
+    const missingPatches = requiredPatches.filter((kbNumber) => !device.installedPatches?.has(kbNumber));
+    if (missingPatches.length > 0) {
+      violations.push(`Required patches missing: ${missingPatches.join(', ')}`);
     }
   }
 
@@ -198,7 +225,37 @@ export async function evaluateDeviceCompliance(
     }
   }
 
-  const effectivePolicies = Array.from(policyMap.values());
+  const effectivePolicies = Array.from(policyMap.values()).filter(
+    (policy) => policy.type === 'SECURITY' || policy.type === 'COMPLIANCE',
+  );
+
+  const requiresFreeDisk = effectivePolicies.some((policy) => policy.settings.minDiskFreeGb !== undefined);
+  const requiredPatchNumbers = [
+    ...new Set(
+      effectivePolicies.flatMap((policy) =>
+        (policy.settings.requiredPatches ?? []).map((kbNumber) => kbNumber.trim().toUpperCase()).filter(Boolean)
+      ),
+    ),
+  ];
+  const [hardware, installedPatchRows] = await Promise.all([
+    requiresFreeDisk
+      ? prisma.deviceHardware.findUnique({
+          where: { deviceId: device.id },
+          select: { freeStorageBytes: true },
+        })
+      : Promise.resolve(null),
+    requiredPatchNumbers.length > 0
+      ? prisma.devicePatch.findMany({
+          where: {
+            deviceId: device.id,
+            status: 'INSTALLED',
+            patch: { kbNumber: { in: requiredPatchNumbers } },
+          },
+          select: { patch: { select: { kbNumber: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
+  const installedPatches = new Set(installedPatchRows.map((row) => row.patch.kbNumber.toUpperCase()));
 
   // Remove stale policy-based results for this device before re-evaluating.
   const staleResults = await prisma.complianceResult.findMany({
@@ -216,7 +273,11 @@ export async function evaluateDeviceCompliance(
   let violation = 0;
 
   for (const policy of effectivePolicies) {
-    const result = evaluatePolicy(policy, device);
+    const result = evaluatePolicy(policy, {
+      ...device,
+      freeStorageBytes: hardware?.freeStorageBytes,
+      installedPatches,
+    });
 
     await prisma.complianceResult.create({
       data: {

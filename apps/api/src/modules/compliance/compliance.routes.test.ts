@@ -454,6 +454,146 @@ describe('Compliance REST API', () => {
     );
   });
 
+  it('evaluates minimum free disk and required patches from stored inventory', async () => {
+    const requiredKb = `KB${String(runId).slice(-7)}`;
+    const policy = await app.prisma.policy.create({
+      data: {
+        organizationId: demoOrgId,
+        name: `TEST-INVENTORY-COMPLIANCE-${runId}`,
+        type: 'COMPLIANCE',
+        description: 'Checks free disk and required Windows updates',
+        settings: JSON.stringify({ minDiskFreeGb: 50, requiredPatches: [requiredKb] }),
+      },
+    });
+    let patchId: string | null = null;
+    let configurationPolicyId: string | null = null;
+    try {
+      await app.prisma.policyAssignment.create({
+        data: { policyId: policy.id, deviceId: violatingDeviceId, priority: 100 },
+      });
+      const configurationPolicy = await app.prisma.policy.create({
+        data: {
+          organizationId: demoOrgId,
+          name: `TEST-UNENFORCED-CONFIGURATION-${runId}`,
+          type: 'CONFIGURATION',
+          settings: JSON.stringify({ autoUpdates: true }),
+        },
+      });
+      configurationPolicyId = configurationPolicy.id;
+      await app.prisma.policyAssignment.create({
+        data: { policyId: configurationPolicy.id, deviceId: violatingDeviceId, priority: 100 },
+      });
+      await app.prisma.deviceHardware.create({
+        data: {
+          deviceId: violatingDeviceId,
+          cpu: 'Compliance Test CPU',
+          cpuCores: 4,
+          ramBytes: BigInt(8) * 1024n ** 3n,
+          storageBytes: BigInt(256) * 1024n ** 3n,
+          freeStorageBytes: BigInt(40) * 1024n ** 3n,
+          manufacturer: 'Ricoz Test',
+          model: 'Compliance Test Device',
+          serialNumber: `SN-COMPLIANCE-${runId}`,
+          biosVersion: '1.0',
+        },
+      });
+
+      const evaluate = () =>
+        app.inject({
+          method: 'POST',
+          url: '/api/compliance/evaluate',
+          headers: { authorization: `Bearer ${adminToken}` },
+          payload: { deviceId: violatingDeviceId },
+        });
+      const detail = async () => {
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/compliance/device/${violatingDeviceId}`,
+          headers: { authorization: `Bearer ${adminToken}` },
+        });
+        assert.equal(response.statusCode, 200);
+        const body = response.json() as DeviceDetailResponse;
+        return body.data!.controls.find((control) => control.sourceId === policy.id)!;
+      };
+
+      const failingEvaluation = await evaluate();
+      assert.equal(failingEvaluation.statusCode, 200);
+      const falsePass = await app.prisma.complianceResult.findFirst({
+        where: {
+          deviceId: violatingDeviceId,
+          reason: { contains: `__ricoz_policy__${configurationPolicy.id}` },
+        },
+      });
+      assert.equal(falsePass, null, 'unenforced configuration policy is not reported as compliant');
+      const failingControl = await detail();
+      assert.equal(failingControl.status, 'NON_COMPLIANT');
+      assert.match(failingControl.reason, /40 GB free.*50 GB required/i);
+      assert.match(failingControl.reason, new RegExp(`Required patches missing: ${requiredKb}`, 'i'));
+
+      const patch = await app.prisma.patch.create({
+        data: {
+          organizationId: demoOrgId,
+          kbNumber: requiredKb,
+          title: 'Required compliance update',
+        },
+      });
+      patchId = patch.id;
+      const heartbeat = await app.inject({
+        method: 'POST',
+        url: '/api/agent/heartbeat',
+        headers: { 'x-agent-token': violatingAgentToken },
+        payload: {
+          deviceId: violatingDeviceId,
+          agentVersion: '0.1.0',
+          timestamp: new Date().toISOString(),
+          status: 'ONLINE',
+          hardware: {
+            hostname: 'COMPLIANCE-TEST-HOST',
+            cpu: 'Compliance Test CPU',
+            cpuCores: 4,
+            ramBytes: Number(BigInt(8) * 1024n ** 3n),
+            storageBytes: Number(BigInt(256) * 1024n ** 3n),
+            freeStorageBytes: Number(BigInt(60) * 1024n ** 3n),
+            manufacturer: 'Ricoz Test',
+            model: 'Compliance Test Device',
+            serialNumber: `SN-COMPLIANCE-${runId}`,
+            biosVersion: '1.0',
+            os: 'Windows',
+            osVersion: 'Windows 11',
+            architecture: 'x64',
+          },
+          patches: { items: [{ kbNumber: requiredKb, title: 'Required compliance update', installedAt: null }] },
+        },
+      });
+      assert.equal(heartbeat.statusCode, 200);
+
+      const passingControl = await detail();
+      assert.equal(passingControl.status, 'COMPLIANT');
+      assert.equal(passingControl.reason, 'Policy requirements satisfied');
+    } finally {
+      await app.prisma.complianceResult.deleteMany({
+        where: { deviceId: violatingDeviceId, reason: { contains: `__ricoz_policy__${policy.id}` } },
+      });
+      await app.prisma.alert.deleteMany({
+        where: { deviceId: violatingDeviceId, dedupKey: `policy:${policy.id}` },
+      });
+      await app.prisma.policyAssignment.deleteMany({ where: { policyId: policy.id } });
+      await app.prisma.policy.delete({ where: { id: policy.id } });
+      if (configurationPolicyId) {
+        await app.prisma.complianceResult.deleteMany({
+          where: { deviceId: violatingDeviceId, reason: { contains: `__ricoz_policy__${configurationPolicyId}` } },
+        });
+        await app.prisma.policyAssignment.deleteMany({ where: { policyId: configurationPolicyId } });
+        await app.prisma.policy.delete({ where: { id: configurationPolicyId } });
+      }
+      if (patchId) {
+        await app.prisma.devicePatch.deleteMany({ where: { patchId } });
+        await app.prisma.patch.delete({ where: { id: patchId } });
+      }
+      await app.prisma.deviceHardware.deleteMany({ where: { deviceId: violatingDeviceId } });
+    }
+  });
+
   it('exposes the same detail through the plural alias', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -567,6 +707,18 @@ describe('Compliance REST API', () => {
     });
     assert.ok(audit, 'evaluation is audited');
     assert.equal(audit!.resourceId, violatingDeviceId);
+
+    const deviceDetail = await app.inject({
+      method: 'GET',
+      url: `/api/devices/${violatingDeviceId}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(deviceDetail.statusCode, 200);
+    const activity = deviceDetail.json().data.activity as Array<{ type: string }>;
+    assert.ok(
+      activity.some((item) => item.type === 'COMPLIANCE_EVALUATED'),
+      'compliance evaluation appears in the device activity feed'
+    );
   });
 
   it('evaluates the whole fleet', async () => {

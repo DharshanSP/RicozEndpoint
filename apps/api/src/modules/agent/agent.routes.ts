@@ -121,18 +121,6 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Re-evaluate compliance against assigned policies using latest security telemetry.
-      if (security && (typeof security.firewallEnabled === 'boolean' || typeof security.antivirusEnabled === 'boolean')) {
-        await evaluateDeviceCompliance(
-          app.prisma,
-          agentDevice.id,
-          { firewallEnabled: security.firewallEnabled, antivirusEnabled: security.antivirusEnabled },
-          agentDevice.organizationId
-        ).catch((error) => {
-          app.log.error({ error, context: 'compliance_evaluation' }, 'Compliance evaluation failed');
-        });
-      }
-
       if (hardware) {
         await app.prisma.deviceHardware.upsert({
           where: { deviceId: agentDevice.id },
@@ -142,6 +130,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             cpuCores: hardware.cpuCores,
             ramBytes: BigInt(hardware.ramBytes),
             storageBytes: BigInt(hardware.storageBytes),
+            ...(hardware.freeStorageBytes !== undefined
+              ? { freeStorageBytes: BigInt(hardware.freeStorageBytes) }
+              : {}),
             manufacturer: hardware.manufacturer,
             model: hardware.model,
             serialNumber: hardware.serialNumber,
@@ -152,6 +143,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             cpuCores: hardware.cpuCores,
             ramBytes: BigInt(hardware.ramBytes),
             storageBytes: BigInt(hardware.storageBytes),
+            ...(hardware.freeStorageBytes !== undefined
+              ? { freeStorageBytes: BigInt(hardware.freeStorageBytes) }
+              : {}),
             manufacturer: hardware.manufacturer,
             model: hardware.model,
             serialNumber: hardware.serialNumber,
@@ -238,6 +232,22 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             },
             data: { status: 'MISSING', installedAt: null, lastReportedAt: now },
           });
+        });
+      }
+
+      // Evaluate only after this heartbeat's security, hardware, and patch state
+      // have been persisted so policy results reflect the latest telemetry.
+      const hasSecurityTelemetry =
+        security &&
+        (typeof security.firewallEnabled === 'boolean' || typeof security.antivirusEnabled === 'boolean');
+      if (hasSecurityTelemetry || hardware || patches) {
+        await evaluateDeviceCompliance(
+          app.prisma,
+          agentDevice.id,
+          { firewallEnabled: security?.firewallEnabled, antivirusEnabled: security?.antivirusEnabled },
+          agentDevice.organizationId
+        ).catch((error) => {
+          app.log.error({ error, context: 'compliance_evaluation' }, 'Compliance evaluation failed');
         });
       }
 

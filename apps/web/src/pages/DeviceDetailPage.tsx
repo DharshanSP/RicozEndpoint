@@ -544,6 +544,10 @@ export function DeviceDetailPage() {
               <InfoTile label="CPU Cores" value={hardware.data.cpuCores} />
               <InfoTile label="Memory (RAM)" value={formatBytes(hardware.data.ramBytes)} />
               <InfoTile label="Storage" value={formatBytes(hardware.data.storageBytes)} />
+              <InfoTile
+                label="Free Storage"
+                value={hardware.data.freeStorageBytes == null ? 'Not reported' : formatBytes(hardware.data.freeStorageBytes)}
+              />
               <InfoTile label="Hardware Manufacturer" value={hardware.data.manufacturer || '—'} />
               <InfoTile label="Hardware Model" value={hardware.data.model || '—'} />
               <InfoTile label="Hardware Serial" value={hardware.data.serialNumber || '—'} mono />

@@ -20,7 +20,7 @@ const complianceSettingsSchema = z.object({
   minOsVersion: z.string().optional(),
   minAgentVersion: z.string().optional(),
   minDiskFreeGb: z.number().int().min(0).optional(),
-  requiredPatches: z.array(z.string()).optional(),
+  requiredPatches: z.array(z.string().regex(/^KB\d+$/i, 'Required patches must use the KB1234567 format')).optional(),
 });
 
 export const policySettingsSchema = z.union([

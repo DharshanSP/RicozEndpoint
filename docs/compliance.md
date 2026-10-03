@@ -36,9 +36,10 @@ Heartbeat (with security telemetry)
 | Policy type        | Evaluated settings                                                            |
 | ------------------ | ----------------------------------------------------------------------------- |
 | `SECURITY`         | `firewallRequired` → device `firewallEnabled`; `antivirusRequired` → device `antivirusEnabled` |
-| `COMPLIANCE`       | `minOsVersion` / `minAgentVersion` → semver-aware comparison of device fields |
+| `COMPLIANCE`       | `minOsVersion` / `minAgentVersion`, `minDiskFreeGb` → device metadata and hardware inventory; `requiredPatches` → installed KB inventory |
 
 `CONFIGURATION` policies are delivered to the agent but are not scored for compliance.
+The current Windows agent does not yet apply `autoUpdates`, registry settings, or PowerShell scripts; the policy editor marks those settings as stored-only.
 
 ## Effective Policy Resolution
 

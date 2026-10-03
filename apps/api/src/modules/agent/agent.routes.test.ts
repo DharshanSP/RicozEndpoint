@@ -160,6 +160,7 @@ describe('Agent API (heartbeat, telemetry, commands)', () => {
           cpuCores: 24,
           ramBytes: 34359738368,
           storageBytes: 1099511627776,
+          freeStorageBytes: 536870912000,
           manufacturer: 'Dell',
           model: 'Precision 7960',
           serialNumber: `SN-AGENT-${runId}`,
@@ -194,6 +195,7 @@ describe('Agent API (heartbeat, telemetry, commands)', () => {
     assert.ok(device.hardware, 'hardware inventory stored');
     assert.equal(device.hardware.cpu, 'Intel Core i9-13900K');
     assert.equal(device.hardware.ramBytes.toString(), '34359738368');
+    assert.equal(device.hardware.freeStorageBytes?.toString(), '536870912000');
     assert.equal(device.software.length, 2);
     const names = device.software.map((s) => s.name);
     assert.ok(names.includes('Google Chrome') && names.includes('7-Zip'));

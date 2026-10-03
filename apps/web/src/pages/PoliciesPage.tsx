@@ -71,12 +71,16 @@ const emptyForm: PolicyFormState = {
 };
 
 function toFormState(policy: PolicySummary): PolicyFormState {
+  const settings = { ...(policy.settings ?? {}) };
+  if (Array.isArray(settings.requiredPatches)) {
+    settings.requiredPatches = settings.requiredPatches.join(', ');
+  }
   return {
     name: policy.name,
     type: policy.type,
     description: policy.description ?? '',
     isActive: policy.isActive,
-    settings: { ...(policy.settings ?? {}) },
+    settings,
   };
 }
 
@@ -99,10 +103,18 @@ function buildSettings(type: PolicyType, settings: Record<string, unknown>): Rec
     };
   }
   if (type === 'COMPLIANCE') {
+    const requiredPatches = Array.isArray(settings.requiredPatches)
+      ? settings.requiredPatches.filter((value): value is string => typeof value === 'string')
+      : typeof settings.requiredPatches === 'string'
+        ? settings.requiredPatches.split(/[\n,]/)
+        : [];
     return {
       ...(str(settings.minOsVersion) ? { minOsVersion: str(settings.minOsVersion) } : {}),
       ...(str(settings.minAgentVersion) ? { minAgentVersion: str(settings.minAgentVersion) } : {}),
       ...(num(settings.minDiskFreeGb) !== undefined ? { minDiskFreeGb: num(settings.minDiskFreeGb) } : {}),
+      ...(requiredPatches.length > 0
+        ? { requiredPatches: requiredPatches.map((kbNumber) => kbNumber.trim().toUpperCase()).filter(Boolean) }
+        : {}),
     };
   }
   return {
@@ -211,6 +223,15 @@ export function PoliciesPage() {
     if (!form.name.trim()) {
       setFormError('Policy name is required.');
       return;
+    }
+    if (form.type === 'COMPLIANCE') {
+      const requiredPatches = typeof form.settings.requiredPatches === 'string'
+        ? form.settings.requiredPatches.split(/[\n,]/).map((kbNumber) => kbNumber.trim()).filter(Boolean)
+        : [];
+      if (requiredPatches.some((kbNumber) => !/^KB\d+$/i.test(kbNumber))) {
+        setFormError('Required patches must use the KB1234567 format.');
+        return;
+      }
     }
     const payload: CreatePolicyPayload = {
       name: form.name.trim(),
@@ -559,6 +580,9 @@ export function PoliciesPage() {
 
               {form.type === 'CONFIGURATION' && (
                 <div className="space-y-3">
+                  <p className="text-xs text-amber-700 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    Configuration settings are saved but are not yet applied or enforced by the Windows agent.
+                  </p>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"
@@ -569,11 +593,11 @@ export function PoliciesPage() {
                     Automatic OS updates enabled
                   </label>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">PowerShell startup script (optional)</label>
+                    <label className="text-xs font-medium text-slate-600">PowerShell script (stored only)</label>
                     <textarea
                       className={inputClass}
                       rows={3}
-                      placeholder="Script executed by the agent at policy sync"
+                      placeholder="Script content is not executed by the agent yet"
                       value={String(form.settings.powerShellScript ?? '')}
                       onChange={(e) => setSetting('powerShellScript', e.target.value)}
                     />
@@ -609,6 +633,15 @@ export function PoliciesPage() {
                       className={inputClass}
                       value={String(form.settings.minDiskFreeGb ?? '')}
                       onChange={(e) => setSetting('minDiskFreeGb', e.target.value === '' ? undefined : Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-3">
+                    <label className="text-xs font-medium text-slate-600">Required Windows patches</label>
+                    <input
+                      className={inputClass}
+                      placeholder="KB1234567, KB7654321"
+                      value={String(form.settings.requiredPatches ?? '')}
+                      onChange={(e) => setSetting('requiredPatches', e.target.value)}
                     />
                   </div>
                 </div>

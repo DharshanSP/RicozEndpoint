@@ -13,6 +13,7 @@ export interface SystemInfo {
   cpuCores: number;
   ramBytes: number;
   storageBytes: number;
+  freeStorageBytes: number;
   biosVersion: string;
 }
 
@@ -61,7 +62,9 @@ $os = Get-CimInstance Win32_OperatingSystem
 $bios = Get-CimInstance Win32_BIOS
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $ram = [double]$cs.TotalPhysicalMemory
-$disk = [double](Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Measure-Object -Property Size -Sum).Sum
+$disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3")
+$disk = [double](($disks | Measure-Object -Property Size -Sum).Sum)
+$freeDisk = [double](($disks | Measure-Object -Property FreeSpace -Sum).Sum)
 $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.IPAddress -ne '0.0.0.0' } | Select-Object -First 1
 $result = [pscustomobject]@{
   hostname = [string]$cs.Name
@@ -76,6 +79,7 @@ $result = [pscustomobject]@{
   cpuCores = [int]$cpu.NumberOfCores
   ramBytes = [long]$ram
   storageBytes = [long]$disk
+  freeStorageBytes = [long]$freeDisk
   biosVersion = [string]$bios.SMBIOSBIOSVersion
 }
 $result | ConvertTo-Json -Compress

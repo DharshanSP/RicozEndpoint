@@ -111,6 +111,7 @@ model DeviceHardware {
   cpuCores     Int
   ramBytes     BigInt
   storageBytes BigInt
+  freeStorageBytes BigInt?
   manufacturer String
   model        String
   serialNumber String
