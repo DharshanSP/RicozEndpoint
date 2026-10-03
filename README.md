@@ -92,11 +92,24 @@ From **Fleet Devices**, select **Enroll Device** and follow the four-step guide:
 3. Copy the EXE to the target Windows device and run it.
 4. Paste the enrollment token when prompted.
 
-The agent collects device inventory, enrolls the device, saves its agent credentials, and starts the heartbeat loop. The EXE is served from `apps/web/public/downloads/` and can be rebuilt with:
+The agent collects device inventory, enrolls the device, saves its agent credentials, and starts the heartbeat loop.
+
+## Agent distribution
+
+Release builds are published as **GitHub Release assets** (`RicozEndpointAgent.exe` + `RicozEndpointAgent.zip`) by the `agent-release` workflow — push a tag like `agent-v0.1.1` to cut one. The web app links to the release via `VITE_AGENT_DOWNLOAD_URL`:
+
+```bash
+VITE_AGENT_DOWNLOAD_URL=https://github.com/DharshanSP/RicozEndpoint/releases/latest/download/RicozEndpointAgent.zip
+```
+
+For local development, build the EXE yourself (it lands in `apps/web/public/downloads/` and is served from there when the env var is unset):
 
 ```bash
 pnpm build:agent:exe
+# Set RICOZ_AGENT_UPX=0 to skip UPX compression; install UPX for ~30-35 MB output.
 ```
+
+> The Node SEA container is ~88 MB uncompressed (99% Node runtime, <1% agent code). UPX + zip brings the download to ~25-35 MB. The long-term fix is a Go rewrite (~6-8 MB single exe); see `agents/windows/README.md`.
 
 The executable reads `API_URL` from the Windows environment when the API is not running at the default local address.
 

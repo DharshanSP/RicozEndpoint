@@ -199,10 +199,17 @@ export function DevicesPage() {
     ? `curl -X POST ${apiBaseUrl}/enroll -H "Content-Type: application/json" -d '{"enrollmentToken":"${generatedToken}","hostname":"my-device","serialNumber":"SN-001","os":"Windows","osVersion":"11","architecture":"x64","agentVersion":"1.0.0"}'`
     : '';
 
+  // Release asset URL (GitHub Releases) when configured; falls back to the
+  // locally built exe served from web/public/downloads (pnpm build:agent:exe).
+  const agentDownloadUrl =
+    import.meta.env.VITE_AGENT_DOWNLOAD_URL || '/downloads/RicozEndpointAgent.exe';
+
   const handleDownloadAgentFile = () => {
     const link = document.createElement('a');
-    link.href = '/downloads/RicozEndpointAgent.exe';
+    link.href = agentDownloadUrl;
+    // The `download` attribute only applies to same-origin URLs; harmless otherwise.
     link.download = 'RicozEndpointAgent.exe';
+    link.rel = 'noopener';
     link.click();
   };
 

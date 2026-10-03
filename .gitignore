@@ -47,3 +47,9 @@ docker-data/
 *.tsbuildinfo
 *.db
 *.db-journal
+
+# Windows agent distribution artifacts (published as GitHub Release assets;
+# see .github/workflows/agent-release.yml). Rebuild locally with:
+#   pnpm build:agent:exe
+apps/web/public/downloads/RicozEndpointAgent.exe
+apps/web/public/downloads/RicozEndpointAgent.zip

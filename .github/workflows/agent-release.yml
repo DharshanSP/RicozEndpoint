@@ -1,0 +1,44 @@
+name: agent-release
+
+on:
+  push:
+    tags:
+      - 'agent-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install UPX
+        run: choco install upx -y
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build agent exe
+        run: pnpm build:agent:exe
+        env:
+          RICOZ_AGENT_API_URL: https://ricoz-api.onrender.com/api
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/web/public/downloads/RicozEndpointAgent.exe
+            apps/web/public/downloads/RicozEndpointAgent.zip
+          fail_on_unmatched_files: false
