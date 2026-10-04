@@ -50,7 +50,7 @@ export const PlaceholderPage: FC<PlaceholderPageProps> = ({
             <Clock className="w-3.5 h-3.5 text-amber-600" />
             <span>Planned Module</span>
           </Badge>
-          <Link to="/">
+          <Link to="/dashboard">
             <Button variant="outline" size="sm" className="gap-1.5 h-9 text-xs border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-xs">
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Dashboard</span>

@@ -15,17 +15,22 @@ import { AuditLogsPage } from '../pages/AuditLogsPage';
 import { UsersPage } from '../pages/UsersPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { LoginPage } from '../pages/LoginPage';
+import { LandingPage } from '../pages/LandingPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { RouteErrorBoundary } from '../components/ErrorBoundary';
 
 export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <LandingPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
   {
     path: '/login',
     element: <LoginPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {
-    path: '/',
     element: (
       <ProtectedRoute>
         <RootLayout />
@@ -34,31 +39,27 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
     children: [
       {
-        index: true,
+        path: '/dashboard',
         element: <DashboardPage />,
       },
       {
-        path: 'dashboard',
-        element: <Navigate to="/" replace />,
-      },
-      {
-        path: 'devices',
+        path: '/devices',
         element: <DevicesPage />,
       },
       {
-        path: 'devices/groups',
+        path: '/devices/groups',
         element: <DeviceGroupsPage />,
       },
       {
-        path: 'device-groups',
+        path: '/device-groups',
         element: <Navigate to="/devices/groups" replace />,
       },
       {
-        path: 'devices/:id',
+        path: '/devices/:id',
         element: <DeviceDetailPage />,
       },
       {
-        path: 'enrollment-tokens',
+        path: '/enrollment-tokens',
         element: (
           <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']}>
             <EnrollmentTokensPage />
@@ -66,35 +67,35 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'policies',
+        path: '/policies',
         element: <PoliciesPage />,
       },
       {
-        path: 'software',
+        path: '/software',
         element: <SoftwarePage />,
       },
       {
-        path: 'patches',
+        path: '/patches',
         element: <PatchesPage />,
       },
       {
-        path: 'compliance',
+        path: '/compliance',
         element: <CompliancePage />,
       },
       {
-        path: 'alerts',
+        path: '/alerts',
         element: <AlertsPage />,
       },
       {
-        path: 'reports',
+        path: '/reports',
         element: <ReportsPage />,
       },
       {
-        path: 'audit-logs',
+        path: '/audit-logs',
         element: <AuditLogsPage />,
       },
       {
-        path: 'users',
+        path: '/users',
         element: (
           <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']}>
             <UsersPage />
@@ -102,7 +103,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'settings',
+        path: '/settings',
         element: <SettingsPage />,
       },
       {

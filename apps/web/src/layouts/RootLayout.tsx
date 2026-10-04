@@ -133,7 +133,7 @@ export function RootLayout() {
     {
       title: 'OVERVIEW',
       items: [
-        { name: 'Dashboard', to: '/', icon: LayoutDashboard },
+        { name: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
       ],
     },
     {
@@ -188,8 +188,8 @@ export function RootLayout() {
   // Helper to compute dynamic breadcrumbs from location
   const getBreadcrumbTitle = () => {
     const path = location.pathname;
-    if (path === '/' || path === '' || path === '/dashboard') {
-      return { section: 'Overview', page: 'Dashboard', sectionTo: '/', pageTo: '/' };
+    if (path === '/dashboard' || path === '' || path === '/') {
+      return { section: 'Overview', page: 'Dashboard', sectionTo: '/dashboard', pageTo: '/dashboard' };
     }
     if (path.startsWith('/devices/groups') || path.startsWith('/device-groups')) {
       return { section: 'Devices', page: 'Device Groups', sectionTo: '/devices', pageTo: '/devices/groups' };
@@ -230,12 +230,12 @@ export function RootLayout() {
     if (path.startsWith('/settings')) {
       return { section: 'Administration', page: 'Settings', sectionTo: '/settings', pageTo: '/settings' };
     }
-    return { section: 'RicozEndpoint', page: 'Overview', sectionTo: '/', pageTo: '/' };
+    return { section: 'RicozEndpoint', page: 'Overview', sectionTo: '/dashboard', pageTo: '/dashboard' };
   };
 
   const isItemActive = (to: string) => {
     const path = location.pathname;
-    if (to === '/') return path === '/' || path === '/dashboard';
+    if (to === '/dashboard') return path === '/dashboard' || path === '/';
     if (to === '/devices') return path === '/devices' || (path.startsWith('/devices/') && !path.startsWith('/devices/groups'));
     if (to === '/devices/groups' || to === '/device-groups') return path.startsWith('/devices/groups') || path.startsWith('/device-groups');
     return path === to || path.startsWith(`${to}/`);
@@ -250,7 +250,7 @@ export function RootLayout() {
       {
         label: 'Dashboard',
         description: 'System overview, metrics, and fleet health',
-        path: '/',
+        path: '/dashboard',
         icon: LayoutDashboard,
         category: 'Overview',
         keywords: ['overview', 'metrics', 'fleet', 'status', 'summary'],

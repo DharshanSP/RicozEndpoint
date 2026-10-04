@@ -637,7 +637,7 @@ export function DeviceDetailPage() {
 function Breadcrumbs({ deviceName }: { deviceName: string }) {
   return (
     <nav className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-      <Link to="/" className="hover:text-slate-800 transition-colors">
+      <Link to="/dashboard" className="hover:text-slate-800 transition-colors">
         Dashboard
       </Link>
       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
