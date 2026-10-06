@@ -1,7 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye } from 'lucide-react';
+import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye, ArrowLeft } from 'lucide-react';
 
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
@@ -19,7 +19,7 @@ export function LoginPage() {
     ? stateFrom
     : stateFrom
     ? `${stateFrom.pathname}${stateFrom.search || ''}${stateFrom.hash || ''}`
-    : '/';
+    : '/dashboard';
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -58,7 +58,18 @@ export function LoginPage() {
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-100/60 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-100/60 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-md z-10 space-y-8">
+      <div className="w-full max-w-md z-10 space-y-6">
+        {/* Back Link */}
+        <div>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to RicozEndpoint</span>
+          </Link>
+        </div>
+
         {/* Header Branding */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-blue-600 shadow-lg shadow-blue-500/20 mb-1">
@@ -71,6 +82,7 @@ export function LoginPage() {
             Enterprise Endpoint Discovery & Management Dashboard
           </p>
         </div>
+
 
         {/* Form Card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xl shadow-slate-200/50 space-y-6">
