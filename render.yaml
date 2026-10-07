@@ -25,4 +25,4 @@ services:
       - key: JWT_EXPIRY
         value: 12h
       - key: ALLOW_PUBLIC_SIGNUP
-        value: "false"
+        value: "true"
