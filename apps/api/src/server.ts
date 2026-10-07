@@ -74,21 +74,24 @@ export async function buildApp() {
     return payload;
   });
 
-  // Lightweight login brute-force guard (per-IP sliding window, in-memory).
+  // Lightweight brute-force guard (per-IP sliding window, in-memory).
   const loginHits = new Map<string, number[]>();
   app.addHook('onRequest', async (request, reply) => {
-    if (request.method === 'POST' && request.url.startsWith('/api/auth/login')) {
+    const isAuthAbuseTarget =
+      request.method === 'POST' &&
+      (request.url.startsWith('/api/auth/login') || request.url.startsWith('/api/auth/register'));
+    if (isAuthAbuseTarget) {
       const now = Date.now();
       const key = request.ip;
       const windowMs = 60_000;
-      const maxHits = 20;
+      const maxHits = request.url.startsWith('/api/auth/register') ? 10 : 20;
       const hits = (loginHits.get(key) ?? []).filter((t) => now - t < windowMs);
       hits.push(now);
       loginHits.set(key, hits);
       if (hits.length > maxHits) {
         return reply.status(429).send({
           success: false,
-          error: { code: 'RATE_LIMITED', message: 'Too many login attempts. Try again in a minute.' },
+          error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again in a minute.' },
         });
       }
     }

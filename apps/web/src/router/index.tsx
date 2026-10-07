@@ -15,6 +15,7 @@ import { AuditLogsPage } from '../pages/AuditLogsPage';
 import { UsersPage } from '../pages/UsersPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { LoginPage } from '../pages/LoginPage';
+import { RegisterPage } from '../pages/RegisterPage';
 import { LandingPage } from '../pages/LandingPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { RouteErrorBoundary } from '../components/ErrorBoundary';
@@ -28,6 +29,11 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/register',
+    element: <RegisterPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {

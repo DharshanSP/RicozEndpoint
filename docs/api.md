@@ -36,8 +36,12 @@ Available at: `http://localhost:3001/docs`
 
 | Method | Endpoint | Description | Min. role |
 |--------|----------|-------------|-----------|
+| POST | /api/auth/register | Register a new organization + ORG_ADMIN account | public (toggle: `ALLOW_PUBLIC_SIGNUP`) |
 | POST | /api/auth/login | Login with credentials | public |
+| POST | /api/auth/logout | Record a logout event | any |
 | GET | /api/auth/me | Get current user | any |
+| POST | /api/auth/refresh | Refresh session token | any |
+| POST | /api/auth/change-password | Change own password | any |
 
 Most endpoints require a `Authorization: Bearer <jwt>` header. All queries are scoped to the
 authenticated user's organization (`SUPER_ADMIN` may bypass organization scope).
@@ -53,8 +57,10 @@ authenticated user's organization (`SUPER_ADMIN` may bypass organization scope).
 | Method | Endpoint | Description | Min. role |
 |--------|----------|-------------|-----------|
 | GET | /api/users | List organization users | IT_ADMIN |
-| POST | /api/users | Create user | ORG_ADMIN |
-| PATCH | /api/users/:id | Update user | ORG_ADMIN |
+| POST | /api/users | Create user (only roles below your own) | ORG_ADMIN |
+| PATCH | /api/users/:id | Update user / change role (audited as `USER_ROLE_CHANGED`) | ORG_ADMIN |
+| POST | /api/users/:id/reset-password | Administratively reset password | ORG_ADMIN |
+| DELETE | /api/users/:id | Delete user (blocked for self + last admin) | ORG_ADMIN |
 
 ## Devices
 

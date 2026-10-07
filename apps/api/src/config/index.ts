@@ -10,6 +10,10 @@ const configSchema = z.object({
   JWT_EXPIRY: z.string().default('24h'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   AGENT_ENROLLMENT_SECRET: z.string().min(16),
+  ALLOW_PUBLIC_SIGNUP: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type Config = z.infer<typeof configSchema>;

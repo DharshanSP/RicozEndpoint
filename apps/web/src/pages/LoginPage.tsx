@@ -169,6 +169,32 @@ export function LoginPage() {
 
               <button
                 type="button"
+                onClick={() => setDemoAccount('orgadmin@ricoz.local', 'orgadmin123')}
+                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
+                  email === 'orgadmin@ricoz.local'
+                    ? 'border-violet-500 bg-violet-50 text-violet-700 font-semibold'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <Shield className="w-4 h-4 mb-1 text-violet-600" />
+                <span>Org Admin</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDemoAccount('itadmin@ricoz.local', 'itadmin123')}
+                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
+                  email === 'itadmin@ricoz.local'
+                    ? 'border-cyan-500 bg-cyan-50 text-cyan-700 font-semibold'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <UserCheck className="w-4 h-4 mb-1 text-cyan-600" />
+                <span>IT Admin</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setDemoAccount('operator@ricoz.local', 'operator123')}
                 className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
                   email === 'operator@ricoz.local'
@@ -183,7 +209,7 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setDemoAccount('viewer@ricoz.local', 'viewer123')}
-                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
+                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition col-span-2 sm:col-span-1 ${
                   email === 'viewer@ricoz.local'
                     ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-semibold'
                     : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -193,6 +219,13 @@ export function LoginPage() {
                 <span>Viewer</span>
               </button>
             </div>
+          </div>
+
+          <div className="pt-1 text-center text-xs text-slate-500">
+            New to RicozEndpoint?{' '}
+            <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700">
+              Create an organization account
+            </Link>
           </div>
         </div>
 

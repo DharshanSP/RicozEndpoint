@@ -21,6 +21,10 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
  *
  * The token itself only proves identity: the account must still exist and be
  * active, otherwise a deactivated user could keep using an unexpired token.
+ * The role is re-read from the database on every request so demotions and
+ * promotions take effect without forcing a re-login. The active organization
+ * stays scoped to the token (SUPER_ADMIN may switch tenants), but a
+ * non-SUPER_ADMIN token scoped to a foreign organization is rejected.
  */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
@@ -46,7 +50,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   try {
     const user = await request.server.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { isActive: true },
+      select: { isActive: true, role: true, organizationId: true },
     });
 
     if (!user || !user.isActive) {
@@ -58,6 +62,19 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
         },
       });
     }
+
+    if (user.role !== 'SUPER_ADMIN' && payload.organizationId !== user.organizationId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Session organization does not match account organization',
+        },
+      });
+    }
+
+    // Live role: promotions/demotions apply to in-flight sessions immediately.
+    (request.user as JwtPayload).role = user.role as JwtPayload['role'];
   } catch {
     return reply.status(401).send({
       success: false,

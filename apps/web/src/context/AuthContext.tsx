@@ -18,6 +18,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  register: (payload: RegisterPayload) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   hasRole: (roles: UserRole[]) => boolean;
   hasMinRole: (minRole: UserRole) => boolean;
@@ -28,6 +29,13 @@ interface AuthContextType {
   switchOrganization: (
     organizationId: string
   ) => Promise<{ success: boolean; message?: string; organizationName?: string }>;
+}
+
+export interface RegisterPayload {
+  organizationName: string;
+  name: string;
+  email: string;
+  password: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,6 +117,27 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
     setUser(null);
   };
 
+  const register = async (payload: RegisterPayload) => {
+    setIsLoading(true);
+    const res = await fetchApi<{ token: string; user: User }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (res.success && res.data) {
+      localStorage.setItem(TOKEN_KEY, res.data.token);
+      setToken(res.data.token);
+      setUser(res.data.user);
+      setIsLoading(false);
+      return { success: true };
+    }
+    setIsLoading(false);
+    return {
+      success: false,
+      message: res.error?.message || 'Registration failed. Please try again.',
+    };
+  };
+
   const changePassword = async (currentPassword: string, newPassword: string) => {
     const res = await fetchApi<{ token: string }>('/auth/change-password', {
       method: 'POST',
@@ -183,6 +212,7 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
         isLoading,
         isAuthenticated: !!user,
         login,
+        register,
         logout,
         hasRole,
         hasMinRole,

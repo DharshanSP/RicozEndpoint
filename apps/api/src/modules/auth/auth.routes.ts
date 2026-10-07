@@ -2,9 +2,128 @@ import type { FastifyInstance } from 'fastify';
 import { verifyPassword, hashPassword } from '../../utils/password';
 import { authenticate, JwtPayload } from '../../middleware/rbac.middleware';
 import { writeAudit } from '../../utils/audit';
-import { changePasswordSchema } from '@ricoz/validation';
+import { changePasswordSchema, registerSchema } from '@ricoz/validation';
+import { getConfig } from '../../config';
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
+  // ─── Public tenant signup ─────────────────────────────────────────────────
+  // Creates a brand-new organization with the registrant as its ORG_ADMIN and
+  // returns a session token. No role selection: elevated roles are granted
+  // only by administrators inside an organization. Disable in production with
+  // ALLOW_PUBLIC_SIGNUP=false.
+  app.post('/register', {
+    schema: {
+      description: 'Register a new organization with an initial ORG_ADMIN account',
+      tags: ['Auth'],
+      body: {
+        type: 'object',
+        required: ['organizationName', 'name', 'email', 'password'],
+        properties: {
+          organizationName: { type: 'string', minLength: 2, maxLength: 120 },
+          name: { type: 'string', minLength: 2, maxLength: 120 },
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string', minLength: 8, maxLength: 128 },
+        },
+      },
+    },
+    handler: async (request, reply) => {
+      if (!getConfig().ALLOW_PUBLIC_SIGNUP) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'REGISTRATION_DISABLED',
+            message: 'Public registration is disabled. Contact your administrator for access.',
+          },
+        });
+      }
+
+      const parsed = registerSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid registration payload',
+          },
+        });
+      }
+
+      const { organizationName, name, email, password } = parsed.data;
+      const normalizedEmail = email.toLowerCase();
+
+      const [existingUser, existingOrg] = await Promise.all([
+        app.prisma.user.findUnique({ where: { email: normalizedEmail } }),
+        app.prisma.organization.findFirst({
+          where: { name: { equals: organizationName.trim(), mode: 'insensitive' } },
+        }),
+      ]);
+
+      if (existingUser) {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'USER_EXISTS', message: 'An account with this email already exists' },
+        });
+      }
+
+      if (existingOrg) {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'ORG_EXISTS', message: 'An organization with this name already exists' },
+        });
+      }
+
+      const passwordHash = await hashPassword(password);
+      const organization = await app.prisma.organization.create({
+        data: { name: organizationName.trim() },
+      });
+      const user = await app.prisma.user.create({
+        data: {
+          organizationId: organization.id,
+          email: normalizedEmail,
+          name: name.trim(),
+          passwordHash,
+          role: 'ORG_ADMIN',
+        },
+      });
+
+      await app.prisma.auditLog
+        .create({
+          data: {
+            organizationId: organization.id,
+            actorId: user.id,
+            action: 'ORG_REGISTERED',
+            resource: 'ORGANIZATION',
+            resourceId: organization.id,
+            ipAddress: request.ip,
+            metadata: JSON.stringify({ email: user.email, organizationName: organization.name }),
+          },
+        })
+        .catch(() => undefined);
+
+      const token = app.jwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: organization.id,
+      });
+
+      return reply.status(201).send({
+        success: true,
+        data: {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            organizationId: organization.id,
+            organizationName: organization.name,
+          },
+        },
+      });
+    },
+  });
+
   app.post('/login', {
     schema: {
       description: 'Authenticate user and return JWT access token',

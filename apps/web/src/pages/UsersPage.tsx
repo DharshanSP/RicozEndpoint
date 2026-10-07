@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useUsersList, useCreateUser, useUpdateUser } from '../hooks/useUsers';
+import { useAuth, ROLE_HIERARCHY } from '../context/AuthContext';
+import { useUsersList, useCreateUser, useUpdateUser, useDeleteUser } from '../hooks/useUsers';
 import {
   Users,
   UserPlus,
@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Edit2,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -38,11 +39,20 @@ function getRoleBadgeVariant(role: string): RoleBadgeVariant {
   }
 }
 
+const ALL_ROLES: { value: UserRole; label: string }[] = [
+  { value: 'VIEWER', label: 'Viewer (Read-only)' },
+  { value: 'OPERATOR', label: 'Operator (Standard fleet management)' },
+  { value: 'IT_ADMIN', label: 'IT Admin (Device and token management)' },
+  { value: 'ORG_ADMIN', label: 'Org Admin (Full organization control)' },
+  { value: 'SUPER_ADMIN', label: 'Super Admin (System Administrator)' },
+];
+
 export function UsersPage() {
   const { user: currentUser, hasRole } = useAuth();
   const { data: users = [], isLoading, isFetching, error, refetch } = useUsersList();
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
+  const deleteMutation = useDeleteUser();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
@@ -65,10 +75,31 @@ export function UsersPage() {
 
   // Status Toggle Confirmation & Feedback State
   const [userToToggle, setUserToToggle] = useState<UserSummary | null>(null);
+  const [userToDelete, setUserToDelete] = useState<UserSummary | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
   const canManageUsers = hasRole(['SUPER_ADMIN', 'ORG_ADMIN']);
+
+  // Roles the current actor may assign: strictly below their own level
+  // (SUPER_ADMIN bypasses and may assign anything).
+  const assignableRoles = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'SUPER_ADMIN') return ALL_ROLES;
+    const myWeight = ROLE_HIERARCHY[currentUser.role] ?? 0;
+    return ALL_ROLES.filter((r) => (ROLE_HIERARCHY[r.value] ?? 0) < myWeight);
+  }, [currentUser]);
+
+  const canAssignRole = (role: UserRole) =>
+    assignableRoles.some((r) => r.value === role);
+
+  // Editing (name/role) a user at or above your own level is rejected by the
+  // API — disable it upfront instead of surfacing a 403 after submit.
+  const canEditTarget = (target: UserSummary) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'SUPER_ADMIN') return true;
+    return (ROLE_HIERARCHY[target.role] ?? 0) < (ROLE_HIERARCHY[currentUser.role] ?? 0);
+  };
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
@@ -96,6 +127,11 @@ export function UsersPage() {
       return;
     }
 
+    if (!canAssignRole(newRole)) {
+      setCreateError(`Your role cannot assign '${newRole}'. Choose one of: ${assignableRoles.map((r) => r.value).join(', ') || 'none'}.`);
+      return;
+    }
+
     try {
       const createdName = newName.trim();
       await createMutation.mutateAsync({
@@ -118,7 +154,8 @@ export function UsersPage() {
   const handleOpenEdit = (userToEdit: UserSummary) => {
     setEditingUser(userToEdit);
     setEditName(userToEdit.name);
-    setEditRole(userToEdit.role);
+    // Clamp to an assignable role when the target currently outranks the actor.
+    setEditRole(canAssignRole(userToEdit.role) ? userToEdit.role : 'VIEWER');
     setEditIsActive(userToEdit.isActive);
     setEditError(null);
   };
@@ -179,6 +216,29 @@ export function UsersPage() {
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : 'Failed to update user status');
       setUserToToggle(null);
+    }
+  };
+
+  const handleDeleteClick = (target: UserSummary) => {
+    if (target.id === currentUser?.id) {
+      setStatusError('You cannot delete your own account.');
+      return;
+    }
+    setStatusError(null);
+    setUserToDelete(target);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    setStatusError(null);
+    try {
+      await deleteMutation.mutateAsync(userToDelete.id);
+      setStatusNotice(`User account "${userToDelete.name}" was permanently deleted.`);
+      setUserToDelete(null);
+      if (editingUser?.id === userToDelete.id) setEditingUser(null);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : 'Failed to delete user');
+      setUserToDelete(null);
     }
   };
 
@@ -393,7 +453,9 @@ export function UsersPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenEdit(u)}
-                          className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100 gap-1"
+                          disabled={!canEditTarget(u)}
+                          title={canEditTarget(u) ? 'Edit user' : 'You cannot edit a user at or above your role level'}
+                          className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100 gap-1 disabled:opacity-40"
                         >
                           <Edit2 className="w-3 h-3 text-slate-500" />
                           <span>Edit</span>
@@ -406,6 +468,16 @@ export function UsersPage() {
                           className="h-7 text-[11px] px-2.5 border-slate-200 text-slate-700 hover:bg-slate-100"
                         >
                           {u.isActive ? 'Deactivate' : 'Activate'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteClick(u)}
+                          disabled={u.id === currentUser?.id || deleteMutation.isPending}
+                          title="Permanently delete user"
+                          className="h-7 text-[11px] px-2 border-rose-200 text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="w-3 h-3" />
                         </Button>
                       </div>
                     </td>
@@ -506,12 +578,13 @@ export function UsersPage() {
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 >
-                  <option value="VIEWER">Viewer (Read-only)</option>
-                  <option value="OPERATOR">Operator (Standard fleet management)</option>
-                  <option value="IT_ADMIN">IT Admin (Device and token management)</option>
-                  <option value="ORG_ADMIN">Org Admin (Full organization control)</option>
-                  <option value="SUPER_ADMIN">Super Admin (System Administrator)</option>
+                  {assignableRoles.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
                 </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  You may assign roles below your own ({currentUser?.role}). Higher roles require a Super Admin.
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -603,12 +676,20 @@ export function UsersPage() {
                   onChange={(e) => setEditRole(e.target.value as UserRole)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 >
-                  <option value="VIEWER">Viewer (Read-only)</option>
-                  <option value="OPERATOR">Operator (Standard fleet management)</option>
-                  <option value="IT_ADMIN">IT Admin (Device and token management)</option>
-                  <option value="ORG_ADMIN">Org Admin (Full organization control)</option>
-                  <option value="SUPER_ADMIN">Super Admin (System Administrator)</option>
+                  {assignableRoles.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                  {!canAssignRole(editingUser.role) && (
+                    <option value={editingUser.role} disabled>
+                      {editingUser.role.replace('_', ' ')} (current — above your level)
+                    </option>
+                  )}
                 </select>
+                {!canAssignRole(editingUser.role) && (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    This user outranks you; you can only reassign them to a role below yours.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2 pt-1">
@@ -682,6 +763,26 @@ export function UsersPage() {
         confirmLabel={userToToggle?.isActive ? 'Deactivate User' : 'Activate User'}
         loading={updateMutation.isPending}
         onConfirm={handleConfirmToggle}
+      />
+
+      {/* User Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(userToDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setUserToDelete(null);
+          }
+        }}
+        title="Permanently Delete User"
+        description={
+          userToDelete
+            ? `Are you sure you want to permanently delete "${userToDelete.name}" (${userToDelete.email}, ${userToDelete.role})? Their audit history is preserved but detached. This cannot be undone.`
+            : ''
+        }
+        variant="danger"
+        confirmLabel="Delete User"
+        loading={deleteMutation.isPending}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );

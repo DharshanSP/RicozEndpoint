@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { PrismaClient } from '@prisma/client';
 import { requireMinRole, JwtPayload } from '../../middleware/rbac.middleware';
 import { hashPassword } from '../../utils/password';
 import { writeAudit } from '../../utils/audit';
@@ -12,6 +13,22 @@ const ROLE_WEIGHT: Record<UserRole, number> = {
   OPERATOR: 2,
   VIEWER: 1,
 };
+
+/** Counts active users in an org holding SUPER_ADMIN or ORG_ADMIN. */
+async function countActiveOrgAdmins(
+  prisma: PrismaClient,
+  organizationId: string,
+  excludeUserId?: string
+): Promise<number> {
+  return prisma.user.count({
+    where: {
+      organizationId,
+      isActive: true,
+      role: { in: ['SUPER_ADMIN', 'ORG_ADMIN'] },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+    },
+  });
+}
 
 export async function usersRoutes(app: FastifyInstance): Promise<void> {
   // List users in organization
@@ -163,6 +180,16 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     handler: async (request, reply) => {
       const jwtUser = request.user as JwtPayload;
       const { id } = request.params as { id: string };
+      const rawBody = (request.body ?? {}) as Record<string, unknown>;
+      if (rawBody.password !== undefined) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Password cannot be changed here. Use the reset-password endpoint.',
+          },
+        });
+      }
       const parsed = updateUserSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({
@@ -223,6 +250,29 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Last-admin protection: never leave an organization without an active admin.
+      const demotesAdmin =
+        role !== undefined &&
+        (user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN') &&
+        role !== 'SUPER_ADMIN' &&
+        role !== 'ORG_ADMIN';
+      const deactivatesAdmin =
+        isActive === false &&
+        user.isActive &&
+        (user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN');
+      if ((demotesAdmin || deactivatesAdmin) && user.organizationId) {
+        const remaining = await countActiveOrgAdmins(app.prisma, user.organizationId, user.id);
+        if (remaining === 0) {
+          return reply.status(400).send({
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Cannot remove the last active administrator of the organization',
+            },
+          });
+        }
+      }
+
       const changes: Record<string, unknown> = {};
       if (name !== undefined) changes.name = name;
       if (role !== undefined) changes.role = role;
@@ -248,12 +298,15 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
       await writeAudit(
         app.prisma,
         jwtUser,
-        'USER_UPDATED',
+        role !== undefined && role !== user.role ? 'USER_ROLE_CHANGED' : 'USER_UPDATED',
         'USER',
         updatedUser.id,
         {
           email: updatedUser.email,
           changed: Object.keys(changes),
+          ...(role !== undefined && role !== user.role
+            ? { previousRole: user.role, newRole: updatedUser.role }
+            : {}),
           role: updatedUser.role,
           isActive: updatedUser.isActive,
         },
@@ -335,6 +388,106 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
         success: true,
         data: { id: target.id, resetAt: new Date().toISOString() },
       });
+    },
+  });
+
+  // ─── Delete user ────────────────────────────────────────────────────────────
+  app.delete('/:id', {
+    preHandler: [requireMinRole(UserRole.ORG_ADMIN)],
+    schema: {
+      description: 'Permanently remove a user. Blocked for self, super admins (unless actor is one), and the last active org admin.',
+      tags: ['Users'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string' } },
+      },
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+
+      const target = await app.prisma.user.findUnique({ where: { id } });
+      if (!target) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'User not found' },
+        });
+      }
+
+      if (jwtUser.role !== 'SUPER_ADMIN' && target.organizationId !== jwtUser.organizationId) {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Cannot remove a user in another organization' },
+        });
+      }
+
+      if (target.role === 'SUPER_ADMIN' && jwtUser.role !== 'SUPER_ADMIN') {
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Cannot remove a super administrator' },
+        });
+      }
+
+      if (id === jwtUser.sub) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'You cannot delete your own account' },
+        });
+      }
+
+      if (
+        target.isActive &&
+        (target.role === 'SUPER_ADMIN' || target.role === 'ORG_ADMIN')
+      ) {
+        const remaining = await countActiveOrgAdmins(app.prisma, target.organizationId, target.id);
+        if (remaining === 0) {
+          return reply.status(400).send({
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Cannot remove the last active administrator of the organization',
+            },
+          });
+        }
+      }
+
+      // Preserve immutable history: detach nullable references before deleting.
+      await app.prisma.$transaction([
+        app.prisma.auditLog.updateMany({
+          where: { actorId: target.id },
+          data: { actorId: null },
+        }),
+        app.prisma.command.updateMany({
+          where: { requestedBy: target.id },
+          data: { requestedBy: null },
+        }),
+        app.prisma.deployment.updateMany({
+          where: { requestedBy: target.id },
+          data: { requestedBy: null },
+        }),
+        app.prisma.patch.updateMany({
+          where: { createdById: target.id },
+          data: { createdById: null },
+        }),
+        app.prisma.enrollmentToken.updateMany({
+          where: { createdById: target.id },
+          data: { createdById: null },
+        }),
+        app.prisma.user.delete({ where: { id: target.id } }),
+      ]);
+
+      await writeAudit(
+        app.prisma,
+        jwtUser,
+        'USER_DELETED',
+        'USER',
+        target.id,
+        { email: target.email, role: target.role },
+        request
+      );
+
+      return reply.send({ success: true, data: { id: target.id, email: target.email } });
     },
   });
 }

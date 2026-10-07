@@ -62,3 +62,13 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
   }
   return res.data;
 }
+
+export async function deleteUser(id: string): Promise<{ id: string; email: string }> {
+  const res = await fetchApi<{ id: string; email: string }>(`/users/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'Failed to delete user');
+  }
+  return res.data;
+}

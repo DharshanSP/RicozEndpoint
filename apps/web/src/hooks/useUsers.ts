@@ -3,6 +3,7 @@ import {
   listUsers,
   createUser,
   updateUser,
+  deleteUser,
   type CreateUserPayload,
   type UpdateUserPayload,
   type UserSummary,
@@ -30,6 +31,16 @@ export function useUpdateUser() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateUserPayload }) =>
       updateUser(id, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users', 'list'] });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteUser(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users', 'list'] });
     },

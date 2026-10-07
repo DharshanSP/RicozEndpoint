@@ -51,6 +51,32 @@ async function main() {
 
   const operatorPasswordHash = await bcrypt.hash('operator123', 10);
   const viewerPasswordHash = await bcrypt.hash('viewer123', 10);
+  const orgAdminPasswordHash = await bcrypt.hash('orgadmin123', 10);
+  const itAdminPasswordHash = await bcrypt.hash('itadmin123', 10);
+
+  await prisma.user.upsert({
+    where: { email: 'orgadmin@ricoz.local' },
+    update: { passwordHash: orgAdminPasswordHash, role: 'ORG_ADMIN' },
+    create: {
+      organizationId: organization.id,
+      email: 'orgadmin@ricoz.local',
+      name: 'Organization Admin',
+      passwordHash: orgAdminPasswordHash,
+      role: 'ORG_ADMIN',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'itadmin@ricoz.local' },
+    update: { passwordHash: itAdminPasswordHash, role: 'IT_ADMIN' },
+    create: {
+      organizationId: organization.id,
+      email: 'itadmin@ricoz.local',
+      name: 'IT Administrator',
+      passwordHash: itAdminPasswordHash,
+      role: 'IT_ADMIN',
+    },
+  });
 
   await prisma.user.upsert({
     where: { email: 'operator@ricoz.local' },
@@ -76,7 +102,7 @@ async function main() {
     },
   });
 
-  console.log('Upserted demo users: operator@ricoz.local, viewer@ricoz.local');
+  console.log('Upserted demo users: orgadmin@ricoz.local, itadmin@ricoz.local, operator@ricoz.local, viewer@ricoz.local');
 
   const demoDevices = [
     {
