@@ -18,7 +18,12 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @ricoz/database exec prisma validate --schema=prisma/schema.prisma
+      - name: Validate Prisma schema
+        run: pnpm --filter @ricoz/database exec prisma validate --schema=prisma/schema.prisma
+        env:
+          # validate only parses the schema (no DB connection), but the
+          # datasource url env("DATABASE_URL") must exist.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ricoz_endpoint
       - run: pnpm -r --if-present typecheck
       - run: pnpm -r --if-present lint
       - run: pnpm --filter @ricoz/shared-types build
