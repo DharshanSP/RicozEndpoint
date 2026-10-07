@@ -157,7 +157,7 @@ export function DevicesPage() {
       setSearch(urlSearch);
       setPage(1);
     }
-  }, [searchParams]);
+  }, [searchParams, search, status]);
 
   // UI state
   const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);

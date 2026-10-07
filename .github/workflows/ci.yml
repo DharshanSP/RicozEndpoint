@@ -19,7 +19,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @ricoz/database exec prisma validate --schema=prisma/schema.prisma
-      - run: pnpm -r typecheck
-      - run: pnpm -r lint
-      - run: pnpm build
-      - run: pnpm -r test
+      - run: pnpm -r --if-present typecheck
+      - run: pnpm -r --if-present lint
+      - run: pnpm --filter @ricoz/shared-types build
+      - run: pnpm --filter @ricoz/validation build
+      - run: pnpm --filter @ricoz/database generate
+      - run: pnpm --filter @ricoz/api build
+      - run: pnpm --filter @ricoz/web build
+      - run: pnpm -r --if-present test
