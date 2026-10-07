@@ -32,12 +32,12 @@ import type {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple';
-
-const inputClass =
-  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs';
 
 const typeOptions: PolicyType[] = ['SECURITY', 'CONFIGURATION', 'COMPLIANCE'];
 
@@ -485,8 +485,7 @@ export function PoliciesPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">Name</label>
-                <input
-                  className={inputClass}
+                <Input
                   placeholder="e.g. Baseline Security Policy"
                   value={form.name}
                   onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
@@ -494,31 +493,29 @@ export function PoliciesPage() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">Type</label>
-                <select className={inputClass} value={form.type} onChange={(e) => changeType(e.target.value as PolicyType)}>
+                <Select value={form.type} onChange={(e) => changeType(e.target.value as PolicyType)}>
                   {typeOptions.map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">Status</label>
-                <select
-                  className={inputClass}
+                <Select
                   value={form.isActive ? 'true' : 'false'}
                   onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.value === 'true' }))}
                 >
                   <option value="true">Active</option>
                   <option value="false">Inactive</option>
-                </select>
+                </Select>
               </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-600">Description</label>
-              <textarea
-                className={inputClass}
+              <Textarea
                 rows={2}
                 placeholder="Optional purpose / scope of this policy"
                 value={form.description}
@@ -554,18 +551,16 @@ export function PoliciesPage() {
                   </label>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">Auto lock (minutes)</label>
-                    <input
+                    <Input
                       type="number"
                       min={0}
-                      className={inputClass}
                       value={String(form.settings.autoLockMinutes ?? '')}
                       onChange={(e) => setSetting('autoLockMinutes', e.target.value === '' ? undefined : Number(e.target.value))}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">Password complexity</label>
-                    <select
-                      className={inputClass}
+                    <Select
                       value={String(form.settings.passwordComplexity ?? '')}
                       onChange={(e) => setSetting('passwordComplexity', e.target.value || undefined)}
                     >
@@ -573,7 +568,7 @@ export function PoliciesPage() {
                       <option value="LOW">Low</option>
                       <option value="MEDIUM">Medium</option>
                       <option value="HIGH">High</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
               )}
@@ -594,8 +589,7 @@ export function PoliciesPage() {
                   </label>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">PowerShell script (stored only)</label>
-                    <textarea
-                      className={inputClass}
+                    <Textarea
                       rows={3}
                       placeholder="Script content is not executed by the agent yet"
                       value={String(form.settings.powerShellScript ?? '')}
@@ -609,8 +603,7 @@ export function PoliciesPage() {
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">Min OS version</label>
-                    <input
-                      className={inputClass}
+                    <Input
                       placeholder="e.g. 10.0.19045"
                       value={String(form.settings.minOsVersion ?? '')}
                       onChange={(e) => setSetting('minOsVersion', e.target.value)}
@@ -618,8 +611,7 @@ export function PoliciesPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">Min agent version</label>
-                    <input
-                      className={inputClass}
+                    <Input
                       placeholder="e.g. 0.1.0"
                       value={String(form.settings.minAgentVersion ?? '')}
                       onChange={(e) => setSetting('minAgentVersion', e.target.value)}
@@ -627,18 +619,16 @@ export function PoliciesPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">Min free disk (GB)</label>
-                    <input
+                    <Input
                       type="number"
                       min={0}
-                      className={inputClass}
                       value={String(form.settings.minDiskFreeGb ?? '')}
                       onChange={(e) => setSetting('minDiskFreeGb', e.target.value === '' ? undefined : Number(e.target.value))}
                     />
                   </div>
                   <div className="space-y-1.5 sm:col-span-3">
                     <label className="text-xs font-medium text-slate-600">Required Windows patches</label>
-                    <input
-                      className={inputClass}
+                    <Input
                       placeholder="KB1234567, KB7654321"
                       value={String(form.settings.requiredPatches ?? '')}
                       onChange={(e) => setSetting('requiredPatches', e.target.value)}
@@ -683,11 +673,10 @@ export function PoliciesPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">Priority (0-1000)</label>
-                <input
+                <Input
                   type="number"
                   min={0}
                   max={1000}
-                  className={inputClass}
                   value={assignPriority}
                   onChange={(e) => setAssignPriority(Number(e.target.value))}
                 />
@@ -896,16 +885,16 @@ export function PoliciesPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            className={`${inputClass} pl-9`}
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <Input
+            className="pl-9"
             placeholder="Search policies..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select
-          className={`${inputClass} w-auto`}
+        <Select
+          wrapperClassName="w-auto"
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as PolicyType | 'ALL')}
         >
@@ -915,7 +904,7 @@ export function PoliciesPage() {
               {t}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* List */}

@@ -4,6 +4,7 @@ import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, Histor
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -13,9 +14,6 @@ import {
   useRevokeEnrollmentToken,
 } from '../hooks/useEnrollmentTokens';
 import type { EnrollmentTokenSummary } from '../types/enrollment';
-
-const inputClass =
-  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
 
 function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: 'success' | 'warning' | 'secondary' } {
   if (!token.isActive) return { label: 'Revoked', variant: 'secondary' };
@@ -241,8 +239,7 @@ export function EnrollmentTokensPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">Token Label</label>
-                <input
-                  className={inputClass}
+                <Input
                   placeholder="e.g. Finance Wing Windows rollout"
                   value={label}
                   onChange={(event) => setLabel(event.target.value)}
@@ -250,20 +247,18 @@ export function EnrollmentTokensPage() {
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">Max Device Enrollments</label>
-                <input
+                <Input
                   type="number"
                   min={1}
                   max={1000}
-                  className={inputClass}
                   value={maxUses}
                   onChange={(event) => setMaxUses(Number(event.target.value))}
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">Expiration (Optional)</label>
-                <input
+                <Input
                   type="datetime-local"
-                  className={inputClass}
                   value={expiresAt}
                   onChange={(event) => setExpiresAt(event.target.value)}
                 />

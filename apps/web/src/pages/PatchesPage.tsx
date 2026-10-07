@@ -18,7 +18,13 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
+import { Pagination } from '../components/ui/Pagination';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PageHeader } from '../components/ui/PageHeader';
+import { AlertBanner } from '../components/ui/AlertBanner';
 import { useAuth } from '../context/AuthContext';
 import {
   useCancelPatchDeploy,
@@ -215,100 +221,83 @@ export function PatchesPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-              <Wrench className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                  Patch Management
-                </h1>
-                <Badge
-                  variant="outline"
-                  className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50"
-                >
-                  {summary?.total ?? 0} patches
-                </Badge>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Review OS updates reported by agent scans, approve critical KBs and track deployment coverage.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
+      <PageHeader
+        icon={Wrench}
+        title="Patch Management"
+        badge={
+          <Badge
             variant="outline"
-            size="sm"
-            onClick={() => void listQuery.refetch()}
-            disabled={isStale}
-            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+            className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isStale ? 'animate-spin' : ''}`} />
-            <span>{isStale ? 'Syncing...' : 'Sync'}</span>
-          </Button>
-
-          {canManage && (
+            {summary?.total ?? 0} patches
+          </Badge>
+        }
+        description="Review OS updates reported by agent scans, approve critical KBs and track deployment coverage."
+        actions={
+          <div className="flex items-center gap-2">
             <Button
+              variant="outline"
               size="sm"
-              onClick={() => setShowAdd((value) => !value)}
-              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+              onClick={() => void listQuery.refetch()}
+              disabled={isStale}
+              className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
             >
-              {showAdd ? (
-                <X className="w-4 h-4" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-              <span>{showAdd ? 'Cancel' : 'Add Patch'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isStale ? 'animate-spin' : ''}`} />
+              <span>{isStale ? 'Syncing...' : 'Sync'}</span>
             </Button>
-          )}
-        </div>
-      </div>
+
+            {canManage && (
+              <Button
+                size="sm"
+                onClick={() => setShowAdd((value) => !value)}
+                className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+              >
+                {showAdd ? (
+                  <X className="w-4 h-4" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                <span>{showAdd ? 'Cancel' : 'Add Patch'}</span>
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {/* Feedback banners */}
       {actionNotice && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-medium">{actionNotice}</span>
-          </div>
-          <button type="button" onClick={() => setActionNotice(null)} className="font-semibold">Dismiss</button>
-        </div>
+        <AlertBanner
+          variant="success"
+          message={actionNotice}
+          dismissible
+          onDismiss={() => setActionNotice(null)}
+        />
       )}
       {approveNotice && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-medium">{approveNotice}</span>
-          </div>
-          <button type="button" onClick={() => setApproveNotice(null)} className="font-semibold">Dismiss</button>
-        </div>
+        <AlertBanner
+          variant="success"
+          message={approveNotice}
+          dismissible
+          onDismiss={() => setApproveNotice(null)}
+        />
       )}
       {approveError && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="font-medium">Approval failed: {approveError}</span>
-          </div>
-          <button type="button" onClick={() => setApproveError(null)} className="font-semibold">Dismiss</button>
-        </div>
+        <AlertBanner
+          variant="error"
+          message={`Approval failed: ${approveError}`}
+          dismissible
+          onDismiss={() => setApproveError(null)}
+        />
       )}
 
       {/* Deployment Feedback Banner */}
       {deployMutation.isError && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="font-medium">
-              Deployment failed: {(deployMutation.error as Error).message}
-            </span>
-          </div>
-          <button onClick={() => deployMutation.reset()} className="font-semibold">Dismiss</button>
-        </div>
+        <AlertBanner
+          variant="error"
+          message={`Deployment failed: ${(deployMutation.error as Error).message}`}
+          dismissible
+          onDismiss={() => deployMutation.reset()}
+        />
       )}
 
       {/* Confirm dialogs */}
@@ -354,43 +343,43 @@ export function PatchesPage() {
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-3">
                 <label className="text-xs font-semibold text-slate-700" htmlFor="patch-kb">KB number</label>
-                <input id="patch-kb" required placeholder="KB5034441" value={form.kbNumber}
+                <Input id="patch-kb" required placeholder="KB5034441" value={form.kbNumber}
                   onChange={(event) => setForm({ ...form, kbNumber: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+                  className="mt-1" />
               </div>
               <div className="sm:col-span-6">
                 <label className="text-xs font-semibold text-slate-700" htmlFor="patch-title">Title</label>
-                <input id="patch-title" required placeholder="Cumulative Security Update for Windows 11" value={form.title}
+                <Input id="patch-title" required placeholder="Cumulative Security Update for Windows 11" value={form.title}
                   onChange={(event) => setForm({ ...form, title: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+                  className="mt-1" />
               </div>
               <div className="sm:col-span-3">
                 <label className="text-xs font-semibold text-slate-700" htmlFor="patch-severity">Severity</label>
-                <select id="patch-severity" value={form.severity}
+                <Select id="patch-severity" value={form.severity}
                   onChange={(event) => setForm({ ...form, severity: event.target.value as PatchSeverity })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                  wrapperClassName="mt-1">
                   <option value="CRITICAL">CRITICAL</option>
                   <option value="IMPORTANT">IMPORTANT</option>
                   <option value="OPTIONAL">OPTIONAL</option>
-                </select>
+                </Select>
               </div>
               <div className="sm:col-span-6">
                 <label className="text-xs font-semibold text-slate-700" htmlFor="patch-category">Category</label>
-                <input id="patch-category" placeholder="Security Updates" value={form.category}
+                <Input id="patch-category" placeholder="Security Updates" value={form.category}
                   onChange={(event) => setForm({ ...form, category: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+                  className="mt-1" />
               </div>
               <div className="sm:col-span-6">
                 <label className="text-xs font-semibold text-slate-700" htmlFor="patch-date">Release date</label>
-                <input id="patch-date" type="date" value={form.releaseDate}
+                <Input id="patch-date" type="date" value={form.releaseDate}
                   onChange={(event) => setForm({ ...form, releaseDate: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+                  className="mt-1" />
               </div>
               <div className="sm:col-span-12">
                 <label className="text-xs font-semibold text-slate-700" htmlFor="patch-desc">Description</label>
-                <textarea id="patch-desc" rows={2} placeholder="What does this update fix?" value={form.description}
+                <Textarea id="patch-desc" rows={2} placeholder="What does this update fix?" value={form.description}
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+                  className="mt-1" />
               </div>
               {formError && (
                 <div className="sm:col-span-12 text-xs text-rose-600 border border-rose-200 bg-rose-50 rounded-lg px-3 py-2">{formError}</div>
@@ -467,21 +456,32 @@ export function PatchesPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input type="text" placeholder="Search by KB number or update title..." value={search}
-            onChange={(event) => setSearch(event.target.value)} aria-label="Search patches"
-            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Input
+            type="text"
+            className="pl-9"
+            placeholder="Search by KB number or update title..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search patches"
+          />
         </div>
-        <select value={severity} onChange={(event) => setSeverity(event.target.value as (typeof SEVERITY_OPTIONS)[number])}
+        <Select
+          value={severity}
+          onChange={(event) => setSeverity(event.target.value as (typeof SEVERITY_OPTIONS)[number])}
           aria-label="Severity filter"
-          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          wrapperClassName="w-auto"
+        >
           {SEVERITY_OPTIONS.map((option) => (<option key={option} value={option}>{option === 'ALL' ? 'All severities' : option}</option>))}
-        </select>
-        <select value={status} onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}
+        </Select>
+        <Select
+          value={status}
+          onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}
           aria-label="Status filter"
-          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          wrapperClassName="w-auto"
+        >
           {STATUS_OPTIONS.map((option) => (<option key={option} value={option}>{option === 'ALL' ? 'All statuses' : option}</option>))}
-        </select>
+        </Select>
       </div>
 
       {/* Patch list */}
@@ -567,11 +567,14 @@ export function PatchesPage() {
       </Card>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-        <span className="text-xs text-slate-500 font-medium">Page {page} of {Math.max(1, Math.ceil(total / 20))}</span>
-        <Button variant="outline" size="sm" disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>Next</Button>
-      </div>
+      <Pagination
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(total / 20))}
+        totalItems={total}
+        pageSize={20}
+        onPageChange={setPage}
+        itemLabel="patches"
+      />
 
       {/* Detail drawer */}
       {detailId && (

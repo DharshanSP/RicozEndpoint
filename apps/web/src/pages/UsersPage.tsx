@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
@@ -323,15 +325,15 @@ export function UsersPage() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-xl bg-white border border-slate-200 shadow-xs">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-lg bg-white border border-slate-200 shadow-xs">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Input
             type="text"
             placeholder="Search users by name, email, or role..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="pl-9 pr-3"
           />
         </div>
 
@@ -339,10 +341,10 @@ export function UsersPage() {
           <div className="flex items-center gap-1.5">
             <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-500 font-medium">Role:</span>
-            <select
+            <Select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              wrapperClassName="w-auto"
             >
               <option value="ALL">All Roles</option>
               <option value="SUPER_ADMIN">Super Admin</option>
@@ -350,20 +352,20 @@ export function UsersPage() {
               <option value="IT_ADMIN">IT Admin</option>
               <option value="OPERATOR">Operator</option>
               <option value="VIEWER">Viewer</option>
-            </select>
+            </Select>
           </div>
 
           <div className="flex items-center gap-1.5">
             <span className="text-slate-500 font-medium">Status:</span>
-            <select
+            <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              wrapperClassName="w-auto"
             >
               <option value="ALL">All Status</option>
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
-            </select>
+            </Select>
           </div>
         </div>
       </div>
@@ -382,7 +384,7 @@ export function UsersPage() {
           onRetry={() => refetch()}
         />
       ) : filteredUsers.length === 0 ? (
-        <div className="p-12 text-center rounded-xl bg-white border border-slate-200 space-y-3 shadow-xs">
+        <div className="p-12 text-center rounded-lg bg-white border border-slate-200 space-y-3 shadow-xs">
           <div className="inline-flex p-3 rounded-full bg-slate-100 text-slate-500">
             <Users className="w-6 h-6" />
           </div>
@@ -394,16 +396,16 @@ export function UsersPage() {
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+        <div className="rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
-                <th className="px-5 py-3 font-semibold">User</th>
-                <th className="px-5 py-3 font-semibold">Email</th>
-                <th className="px-5 py-3 font-semibold">Role</th>
-                <th className="px-5 py-3 font-semibold">Status</th>
-                <th className="px-5 py-3 font-semibold">Created</th>
-                {canManageUsers && <th className="px-5 py-3 font-semibold text-right">Actions</th>}
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-semibold">
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Created</th>
+                {canManageUsers && <th className="px-4 py-3 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -523,14 +525,14 @@ export function UsersPage() {
                   Full Name
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
+                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Input
                     type="text"
                     required
                     placeholder="Jane Doe"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="pl-9 pr-3"
                   />
                 </div>
               </div>
@@ -540,14 +542,14 @@ export function UsersPage() {
                   Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
+                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Input
                     type="email"
                     required
                     placeholder="jane.doe@enterprise.local"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="pl-9 pr-3"
                   />
                 </div>
               </div>
@@ -563,7 +565,7 @@ export function UsersPage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   icon={<Lock className="w-4 h-4" />}
-                  className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="w-full pl-9 pr-9 py-2 text-xs"
                 />
               </div>
 
@@ -571,15 +573,14 @@ export function UsersPage() {
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
                   Role Assignment
                 </label>
-                <select
+                <Select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 >
                   {assignableRoles.map((r) => (
                     <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
-                </select>
+                </Select>
                 <p className="text-[11px] text-slate-400 mt-1">
                   You may assign roles below your own ({currentUser?.role}). Higher roles require a Super Admin.
                 </p>
@@ -653,14 +654,14 @@ export function UsersPage() {
                   Full Name
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
+                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Input
                     type="text"
                     required
                     placeholder="Jane Doe"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="pl-9 pr-3"
                   />
                 </div>
               </div>
@@ -669,10 +670,9 @@ export function UsersPage() {
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
                   Assigned Role
                 </label>
-                <select
+                <Select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 >
                   {assignableRoles.map((r) => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -682,7 +682,7 @@ export function UsersPage() {
                       {editingUser.role.replace('_', ' ')} (current — above your level)
                     </option>
                   )}
-                </select>
+                </Select>
                 {!canAssignRole(editingUser.role) && (
                   <p className="text-[11px] text-amber-600 mt-1">
                     This user outranks you; you can only reassign them to a role below yours.

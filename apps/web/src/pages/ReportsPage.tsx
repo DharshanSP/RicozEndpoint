@@ -195,7 +195,7 @@ export function ReportsPage() {
       </div>
 
       {/* Content View */}
-      <Card className="border-slate-200 shadow-xs">
+      <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-200 py-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-bold text-slate-800">
             {activeTab === 'DEVICES' && 'Device Inventory Executive Report'}
@@ -217,22 +217,22 @@ export function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Device</th>
-                    <th className="p-3">OS</th>
-                    <th className="p-3">IP Address</th>
-                    <th className="p-3">Agent Version</th>
-                    <th className="p-3">Status</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-semibold">
+                    <th className="px-4 py-3">Device</th>
+                    <th className="px-4 py-3">OS</th>
+                    <th className="px-4 py-3">IP Address</th>
+                    <th className="px-4 py-3">Agent Version</th>
+                    <th className="px-4 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {devices.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-semibold text-slate-900">{d.deviceName}</td>
-                      <td className="p-3 text-slate-600">{d.os} ({d.osVersion})</td>
-                      <td className="p-3 font-mono text-slate-600">{d.ipAddress || '127.0.0.1'}</td>
-                      <td className="p-3 text-slate-600">{d.agentVersion || 'v1.0.0'}</td>
-                      <td className="p-3">
+                    <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{d.deviceName}</td>
+                      <td className="px-4 py-3 text-slate-600">{d.os} ({d.osVersion})</td>
+                      <td className="px-4 py-3 font-mono text-slate-600">{d.ipAddress || '127.0.0.1'}</td>
+                      <td className="px-4 py-3 text-slate-600">{d.agentVersion || 'v1.0.0'}</td>
+                      <td className="px-4 py-3">
                         <Badge variant={d.status === 'ONLINE' ? 'success' : 'secondary'} className="text-[10px]">
                           {d.status}
                         </Badge>
@@ -246,20 +246,20 @@ export function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Application</th>
-                    <th className="p-3">Publisher</th>
-                    <th className="p-3">Latest Version</th>
-                    <th className="p-3">Installed Fleet Devices</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-semibold">
+                    <th className="px-4 py-3">Application</th>
+                    <th className="px-4 py-3">Publisher</th>
+                    <th className="px-4 py-3">Latest Version</th>
+                    <th className="px-4 py-3">Installed Fleet Devices</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {software.map((s) => (
-                    <tr key={s.name} className="hover:bg-slate-50">
-                      <td className="p-3 font-semibold text-slate-900">{s.name}</td>
-                      <td className="p-3 text-slate-600">{s.publisher}</td>
-                      <td className="p-3 font-mono text-slate-600">v{s.latestVersion}</td>
-                      <td className="p-3 font-bold text-slate-800">{s.deviceCount} machines</td>
+                    <tr key={s.name} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{s.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{s.publisher}</td>
+                      <td className="px-4 py-3 font-mono text-slate-600">v{s.latestVersion}</td>
+                      <td className="px-4 py-3 font-bold text-slate-800">{s.deviceCount} machines</td>
                     </tr>
                   ))}
                 </tbody>
@@ -269,22 +269,22 @@ export function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Timestamp</th>
-                    <th className="p-3">Actor</th>
-                    <th className="p-3">Action</th>
-                    <th className="p-3">Resource</th>
-                    <th className="p-3">IP Address</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-semibold">
+                    <th className="px-4 py-3">Timestamp</th>
+                    <th className="px-4 py-3">Actor</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Resource</th>
+                    <th className="px-4 py-3">IP Address</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {auditLogs.map((a) => (
-                    <tr key={a.id} className="hover:bg-slate-50">
-                      <td className="p-3 text-slate-500 font-mono">{a.timestamp}</td>
-                      <td className="p-3 font-semibold text-slate-900">{a.actor?.email || a.actorId}</td>
-                      <td className="p-3 font-mono text-blue-600 font-semibold">{a.action}</td>
-                      <td className="p-3 text-slate-700">{a.resource} ({a.resourceId.slice(0, 8)})</td>
-                      <td className="p-3 font-mono text-slate-500">{a.ipAddress || '127.0.0.1'}</td>
+                    <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-slate-500 font-mono">{a.timestamp}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{a.actor?.email || a.actorId}</td>
+                      <td className="px-4 py-3 font-mono text-blue-600 font-semibold">{a.action}</td>
+                      <td className="px-4 py-3 text-slate-700">{a.resource} ({a.resourceId.slice(0, 8)})</td>
+                      <td className="px-4 py-3 font-mono text-slate-500">{a.ipAddress || '127.0.0.1'}</td>
                     </tr>
                   ))}
                 </tbody>
