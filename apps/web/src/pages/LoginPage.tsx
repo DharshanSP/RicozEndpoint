@@ -8,8 +8,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [email, setEmail] = useState('admin@ricoz.local');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('itadmin@ricoz.local');
+  const [password, setPassword] = useState('itadmin123');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -156,32 +156,6 @@ export function LoginPage() {
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => setDemoAccount('admin@ricoz.local', 'admin123')}
-                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
-                  email === 'admin@ricoz.local'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
-                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                <Shield className="w-4 h-4 mb-1 text-blue-600" />
-                <span>Super Admin</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDemoAccount('orgadmin@ricoz.local', 'orgadmin123')}
-                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
-                  email === 'orgadmin@ricoz.local'
-                    ? 'border-violet-500 bg-violet-50 text-violet-700 font-semibold'
-                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                <Shield className="w-4 h-4 mb-1 text-violet-600" />
-                <span>Org Admin</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setDemoAccount('itadmin@ricoz.local', 'itadmin123')}
                 className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
                   email === 'itadmin@ricoz.local'
@@ -209,7 +183,7 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setDemoAccount('viewer@ricoz.local', 'viewer123')}
-                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition col-span-2 sm:col-span-1 ${
+                className={`flex flex-col items-center p-2.5 rounded-xl border text-xs font-medium transition ${
                   email === 'viewer@ricoz.local'
                     ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-semibold'
                     : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
