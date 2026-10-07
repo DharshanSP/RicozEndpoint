@@ -57,6 +57,7 @@ export type PatchUpdateInput = z.infer<typeof patchUpdateSchema>;
 export const patchDeploySchema = z
   .object({
     deviceIds: z.array(z.string().uuid()).max(500).optional(),
+    groupIds: z.array(z.string().uuid()).max(50).optional(),
     confirmed: z.boolean().optional(),
   })
   .default({});

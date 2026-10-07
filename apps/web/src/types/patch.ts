@@ -135,6 +135,7 @@ export interface UpdatePatchPayload {
 
 export interface DeployPatchPayload {
   deviceIds?: string[];
+  groupIds?: string[];
   confirmed?: boolean;
 }
 

@@ -58,10 +58,16 @@ export function useDeviceSoftware(id: string | undefined, enabled: boolean) {
 }
 
 /** Dedicated activity stream endpoint, fetched lazily when the Activity tab is opened. */
-export function useDeviceActivity(id: string | undefined, enabled: boolean, limit = 20) {
+export function useDeviceActivity(
+  id: string | undefined,
+  enabled: boolean,
+  limit = 20,
+  page = 1,
+  type = 'ALL'
+) {
   return useQuery({
-    queryKey: ['devices', 'activity', id, limit],
-    queryFn: async (): Promise<ActivityEvent[]> => getDeviceActivity(id ?? '', limit),
+    queryKey: ['devices', 'activity', id, limit, page, type],
+    queryFn: async (): Promise<ActivityEvent[]> => getDeviceActivity(id ?? '', limit, page, type),
     enabled: enabled && !!id,
   });
 }

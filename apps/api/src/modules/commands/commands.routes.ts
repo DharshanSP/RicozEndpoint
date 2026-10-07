@@ -184,6 +184,67 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  // ─── Cancel a queued command ───────────────────────────────────────────────
+  app.post('/:id/cancel', {
+    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Cancel a QUEUED command before the agent picks it up',
+      tags: ['Commands'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = commandParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid command id' },
+        });
+      }
+      const command = await app.prisma.command.findFirst({
+        where:
+          jwtUser.role === 'SUPER_ADMIN'
+            ? { id: params.data.id }
+            : { id: params.data.id, organizationId: jwtUser.organizationId },
+      });
+      if (!command) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Command not found' },
+        });
+      }
+      if (command.status !== 'QUEUED') {
+        return reply.status(409).send({
+          success: false,
+          error: {
+            code: 'CONFLICT',
+            message: `Only QUEUED commands can be cancelled (current: ${command.status})`,
+          },
+        });
+      }
+      const updated = await app.prisma.command.update({
+        where: { id: command.id },
+        data: { status: 'CANCELLED', completedAt: new Date() },
+      });
+      await app.prisma.auditLog.create({
+        data: {
+          organizationId: command.organizationId,
+          actorId: jwtUser.sub,
+          action: 'COMMAND_CANCELLED',
+          resource: 'COMMAND',
+          resourceId: command.id,
+          ipAddress: request.ip,
+          metadata: JSON.stringify({ type: command.type, deviceId: command.deviceId }),
+        },
+      });
+      return reply.send({ success: true, data: commandDetails(updated) });
+    },
+  });
+
   // ─── Get command by id ─────────────────────────────────────────────────────
   app.get('/:id', {
     preHandler: [requireMinRole(UserRole.VIEWER)],

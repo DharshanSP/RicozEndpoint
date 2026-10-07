@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  cancelPatchDeploy,
   createPatch,
+  deletePatch,
   deployPatch,
   getDevicePatches,
   getPatch,
   listPatches,
+  retryPatch,
   updatePatch,
 } from '../lib/api/patchesApi';
 import type {
@@ -84,6 +87,41 @@ export function useDeployPatch() {
       void queryClient.invalidateQueries({ queryKey: ['commands'] });
       void queryClient.invalidateQueries({ queryKey: ['devices'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+/** Re-queues failed installs, then refreshes patch queries. */
+export function useRetryPatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patchId: string) => retryPatch(patchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['patches'] });
+      void queryClient.invalidateQueries({ queryKey: ['commands'] });
+    },
+  });
+}
+
+/** Cancels queued installs, then refreshes patch queries. */
+export function useCancelPatchDeploy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patchId: string) => cancelPatchDeploy(patchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['patches'] });
+      void queryClient.invalidateQueries({ queryKey: ['commands'] });
+    },
+  });
+}
+
+/** Deletes a catalog entry, then refreshes the list. */
+export function useDeletePatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patchId: string) => deletePatch(patchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['patches'] });
     },
   });
 }

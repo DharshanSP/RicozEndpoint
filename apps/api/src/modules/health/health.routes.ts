@@ -16,6 +16,16 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
             version: { type: 'string' },
           },
         },
+        503: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            database: { type: 'string' },
+            timestamp: { type: 'string' },
+            uptime: { type: 'number' },
+            version: { type: 'string' },
+          },
+        },
       },
     },
     handler: async (_request, reply) => {
@@ -32,11 +42,11 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
         database,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        version: process.env.npm_package_version ?? '0.1.0',
+        version: process.env.APP_VERSION ?? process.env.npm_package_version ?? '0.1.0',
       };
 
-      // Always 200: the payload carries the degraded state so probes can read it.
-      return reply.send(payload);
+      // Return 503 when degraded so orchestrators restart / stop routing.
+      return reply.status(database === 'up' ? 200 : 503).send(payload);
     },
   });
 }

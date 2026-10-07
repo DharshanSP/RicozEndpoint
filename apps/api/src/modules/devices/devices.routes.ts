@@ -253,23 +253,28 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       const auditLogs = await app.prisma.auditLog.findMany({
         where: {
           organizationId: device.organizationId,
-          OR: [{ resourceId: device.id }, { actorId: device.id }],
+          resourceId: device.id,
         },
         take: 20,
         orderBy: { timestamp: 'desc' },
+        include: { actor: { select: { id: true, email: true, name: true } } },
       });
 
       const activity = [
         ...auditLogs.map((log) => ({
           id: log.id,
           type: log.action,
+          category: 'AUDIT',
           timestamp: log.timestamp.toISOString(),
           description: `Action ${log.action} performed on device`,
+          actor: log.actor,
         })),
         ...device.heartbeats.map((hb) => ({
           id: hb.id,
           type: 'HEARTBEAT',
+          category: 'HEARTBEAT',
           timestamp: hb.timestamp.toISOString(),
+          status: hb.status,
           description: `Device reported status ${hb.status}`,
         })),
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -398,12 +403,27 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
   app.get('/:id/activity', {
     preHandler: [requireMinRole(UserRole.VIEWER)],
     schema: {
-      description: 'Get activity stream for a specific device',
+      description: 'Get paginated activity history for a specific device (audit, heartbeats, commands, alerts, compliance, patches)',
       tags: ['Devices'],
+      querystring: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', minimum: 1, default: 1 },
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          type: { type: 'string' },
+        },
+      },
     },
     handler: async (request, reply) => {
       const jwtUser = request.user as JwtPayload;
       const { id } = request.params as { id: string };
+      const { page = 1, limit = 20, type } = (request.query ?? {}) as {
+        page?: number;
+        limit?: number;
+        type?: string;
+      };
+      const pageNum = Math.max(1, Number(page) || 1);
+      const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
 
       const device = await app.prisma.device.findUnique({
         where: { id },
@@ -417,33 +437,148 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const auditLogs = await app.prisma.auditLog.findMany({
-        where: {
-          organizationId: device.organizationId,
-          OR: [{ resourceId: device.id }, { actorId: device.id }],
-        },
-        take: 20,
-        orderBy: { timestamp: 'desc' },
-      });
+      const typeFilter = (type ?? '').toUpperCase();
+      const includeAudit = !typeFilter || ['ALL', 'AUDIT', 'DEVICE', 'USER'].includes(typeFilter) || typeFilter.includes('DEVICE_') || typeFilter.includes('COMMAND') || typeFilter.includes('PATCH') || typeFilter.includes('POLICY') || typeFilter.includes('LOGIN') || typeFilter.includes('ENROLL');
+      const includeHeartbeat = !typeFilter || ['ALL', 'HEARTBEAT', 'ONLINE', 'OFFLINE'].includes(typeFilter);
+      const includeCommand = !typeFilter || ['ALL', 'COMMAND'].includes(typeFilter) || typeFilter.includes('COMMAND');
+      const includeAlert = !typeFilter || ['ALL', 'ALERT'].includes(typeFilter);
+      const includeCompliance = !typeFilter || ['ALL', 'COMPLIANCE'].includes(typeFilter);
+      const includePatch = !typeFilter || ['ALL', 'PATCH'].includes(typeFilter);
+
+      const [auditLogs, commands, alerts, compliance, devicePatches] = await Promise.all([
+        includeAudit
+          ? app.prisma.auditLog.findMany({
+              where: {
+                organizationId: device.organizationId,
+                OR: [{ resourceId: device.id }, { resource: 'DEVICE', resourceId: device.id }],
+                ...(typeFilter && typeFilter !== 'ALL' && !['COMMAND', 'ALERT', 'COMPLIANCE', 'PATCH', 'HEARTBEAT'].includes(typeFilter)
+                  ? { action: { contains: typeFilter, mode: 'insensitive' } }
+                  : {}),
+              },
+              take: 100,
+              orderBy: { timestamp: 'desc' },
+              include: { actor: { select: { id: true, email: true, name: true } } },
+            })
+          : Promise.resolve([]),
+        includeCommand
+          ? app.prisma.command.findMany({
+              where: { deviceId: device.id },
+              take: 50,
+              orderBy: { createdAt: 'desc' },
+            })
+          : Promise.resolve([]),
+        includeAlert
+          ? app.prisma.alert.findMany({
+              where: { deviceId: device.id },
+              take: 50,
+              orderBy: { createdAt: 'desc' },
+            })
+          : Promise.resolve([]),
+        includeCompliance
+          ? app.prisma.complianceResult.findMany({
+              where: { deviceId: device.id },
+              take: 50,
+              orderBy: { evaluatedAt: 'desc' },
+            })
+          : Promise.resolve([]),
+        includePatch
+          ? app.prisma.devicePatch.findMany({
+              where: { deviceId: device.id },
+              take: 50,
+              orderBy: { updatedAt: 'desc' },
+              include: { patch: { select: { kbNumber: true, title: true, severity: true } } },
+            })
+          : Promise.resolve([]),
+      ]);
+
+      const describeAudit = (action: string, metadata: string | null): string => {
+        try {
+          const meta = metadata ? (JSON.parse(metadata) as Record<string, unknown>) : null;
+          if (action === 'DEVICE_ENROLLED') return `Enrolled${meta?.hostname ? ` as ${meta.hostname}` : ''}`;
+          if (action === 'DEVICE_UPDATED') {
+            const changed = (meta?.changed as string[] | undefined)?.join(', ');
+            return changed ? `Updated: ${changed}` : 'Device details updated';
+          }
+          if (action === 'COMMAND_CREATED') return `Command issued: ${String(meta?.type ?? 'command')}`;
+          if (action === 'PATCH_DEPLOYED') return `Patch deployment queued (${String(meta?.queued ?? 0)} devices)`;
+          if (action.startsWith('LOGIN')) return action === 'LOGIN_SUCCESS' ? 'User login' : 'Failed login attempt';
+        } catch {
+          // fall through to generic description
+        }
+        return `Action ${action} performed on device`;
+      };
 
       const activity = [
         ...auditLogs.map((log) => ({
           id: log.id,
           type: log.action,
+          category: 'AUDIT' as const,
           timestamp: log.timestamp.toISOString(),
-          description: `Action ${log.action} performed on device`,
+          description: describeAudit(log.action, log.metadata),
+          actor: log.actor,
+          metadata: (() => {
+            try {
+              return log.metadata ? JSON.parse(log.metadata) : null;
+            } catch {
+              return null;
+            }
+          })(),
         })),
-        ...device.heartbeats.map((hb) => ({
+        ...device.heartbeats.filter(() => includeHeartbeat).map((hb) => ({
           id: hb.id,
           type: 'HEARTBEAT',
+          category: 'HEARTBEAT' as const,
           timestamp: hb.timestamp.toISOString(),
+          status: hb.status,
           description: `Device reported status ${hb.status}`,
+        })),
+        ...commands.map((cmd) => ({
+          id: cmd.id,
+          type: `COMMAND_${cmd.status}`,
+          category: 'COMMAND' as const,
+          timestamp: (cmd.completedAt ?? cmd.startedAt ?? cmd.createdAt).toISOString(),
+          status: cmd.status,
+          description: `Command ${cmd.type} ${cmd.status.toLowerCase()}`,
+        })),
+        ...alerts.map((alert) => ({
+          id: alert.id,
+          type: `ALERT_${alert.status}`,
+          category: 'ALERT' as const,
+          timestamp: alert.createdAt.toISOString(),
+          status: alert.status,
+          severity: alert.severity,
+          description: alert.title || `Alert: ${alert.type}`,
+        })),
+        ...compliance.map((result) => ({
+          id: result.id,
+          type: `COMPLIANCE_${result.status}`,
+          category: 'COMPLIANCE' as const,
+          timestamp: result.evaluatedAt.toISOString(),
+          status: result.status,
+          description: result.reason || `Compliance evaluation: ${result.status.toLowerCase()}`,
+        })),
+        ...devicePatches.map((row) => ({
+          id: row.id,
+          type: `PATCH_${row.status}`,
+          category: 'PATCH' as const,
+          timestamp: (row.installedAt ?? row.lastReportedAt).toISOString(),
+          status: row.status,
+          description: `${row.patch.kbNumber} ${row.status.toLowerCase()}: ${row.patch.title}`,
         })),
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+      const total = activity.length;
+      const paged = activity.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
       return reply.send({
         success: true,
-        data: activity,
+        data: paged,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limitNum)),
+        },
       });
     },
   });

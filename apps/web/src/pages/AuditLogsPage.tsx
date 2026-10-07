@@ -5,28 +5,74 @@ import {
   RefreshCw,
   Eye,
   X,
+  Download,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { getAuditLogs, AuditLogItem } from '../lib/api/auditLogsApi';
+import { getAuditLogs, auditLogsToCsv, AuditLogItem } from '../lib/api/auditLogsApi';
+
+const ACTION_OPTIONS = [
+  '',
+  'LOGIN_SUCCESS',
+  'LOGIN_FAILED',
+  'LOGOUT',
+  'DEVICE_ENROLLED',
+  'DEVICE_UPDATED',
+  'DEVICE_DELETED',
+  'COMMAND_CREATED',
+  'COMMAND_CANCELLED',
+  'PATCH_CREATED',
+  'PATCH_UPDATED',
+  'PATCH_DEPLOYED',
+  'PATCH_RETRY',
+  'PATCH_DELETED',
+  'POLICY_CREATED',
+  'POLICY_UPDATED',
+  'POLICY_DELETED',
+  'POLICY_ASSIGNED',
+  'ALERT_ACKNOWLEDGED',
+  'ALERT_RESOLVED',
+  'USER_CREATED',
+  'USER_UPDATED',
+  'PASSWORD_CHANGED',
+];
+
+const RESOURCE_OPTIONS = ['', 'AUTH', 'DEVICE', 'COMMAND', 'PATCH', 'POLICY', 'ALERT', 'USER', 'ORGANIZATION', 'ENROLLMENT_TOKEN', 'GROUP', 'DEPLOYMENT'];
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 export function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [resourceFilter, setResourceFilter] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
+
+  const debouncedSearch = useDebouncedValue(search, 400);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     const res = await getAuditLogs({
       page,
       limit: 25,
-      search,
+      search: debouncedSearch || undefined,
       action: actionFilter || undefined,
+      resource: resourceFilter || undefined,
+      from: from || undefined,
+      to: to || undefined,
     });
 
     if (res.success && res.data) {
@@ -34,19 +80,35 @@ export function AuditLogsPage() {
       setTotal(res.data.total);
     }
     setLoading(false);
-  }, [page, search, actionFilter]);
+  }, [page, debouncedSearch, actionFilter, resourceFilter, from, to]);
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
 
-  const parseMetadata = (meta?: string | null) => {
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, actionFilter, resourceFilter, from, to]);
+
+  const parseMetadata = (meta?: string | Record<string, unknown> | null) => {
     if (!meta) return null;
+    if (typeof meta === 'object') return meta;
     try {
       return JSON.parse(meta);
     } catch {
       return meta;
     }
+  };
+
+  const handleExport = () => {
+    const csv = auditLogsToCsv(logs);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-logs-page${page}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -62,12 +124,16 @@ export function AuditLogsPage() {
               System Audit Logs
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Immutable chronological audit record of administrator operations, policy modifications, enrollment events, and privileged API requests.
+              Immutable chronological audit record of logins, device activity, policy changes, patch operations, and privileged API requests.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={handleExport} disabled={loading || logs.length === 0}>
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            Export CSV
+          </Button>
           <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={fetchLogs} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -75,9 +141,9 @@ export function AuditLogsPage() {
         </div>
       </div>
 
-      {/* Search & Action Filters */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
-        <div className="relative flex-1 w-full max-w-md">
+      {/* Search & Filters */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="relative lg:col-span-2">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -88,20 +154,45 @@ export function AuditLogsPage() {
           />
         </div>
 
-        <div className="w-full sm:w-64">
-          <select
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
-          >
-            <option value="">All Action Types</option>
-            <option value="LOGIN">LOGIN</option>
-            <option value="POLICY">POLICY</option>
-            <option value="COMMAND">COMMAND</option>
-            <option value="ENROLLMENT">ENROLLMENT</option>
-            <option value="GROUP">GROUP</option>
-            <option value="SETTINGS">SETTINGS</option>
-          </select>
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          aria-label="Action filter"
+          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
+        >
+          <option value="">All actions</option>
+          {ACTION_OPTIONS.filter(Boolean).map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+
+        <select
+          value={resourceFilter}
+          onChange={(e) => setResourceFilter(e.target.value)}
+          aria-label="Resource filter"
+          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
+        >
+          <option value="">All resources</option>
+          {RESOURCE_OPTIONS.filter(Boolean).map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            aria-label="From date"
+            className="w-full px-2 py-2 text-xs bg-white border border-slate-200 rounded-lg h-9"
+          />
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            aria-label="To date"
+            className="w-full px-2 py-2 text-xs bg-white border border-slate-200 rounded-lg h-9"
+          />
         </div>
       </div>
 
@@ -142,22 +233,22 @@ export function AuditLogsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {logs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 text-slate-500 font-mono">
+                      <td className="p-3 text-slate-500 font-mono whitespace-nowrap">
                         {new Date(log.timestamp).toLocaleString()}
                       </td>
                       <td className="p-3 font-semibold text-slate-900">
-                        {log.actor?.email || log.actorId}
+                        {log.actor?.email || (log.actorId ? log.actorId.slice(0, 8) : 'system')}
                       </td>
                       <td className="p-3">
                         <Badge variant="outline" className="font-mono text-[10px] bg-blue-50 text-blue-700 border-blue-200">
                           {log.action}
                         </Badge>
                       </td>
-                      <td className="p-3 text-slate-700 font-medium">
+                      <td className="p-3 text-slate-700 font-medium font-mono" title={log.resourceId}>
                         {log.resource} ({log.resourceId.slice(0, 8)})
                       </td>
                       <td className="p-3 font-mono text-slate-500">
-                        {log.ipAddress || '127.0.0.1'}
+                        {log.ipAddress || '—'}
                       </td>
                       <td className="p-3 text-right">
                         <Button
@@ -227,7 +318,7 @@ export function AuditLogsPage() {
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium">Actor:</span>
-                  <p className="font-semibold text-slate-900 mt-0.5">{selectedLog.actor?.email || selectedLog.actorId}</p>
+                  <p className="font-semibold text-slate-900 mt-0.5 break-all">{selectedLog.actor?.email || selectedLog.actorId || 'system'}</p>
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium">Resource:</span>
@@ -235,7 +326,15 @@ export function AuditLogsPage() {
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium">Resource ID:</span>
-                  <p className="font-mono text-slate-900 mt-0.5">{selectedLog.resourceId}</p>
+                  <p className="font-mono text-slate-900 mt-0.5 break-all">{selectedLog.resourceId}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">Timestamp:</span>
+                  <p className="font-mono text-slate-900 mt-0.5">{new Date(selectedLog.timestamp).toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">IP address:</span>
+                  <p className="font-mono text-slate-900 mt-0.5">{selectedLog.ipAddress || '—'}</p>
                 </div>
               </div>
 

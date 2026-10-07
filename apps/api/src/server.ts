@@ -47,7 +47,15 @@ export async function buildApp() {
     .filter(Boolean);
 
   await app.register(cors, {
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    // Fail-closed in production: an empty allow-list denies cross-origin
+    // requests instead of reflecting any origin.
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.length === 0) {
+        return callback(null, false);
+      }
+      return callback(null, allowedOrigins.includes(origin));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
@@ -55,6 +63,35 @@ export async function buildApp() {
   await app.register(jwt, {
     secret: config.JWT_SECRET,
     sign: { expiresIn: config.JWT_EXPIRY },
+  });
+
+  // Baseline security headers (helmet-equivalent without an extra dependency).
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('X-XSS-Protection', '1; mode=block');
+    return payload;
+  });
+
+  // Lightweight login brute-force guard (per-IP sliding window, in-memory).
+  const loginHits = new Map<string, number[]>();
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.method === 'POST' && request.url.startsWith('/api/auth/login')) {
+      const now = Date.now();
+      const key = request.ip;
+      const windowMs = 60_000;
+      const maxHits = 20;
+      const hits = (loginHits.get(key) ?? []).filter((t) => now - t < windowMs);
+      hits.push(now);
+      loginHits.set(key, hits);
+      if (hits.length > maxHits) {
+        return reply.status(429).send({
+          success: false,
+          error: { code: 'RATE_LIMITED', message: 'Too many login attempts. Try again in a minute.' },
+        });
+      }
+    }
   });
 
   await app.register(prismaPlugin);
@@ -65,14 +102,17 @@ export async function buildApp() {
       info: {
         title: 'RicozEndpoint API',
         description: 'Enterprise Endpoint Management Platform',
-        version: '0.1.0',
+        version: process.env.APP_VERSION ?? '0.1.0',
       },
     },
   });
 
-  await app.register(swaggerUi, {
-    routePrefix: '/docs',
-  });
+  // API docs are a dev tool: expose them outside production only.
+  if (config.NODE_ENV !== 'production') {
+    await app.register(swaggerUi, {
+      routePrefix: '/docs',
+    });
+  }
 
   // Registered before the route plugins: `await app.register()` runs each
   // plugin immediately, so a child context created afterwards would keep
@@ -127,6 +167,18 @@ export async function buildApp() {
     }
   });
 
+  // Graceful shutdown for orchestrators (Render, Docker, systemd).
+  const shutdown = async (signal: string) => {
+    app.log.info({ signal }, 'Shutting down gracefully');
+    try {
+      await app.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+
   return app;
 }
 
@@ -135,8 +187,10 @@ async function start() {
 
   try {
     await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
-    app.log.info(`Server running on port ${config.API_PORT}`);
-    app.log.info(`API docs available at http://localhost:${config.API_PORT}/docs`);
+    app.log.info(`Server running on port ${config.API_PORT} [${config.NODE_ENV}]`);
+    if (config.NODE_ENV !== 'production') {
+      app.log.info(`API docs available at http://localhost:${config.API_PORT}/docs`);
+    }
   } catch (err) {
     app.log.error(err as Error);
     process.exit(1);

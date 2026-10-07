@@ -79,3 +79,33 @@ export async function deployPatch(
     body: JSON.stringify({ ...payload, confirmed: true }),
   });
 }
+
+export async function retryPatch(
+  patchId: string
+): Promise<{ retried: number; skippedInFlight: number; deviceIds: string[] }> {
+  return requestBody<{ retried: number; skippedInFlight: number; deviceIds: string[] }>(
+    `/patches/${encodeURIComponent(patchId)}/retry`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ confirmed: true }),
+    }
+  );
+}
+
+export async function cancelPatchDeploy(patchId: string): Promise<{ cancelled: number }> {
+  return requestBody<{ cancelled: number }>(`/patches/${encodeURIComponent(patchId)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function deletePatch(patchId: string): Promise<{ id: string; kbNumber: string }> {
+  const res = await fetchApi<{ id: string; kbNumber: string }>(
+    `/patches/${encodeURIComponent(patchId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.success || res.data === undefined) {
+    throw new Error(res.error?.message ?? 'Failed to delete patch');
+  }
+  return res.data;
+}

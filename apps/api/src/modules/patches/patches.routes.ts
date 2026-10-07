@@ -637,6 +637,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const requestedIds = body.data.deviceIds ?? [];
+      const requestedGroupIds = body.data.groupIds ?? [];
       let targets: Array<{ id: string; deviceName: string }>;
 
       if (requestedIds.length > 0) {
@@ -657,6 +658,28 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           });
         }
         targets = found;
+      } else if (requestedGroupIds.length > 0) {
+        const members = await app.prisma.deviceGroupMember.findMany({
+          where: {
+            groupId: { in: requestedGroupIds },
+            group: { organizationId: patch.organizationId },
+          },
+          select: { deviceId: true, device: { select: { id: true, deviceName: true } } },
+        });
+        const dedup = new Map<string, { id: string; deviceName: string }>();
+        for (const member of members) {
+          dedup.set(member.deviceId, { id: member.device.id, deviceName: member.device.deviceName });
+        }
+        targets = [...dedup.values()];
+        if (targets.length === 0) {
+          return reply.status(400).send({
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'No devices found in the requested groups',
+            },
+          });
+        }
       } else {
         targets = await app.prisma.device.findMany({
           where: { organizationId: patch.organizationId },
@@ -734,6 +757,211 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           deviceIds: queued.map((device) => device.id),
         },
       });
+    },
+  });
+
+  // ─── Retry failed installs (IT Admin+) ─────────────────────────────────────
+  app.post('/:id/retry', {
+    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Re-queue INSTALL_PATCH commands for devices whose last install failed',
+      tags: ['Patches'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: { confirmed: { type: 'boolean', default: false } },
+      },
+      response: { 200: { type: 'object', additionalProperties: true } },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = patchParamsSchema.safeParse(request.params);
+      const body = (request.body ?? {}) as { confirmed?: boolean };
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid patch id' },
+        });
+      }
+      if (!body.confirmed) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Retry requires confirmed: true' },
+        });
+      }
+      const patch = await app.prisma.patch.findFirst({
+        where: { id: params.data.id, ...patchScope(jwtUser) },
+      });
+      if (!patch) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Patch not found' },
+        });
+      }
+
+      const failed = await app.prisma.devicePatch.findMany({
+        where: { patchId: patch.id, status: 'FAILED' },
+        select: { deviceId: true },
+      });
+      const failedIds = failed.map((row) => row.deviceId);
+      if (failedIds.length === 0) {
+        return reply.send({ success: true, data: { patch: patchDetails(patch), retried: 0, deviceIds: [] } });
+      }
+
+      const inFlight = await app.prisma.command.findMany({
+        where: { patchId: patch.id, deviceId: { in: failedIds }, status: { in: ACTIVE_COMMAND_STATUSES } },
+        select: { deviceId: true },
+      });
+      const inFlightIds = new Set(inFlight.map((row) => row.deviceId));
+      const retryIds = failedIds.filter((id) => !inFlightIds.has(id));
+
+      if (retryIds.length > 0) {
+        const payload = JSON.stringify({ patchId: patch.id, kbNumber: patch.kbNumber, title: patch.title });
+        await app.prisma.command.createMany({
+          data: retryIds.map((deviceId) => ({
+            organizationId: patch.organizationId,
+            deviceId,
+            type: 'INSTALL_PATCH',
+            status: 'QUEUED',
+            requestedBy: jwtUser.sub,
+            patchId: patch.id,
+            result: payload,
+          })),
+        });
+      }
+
+      await writeAudit(app.prisma, jwtUser, 'PATCH_RETRY', 'PATCH', patch.id, {
+        kbNumber: patch.kbNumber,
+        retried: retryIds.length,
+        skippedInFlight: inFlightIds.size,
+      }, request);
+
+      return reply.send({
+        success: true,
+        data: { patch: patchDetails(patch), retried: retryIds.length, skippedInFlight: inFlightIds.size, deviceIds: retryIds },
+      });
+    },
+  });
+
+  // ─── Cancel in-flight deployment (IT Admin+) ───────────────────────────────
+  app.post('/:id/cancel', {
+    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Cancel queued INSTALL_PATCH commands for a patch',
+      tags: ['Patches'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: { confirmed: { type: 'boolean', default: false } },
+      },
+      response: { 200: { type: 'object', additionalProperties: true } },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = patchParamsSchema.safeParse(request.params);
+      const body = (request.body ?? {}) as { confirmed?: boolean };
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid patch id' },
+        });
+      }
+      if (!body.confirmed) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Cancel requires confirmed: true' },
+        });
+      }
+      const patch = await app.prisma.patch.findFirst({
+        where: { id: params.data.id, ...patchScope(jwtUser) },
+      });
+      if (!patch) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Patch not found' },
+        });
+      }
+
+      const cancelled = await app.prisma.command.updateMany({
+        where: { patchId: patch.id, status: 'QUEUED' },
+        data: { status: 'CANCELLED', completedAt: new Date() },
+      });
+
+      await writeAudit(app.prisma, jwtUser, 'PATCH_DEPLOY_CANCELLED', 'PATCH', patch.id, {
+        kbNumber: patch.kbNumber,
+        cancelled: cancelled.count,
+      }, request);
+
+      return reply.send({ success: true, data: { patch: patchDetails(patch), cancelled: cancelled.count } });
+    },
+  });
+
+  // ─── Delete a patch entry (IT Admin+) ──────────────────────────────────────
+  app.delete('/:id', {
+    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Remove a patch from the catalog (blocked while installs are in flight)',
+      tags: ['Patches'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      response: { 200: { type: 'object', additionalProperties: true } },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = patchParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid patch id' },
+        });
+      }
+      const patch = await app.prisma.patch.findFirst({
+        where: { id: params.data.id, ...patchScope(jwtUser) },
+      });
+      if (!patch) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Patch not found' },
+        });
+      }
+
+      const inFlight = await app.prisma.command.count({
+        where: { patchId: patch.id, status: { in: ACTIVE_COMMAND_STATUSES } },
+      });
+      if (inFlight > 0) {
+        return reply.status(409).send({
+          success: false,
+          error: {
+            code: 'CONFLICT',
+            message: `Cannot delete ${patch.kbNumber}: ${inFlight} install command(s) still in flight. Cancel them first.`,
+          },
+        });
+      }
+
+      await app.prisma.$transaction([
+        app.prisma.devicePatch.deleteMany({ where: { patchId: patch.id } }),
+        app.prisma.patch.delete({ where: { id: patch.id } }),
+      ]);
+
+      await writeAudit(app.prisma, jwtUser, 'PATCH_DELETED', 'PATCH', patch.id, {
+        kbNumber: patch.kbNumber,
+        title: patch.title,
+      }, request);
+
+      return reply.send({ success: true, data: { id: patch.id, kbNumber: patch.kbNumber } });
     },
   });
 }

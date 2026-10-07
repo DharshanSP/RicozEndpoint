@@ -7,6 +7,8 @@ export const auditLogListQuerySchema = z.object({
   action: z.string().max(255).optional(),
   resource: z.string().max(255).optional(),
   actorId: z.string().uuid().optional(),
+  resourceId: z.string().max(255).optional(),
+  deviceId: z.string().uuid().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });

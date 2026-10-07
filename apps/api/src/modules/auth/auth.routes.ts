@@ -28,6 +28,21 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
 
       if (!user || !user.isActive) {
+        // Best-effort failed-login audit when the account exists but is disabled.
+        // Unknown emails are not logged (no organization scope to attach to).
+        if (user) {
+          await app.prisma.auditLog.create({
+            data: {
+              organizationId: user.organizationId,
+              actorId: user.id,
+              action: 'LOGIN_FAILED',
+              resource: 'AUTH',
+              resourceId: user.id,
+              ipAddress: request.ip,
+              metadata: JSON.stringify({ email: email.toLowerCase(), reason: 'inactive' }),
+            },
+          }).catch(() => undefined);
+        }
         return reply.status(401).send({
           success: false,
           error: {
@@ -40,6 +55,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       // Verify password hash
       const isValidPassword = await verifyPassword(password, user.passwordHash);
       if (!isValidPassword) {
+        await app.prisma.auditLog.create({
+          data: {
+            organizationId: user.organizationId,
+            actorId: user.id,
+            action: 'LOGIN_FAILED',
+            resource: 'AUTH',
+            resourceId: user.id,
+            ipAddress: request.ip,
+            metadata: JSON.stringify({ email: email.toLowerCase(), reason: 'bad_password' }),
+          },
+        }).catch(() => undefined);
         return reply.status(401).send({
           success: false,
           error: {
@@ -56,6 +82,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         role: user.role,
         organizationId: user.organizationId,
       });
+
+      await app.prisma.auditLog.create({
+        data: {
+          organizationId: user.organizationId,
+          actorId: user.id,
+          action: 'LOGIN_SUCCESS',
+          resource: 'AUTH',
+          resourceId: user.id,
+          ipAddress: request.ip,
+          metadata: JSON.stringify({ email: user.email, role: user.role }),
+        },
+      }).catch(() => undefined);
 
       return reply.send({
         success: true,
@@ -221,6 +259,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         organizationId: user.organizationId,
       });
 
+      await writeAudit(app.prisma, jwtUser, 'TOKEN_REFRESHED', 'AUTH', user.id, {}, request).catch(
+        () => undefined
+      );
+
       return reply.send({
         success: true,
         data: {
@@ -234,6 +276,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           },
         },
       });
+    },
+  });
+
+  // ─── Logout (stateless JWT: client discards token; recorded for history) ───
+  app.post('/logout', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Record a logout event for the current session',
+      tags: ['Auth'],
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      await writeAudit(app.prisma, jwtUser, 'LOGOUT', 'AUTH', jwtUser.sub, {}, request).catch(
+        () => undefined
+      );
+      return reply.send({ success: true, data: { loggedOutAt: new Date().toISOString() } });
     },
   });
 
@@ -283,6 +341,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         role: jwtUser.role,
         organizationId: organization.id,
       });
+
+      await writeAudit(
+        app.prisma,
+        { ...jwtUser, organizationId: organization.id } as JwtPayload,
+        'ORG_SWITCHED',
+        'ORGANIZATION',
+        organization.id,
+        { from: jwtUser.organizationId, to: organization.id },
+        request
+      ).catch(() => undefined);
 
       return reply.send({
         success: true,

@@ -73,6 +73,8 @@ export type DeviceParamsInput = z.infer<typeof deviceParamsSchema>;
 
 export const deviceActivityQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
+  page: z.coerce.number().int().positive().default(1),
+  type: z.string().max(64).optional(),
 });
 
 export type DeviceActivityQueryInput = z.infer<typeof deviceActivityQuerySchema>;

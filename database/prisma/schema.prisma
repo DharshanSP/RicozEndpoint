@@ -400,6 +400,8 @@ model AuditLog {
   @@index([actorId])
   @@index([resource])
   @@index([timestamp])
+  @@index([organizationId, resourceId, timestamp])
+  @@index([organizationId, action, timestamp])
   @@map("audit_logs")
 }
 

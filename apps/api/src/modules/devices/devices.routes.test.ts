@@ -89,7 +89,8 @@ describe('Device Management API', () => {
   });
 
   after(async () => {
-    // Clean up isolated tenant
+    // Clean up isolated tenant (audit logs reference the org, so remove them first)
+    await app.prisma.auditLog.deleteMany({ where: { organizationId: tenantSeed.organizationId } });
     await app.prisma.user.delete({ where: { id: tenantSeed.userId } });
     await app.prisma.device.delete({ where: { id: tenantSeed.deviceId } });
     await app.prisma.organization.delete({ where: { id: tenantSeed.organizationId } });

@@ -374,6 +374,28 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           });
         }
 
+        // Patch installs mirror into DevicePatch so coverage is fresh without
+        // waiting for the next telemetry heartbeat. FAILED is recorded
+        // immediately; INSTALLED is confirmed again on the next heartbeat.
+        if (existing.type === 'INSTALL_PATCH' && existing.patchId) {
+          const patchState = body.data.status === 'COMPLETED' ? 'INSTALLED' : 'FAILED';
+          await tx.devicePatch.upsert({
+            where: { deviceId_patchId: { deviceId: agentDevice.id, patchId: existing.patchId } },
+            create: {
+              deviceId: agentDevice.id,
+              patchId: existing.patchId,
+              status: patchState,
+              installedAt: body.data.status === 'COMPLETED' ? now : null,
+              lastReportedAt: now,
+            },
+            update: {
+              status: patchState,
+              installedAt: body.data.status === 'COMPLETED' ? now : undefined,
+              lastReportedAt: now,
+            },
+          });
+        }
+
         return command;
       });
 

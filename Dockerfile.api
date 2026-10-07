@@ -1,0 +1,25 @@
+FROM node:20-alpine AS base
+RUN corepack enable
+WORKDIR /app
+
+FROM base AS build
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages ./packages
+COPY database ./database
+COPY apps/api ./apps/api
+RUN pnpm install --frozen-lockfile --prod=false \
+  && pnpm --filter @ricoz/shared-types build \
+  && pnpm --filter @ricoz/validation build \
+  && pnpm --filter @ricoz/database generate \
+  && pnpm --filter @ricoz/api build \
+  && pnpm --filter @ricoz/api exec pnpm prune --prod
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/apps/api/dist ./dist
+COPY --from=build /app/apps/api/package.json ./package.json
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/database ./database
+EXPOSE 3001
+CMD ["node", "dist/server.js"]

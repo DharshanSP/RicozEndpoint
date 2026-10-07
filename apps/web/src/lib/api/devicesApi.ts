@@ -110,10 +110,25 @@ export async function getDeviceSoftware(id: string): Promise<DeviceSoftwareItem[
 }
 
 /** Gets the merged activity feed (heartbeats, commands, alerts) for a device. */
-export async function getDeviceActivity(id: string, limit: number = 20): Promise<ActivityEvent[]> {
-  return requestBody<ActivityEvent[]>(
-    `/devices/${encodeURIComponent(id)}/activity?limit=${limit}`,
+export async function getDeviceActivity(
+  id: string,
+  limit: number = 20,
+  page: number = 1,
+  type?: string
+): Promise<ActivityEvent[]> {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  params.set('page', String(page));
+  if (type && type !== 'ALL') params.set('type', type);
+  const body = await requestBody<{ data?: ActivityEvent[] } | ActivityEvent[]>(
+    `/devices/${encodeURIComponent(id)}/activity?${params.toString()}`
   );
+  // Backend returns { success, data: [...], pagination } — unwrap both shapes.
+  if (Array.isArray(body)) return body;
+  if (Array.isArray((body as { data?: ActivityEvent[] }).data)) {
+    return (body as { data: ActivityEvent[] }).data;
+  }
+  return body as unknown as ActivityEvent[];
 }
 
 /** Deletes a device and all its related data. Requires IT_ADMIN+. */

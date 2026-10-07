@@ -10,6 +10,10 @@ import {
   Check,
   Plus,
   X,
+  Trash2,
+  RotateCcw,
+  Ban,
+  Eye,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -17,9 +21,13 @@ import { Badge } from '../components/ui/badge';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import {
+  useCancelPatchDeploy,
   useCreatePatch,
+  useDeletePatch,
   useDeployPatch,
+  usePatch,
   usePatchList,
+  useRetryPatch,
   useUpdatePatch,
 } from '../hooks/usePatches';
 import type { PatchCoverage, PatchSeverity, PatchStatus } from '../types/patch';
@@ -64,7 +72,14 @@ function severityBadge(severity: PatchSeverity) {
   );
 }
 
-const emptyForm = { kbNumber: '', title: '', severity: 'IMPORTANT' as PatchSeverity };
+const emptyForm = {
+  kbNumber: '',
+  title: '',
+  severity: 'IMPORTANT' as PatchSeverity,
+  description: '',
+  category: '',
+  releaseDate: '',
+};
 
 export function PatchesPage() {
   const { hasRole } = useAuth();
@@ -73,13 +88,17 @@ export function PatchesPage() {
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState<(typeof SEVERITY_OPTIONS)[number]>('ALL');
   const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
+  const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<PatchCoverage | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PatchCoverage | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [approvingPatchId, setApprovingPatchId] = useState<string | null>(null);
   const [approveNotice, setApproveNotice] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -87,19 +106,30 @@ export function PatchesPage() {
     search: debouncedSearch || undefined,
     severity: (severity || 'ALL') as PatchSeverity | 'ALL',
     status: (status || 'ALL') as PatchStatus | 'ALL',
-    limit: 100,
+    page,
+    limit: 20,
   });
+
+  const detailQuery = usePatch(detailId ?? undefined);
 
   const createMutation = useCreatePatch();
   const updateMutation = useUpdatePatch();
   const deployMutation = useDeployPatch();
+  const retryMutation = useRetryPatch();
+  const cancelMutation = useCancelPatchDeploy();
+  const deleteMutation = useDeletePatch();
 
   const response = listQuery.data?.data;
   const patches = response?.items ?? [];
   const summary = response?.summary;
+  const total = response?.total ?? 0;
   const loading = listQuery.isLoading;
   const isStale = listQuery.isFetching;
   const error = listQuery.error ? (listQuery.error as Error).message : null;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, severity, status]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -109,11 +139,15 @@ export function PatchesPage() {
         kbNumber: form.kbNumber.trim(),
         title: form.title.trim(),
         severity: form.severity,
+        description: form.description.trim() || undefined,
+        category: form.category.trim() || undefined,
+        releaseDate: form.releaseDate || undefined,
       },
       {
         onSuccess: () => {
           setForm(emptyForm);
           setShowAdd(false);
+          setActionNotice('Patch added to catalog.');
         },
         onError: (err) => setFormError((err as Error).message),
       }
@@ -144,9 +178,39 @@ export function PatchesPage() {
     const patchId = deployTarget.id;
     deployMutation.mutate(
       { patchId, payload: { confirmed: true } },
-      { onSuccess: () => setDeployTarget(null) }
+      {
+        onSuccess: (data) => {
+          setDeployTarget(null);
+          setActionNotice(`Deployment queued for ${data.queued} device(s).`);
+        },
+      }
     );
   };
+
+  const handleRetry = (patch: PatchCoverage) => {
+    retryMutation.mutate(patch.id, {
+      onSuccess: (data) => setActionNotice(`Retry queued for ${data.retried} device(s).`),
+    });
+  };
+
+  const handleCancel = (patch: PatchCoverage) => {
+    cancelMutation.mutate(patch.id, {
+      onSuccess: (data) => setActionNotice(`Cancelled ${data.cancelled} queued install(s).`),
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: (data) => {
+        setActionNotice(`Patch ${data.kbNumber} deleted.`);
+        setDeleteTarget(null);
+        if (detailId === deleteTarget.id) setDetailId(null);
+      },
+    });
+  };
+
+  const detail = detailQuery.data?.data;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -205,82 +269,52 @@ export function PatchesPage() {
         </div>
       </div>
 
-      {/* Approval Feedback Banners */}
+      {/* Feedback banners */}
+      {actionNotice && (
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">{actionNotice}</span>
+          </div>
+          <button type="button" onClick={() => setActionNotice(null)} className="font-semibold">Dismiss</button>
+        </div>
+      )}
       {approveNotice && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs animate-in fade-in duration-200">
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span className="font-medium">{approveNotice}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setApproveNotice(null)}
-            className="text-emerald-600 hover:text-emerald-800 font-semibold"
-          >
-            Dismiss
-          </button>
+          <button type="button" onClick={() => setApproveNotice(null)} className="font-semibold">Dismiss</button>
         </div>
       )}
-
       {approveError && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
             <span className="font-medium">Approval failed: {approveError}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setApproveError(null)}
-            className="text-rose-500 hover:text-rose-700 font-semibold"
-          >
-            Dismiss
-          </button>
+          <button type="button" onClick={() => setApproveError(null)} className="font-semibold">Dismiss</button>
         </div>
       )}
 
       {/* Deployment Feedback Banner */}
       {deployMutation.isError && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
+        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
             <span className="font-medium">
               Deployment failed: {(deployMutation.error as Error).message}
             </span>
           </div>
-          <button
-            onClick={() => deployMutation.reset()}
-            className="text-rose-500 hover:text-rose-700 font-semibold"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-      {deployMutation.isSuccess && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-medium">
-              Deployment queued successfully for {deployMutation.data?.queued ?? 'target'} device
-              {(deployMutation.data?.queued ?? 0) === 1 ? '' : 's'}.
-            </span>
-          </div>
-          <button
-            onClick={() => deployMutation.reset()}
-            className="text-emerald-600 hover:text-emerald-800 font-semibold"
-          >
-            Dismiss
-          </button>
+          <button onClick={() => deployMutation.reset()} className="font-semibold">Dismiss</button>
         </div>
       )}
 
-      {/* Patch Deployment Confirmation Dialog */}
+      {/* Confirm dialogs */}
       <ConfirmDialog
         open={Boolean(deployTarget)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDeployTarget(null);
-          }
-        }}
+        onOpenChange={(open) => { if (!open) setDeployTarget(null); }}
         title={deployTarget ? `Deploy ${deployTarget.kbNumber}` : 'Deploy Patch'}
         description={
           deployTarget
@@ -295,14 +329,23 @@ export function PatchesPage() {
         loading={deployMutation.isPending}
         onConfirm={handleConfirmDeploy}
       />
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={deleteTarget ? `Delete ${deleteTarget.kbNumber}` : 'Delete Patch'}
+        description={deleteTarget ? `Remove "${deleteTarget.title}" from the catalog? Devices that already installed it keep their history, but the catalog entry and MISSING rows are removed.` : ''}
+        icon={Trash2}
+        variant="danger"
+        confirmLabel="Delete Patch"
+        loading={deleteMutation.isPending}
+        onConfirm={handleConfirmDelete}
+      />
 
       {/* Add patch panel */}
       {showAdd && (
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardHeader className="p-5 pb-3 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-900">
-              Add patch to catalog
-            </CardTitle>
+            <CardTitle className="text-sm font-semibold text-slate-900">Add patch to catalog</CardTitle>
             <CardDescription className="text-xs text-slate-500">
               Agent scans create entries automatically; use this to pre-approve a known KB.
             </CardDescription>
@@ -310,59 +353,50 @@ export function PatchesPage() {
           <CardContent className="p-5 pt-4">
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-3">
-                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-kb">
-                  KB number
-                </label>
-                <input
-                  id="patch-kb"
-                  required
-                  placeholder="KB5034441"
-                  value={form.kbNumber}
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-kb">KB number</label>
+                <input id="patch-kb" required placeholder="KB5034441" value={form.kbNumber}
                   onChange={(event) => setForm({ ...form, kbNumber: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
-                />
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
               </div>
               <div className="sm:col-span-6">
-                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-title">
-                  Title
-                </label>
-                <input
-                  id="patch-title"
-                  required
-                  placeholder="Cumulative Security Update for Windows 11"
-                  value={form.title}
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-title">Title</label>
+                <input id="patch-title" required placeholder="Cumulative Security Update for Windows 11" value={form.title}
                   onChange={(event) => setForm({ ...form, title: event.target.value })}
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
-                />
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
               </div>
               <div className="sm:col-span-3">
-                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-severity">
-                  Severity
-                </label>
-                <select
-                  id="patch-severity"
-                  value={form.severity}
-                  onChange={(event) =>
-                    setForm({ ...form, severity: event.target.value as PatchSeverity })
-                  }
-                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                >
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-severity">Severity</label>
+                <select id="patch-severity" value={form.severity}
+                  onChange={(event) => setForm({ ...form, severity: event.target.value as PatchSeverity })}
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                   <option value="CRITICAL">CRITICAL</option>
                   <option value="IMPORTANT">IMPORTANT</option>
                   <option value="OPTIONAL">OPTIONAL</option>
                 </select>
               </div>
-
+              <div className="sm:col-span-6">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-category">Category</label>
+                <input id="patch-category" placeholder="Security Updates" value={form.category}
+                  onChange={(event) => setForm({ ...form, category: event.target.value })}
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+              </div>
+              <div className="sm:col-span-6">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-date">Release date</label>
+                <input id="patch-date" type="date" value={form.releaseDate}
+                  onChange={(event) => setForm({ ...form, releaseDate: event.target.value })}
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+              </div>
+              <div className="sm:col-span-12">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="patch-desc">Description</label>
+                <textarea id="patch-desc" rows={2} placeholder="What does this update fix?" value={form.description}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
+                  className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
+              </div>
               {formError && (
-                <div className="sm:col-span-12 text-xs text-rose-600 border border-rose-200 bg-rose-50 rounded-lg px-3 py-2">
-                  {formError}
-                </div>
+                <div className="sm:col-span-12 text-xs text-rose-600 border border-rose-200 bg-rose-50 rounded-lg px-3 py-2">{formError}</div>
               )}
-
               <div className="sm:col-span-12 flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowAdd(false)} className="text-xs border-slate-200">
-                  Cancel
-                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowAdd(false)} className="text-xs border-slate-200">Cancel</Button>
                 <Button type="submit" size="sm" disabled={createMutation.isPending} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
                   {createMutation.isPending ? 'Adding...' : 'Add Patch'}
                 </Button>
@@ -372,7 +406,6 @@ export function PatchesPage() {
         </Card>
       )}
 
-      {/* List error banner */}
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs">{error}</div>
       )}
@@ -382,69 +415,50 @@ export function PatchesPage() {
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Critical Patches
-              </span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Critical Patches</span>
               <ShieldAlert className="w-4 h-4 text-red-600" />
             </div>
             <div className="text-2xl font-bold text-red-600 tracking-tight">{summary?.critical ?? 0}</div>
             <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Security Hotfixes</span>
-              <span className="text-red-700 font-semibold">Immediate</span>
+              <span>Security Hotfixes</span><span className="text-red-700 font-semibold">Immediate</span>
             </div>
           </CardContent>
         </Card>
-
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Important
-              </span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Important</span>
               <AlertTriangle className="w-4 h-4 text-amber-500" />
             </div>
-            <div className="text-2xl font-bold text-amber-600 tracking-tight">
-              {summary?.important ?? 0}
-            </div>
+            <div className="text-2xl font-bold text-amber-600 tracking-tight">{summary?.important ?? 0}</div>
             <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Quality &amp; Drivers</span>
-              <span className="text-amber-700 font-semibold">Recommended</span>
+              <span>Quality &amp; Drivers</span><span className="text-amber-700 font-semibold">Recommended</span>
             </div>
           </CardContent>
         </Card>
-
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Optional
-              </span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Optional</span>
               <Wrench className="w-4 h-4 text-slate-500" />
             </div>
             <div className="text-2xl font-bold text-slate-900 tracking-tight">{summary?.optional ?? 0}</div>
             <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Feature Updates</span>
-              <span className="text-slate-600 font-medium">Staged</span>
+              <span>Feature Updates</span><span className="text-slate-600 font-medium">Staged</span>
             </div>
           </CardContent>
         </Card>
-
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Up-To-Date Fleet
-              </span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Up-To-Date Fleet</span>
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-2xl font-bold text-emerald-600 tracking-tight">
-              {summary?.upToDatePercent === null || summary?.upToDatePercent === undefined
-                ? '—'
-                : `${summary.upToDatePercent}%`}
+              {summary?.upToDatePercent === null || summary?.upToDatePercent === undefined ? '—' : `${summary.upToDatePercent}%`}
             </div>
             <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Target &gt;95%</span>
-              <span className="text-emerald-700 font-semibold">Healthy</span>
+              <span>Target &gt;95%</span><span className="text-emerald-700 font-semibold">Healthy</span>
             </div>
           </CardContent>
         </Card>
@@ -454,90 +468,30 @@ export function PatchesPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by KB number or update title..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            aria-label="Search patches"
-            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
-          />
+          <input type="text" placeholder="Search by KB number or update title..." value={search}
+            onChange={(event) => setSearch(event.target.value)} aria-label="Search patches"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs" />
         </div>
-
-        <select
-          value={severity}
-          onChange={(event) => setSeverity(event.target.value as (typeof SEVERITY_OPTIONS)[number])}
+        <select value={severity} onChange={(event) => setSeverity(event.target.value as (typeof SEVERITY_OPTIONS)[number])}
           aria-label="Severity filter"
-          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-        >
-          {SEVERITY_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option === 'ALL' ? 'All severities' : option}
-            </option>
-          ))}
+          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          {SEVERITY_OPTIONS.map((option) => (<option key={option} value={option}>{option === 'ALL' ? 'All severities' : option}</option>))}
         </select>
-
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}
+        <select value={status} onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}
           aria-label="Status filter"
-          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option === 'ALL' ? 'All statuses' : option}
-            </option>
-          ))}
+          className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          {STATUS_OPTIONS.map((option) => (<option key={option} value={option}>{option === 'ALL' ? 'All statuses' : option}</option>))}
         </select>
       </div>
-
-      {/* Deploy confirmation */}
-      {deployTarget && (
-        <Card className="border-blue-200 bg-blue-50/50 shadow-xs">
-          <CardContent className="p-4 space-y-3">
-            <div className="text-sm text-blue-900">
-              Deploy <span className="font-semibold">{deployTarget.kbNumber}</span> to{' '}
-              {deployTarget.affectedDevices} device
-              {deployTarget.affectedDevices === 1 ? '' : 's'} that do not have it installed? An{' '}
-              <span className="font-mono">INSTALL_PATCH</span> command is queued for each one.
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={handleConfirmDeploy}
-                disabled={deployMutation.isPending}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <Play className="w-4 h-4 mr-1" />
-                {deployMutation.isPending ? 'Queueing...' : 'Confirm deploy'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDeployTarget(null)}
-                disabled={deployMutation.isPending}
-              >
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Patch list */}
       <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-200 py-3">
-          <CardTitle className="text-sm font-bold text-slate-800">
-            Pending &amp; Available Software Updates
-          </CardTitle>
+          <CardTitle className="text-sm font-bold text-slate-800">Pending &amp; Available Software Updates ({total})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {loading && !response ? (
-            <div className="p-4 space-y-3">
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="h-16 rounded-lg bg-slate-100 animate-pulse" />
-              ))}
-            </div>
+            <div className="p-4 space-y-3">{[0, 1, 2].map((row) => (<div key={row} className="h-16 rounded-lg bg-slate-100 animate-pulse" />))}</div>
           ) : patches.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               {debouncedSearch || severity !== 'ALL' || status !== 'ALL'
@@ -547,86 +501,62 @@ export function PatchesPage() {
           ) : (
             <div className="divide-y divide-slate-100">
               {patches.map((patch) => (
-                <div
-                  key={patch.id}
-                  className="p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 hover:bg-slate-50 transition-colors"
-                >
+                <div key={patch.id} className="p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 hover:bg-slate-50 transition-colors">
                   <div className="space-y-1 max-w-3xl">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge
-                        variant="outline"
-                        className="font-mono text-xs bg-slate-100 text-slate-800"
-                      >
-                        {patch.kbNumber}
-                      </Badge>
+                      <Badge variant="outline" className="font-mono text-xs bg-slate-100 text-slate-800">{patch.kbNumber}</Badge>
                       {severityBadge(patch.severity)}
-                      <span className="text-xs text-slate-400">
-                        • Released {formatDate(patch.releaseDate)}
-                      </span>
+                      <span className="text-xs text-slate-400">• Released {formatDate(patch.releaseDate)}</span>
+                      <span className="text-xs text-slate-400">• {patch.status}</span>
                     </div>
-
                     <h4 className="text-sm font-semibold text-slate-900">{patch.title}</h4>
                     <p className="text-xs text-slate-500">
-                      Category: {patch.category} • Installed on {patch.installedCount} of{' '}
-                      {patch.totalDevices} devices •{' '}
-                      <span className={patch.affectedDevices > 0 ? 'text-rose-600 font-medium' : ''}>
-                        {patch.affectedDevices} requiring update
-                      </span>
-                      {patch.failedCount > 0 && (
-                        <span className="text-amber-600"> • {patch.failedCount} failed</span>
-                      )}
+                      Category: {patch.category} • Installed on {patch.installedCount} of {patch.totalDevices} devices •{' '}
+                      <span className={patch.affectedDevices > 0 ? 'text-rose-600 font-medium' : ''}>{patch.affectedDevices} requiring update</span>
+                      {patch.failedCount > 0 && (<span className="text-amber-600"> • {patch.failedCount} failed</span>)}
                     </p>
                   </div>
-
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={() => setDetailId(patch.id)} className="gap-1.5">
+                      <Eye className="w-4 h-4" /><span>Details</span>
+                    </Button>
                     {patch.status === 'PENDING' ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleApprove(patch)}
-                        disabled={!canManage || Boolean(approvingPatchId)}
-                        className="text-blue-600 hover:bg-blue-50 border-blue-200 gap-1.5"
-                      >
-                        {approvingPatchId === patch.id ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Approving...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            <span>Approve</span>
-                          </>
-                        )}
+                      <Button variant="outline" size="sm" onClick={() => handleApprove(patch)}
+                        disabled={!canManage || Boolean(approvingPatchId)} className="text-blue-600 hover:bg-blue-50 border-blue-200 gap-1.5">
+                        {approvingPatchId === patch.id ? (<><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>Approving...</span></>) : (<><Check className="w-4 h-4" /><span>Approve</span></>)}
                       </Button>
                     ) : patch.status === 'APPROVED' ? (
-                      <Button
-                        size="sm"
-                        onClick={() => setDeployTarget(patch)}
-                        disabled={!canManage || patch.affectedDevices === 0}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        <Play className="w-4 h-4 mr-1" />
-                        Deploy Now
+                      <Button size="sm" onClick={() => setDeployTarget(patch)} disabled={!canManage || patch.affectedDevices === 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <Play className="w-4 h-4 mr-1" />Deploy Now
                       </Button>
                     ) : (
                       <div className="flex items-center gap-2">
                         <Badge variant="success" className="text-xs py-1 px-2.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                          Deployed
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />Deployed
                         </Badge>
                         {patch.affectedDevices > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeployTarget(patch)}
-                            disabled={!canManage}
-                          >
-                            <Play className="w-4 h-4 mr-1" />
-                            Redeploy
+                          <Button variant="outline" size="sm" onClick={() => setDeployTarget(patch)} disabled={!canManage}>
+                            <Play className="w-4 h-4 mr-1" />Redeploy
                           </Button>
                         )}
                       </div>
+                    )}
+                    {patch.failedCount > 0 && (
+                      <Button variant="outline" size="sm" onClick={() => handleRetry(patch)} disabled={!canManage || retryMutation.isPending}
+                        className="gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50">
+                        <RotateCcw className="w-4 h-4" /><span>Retry failed</span>
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => handleCancel(patch)} disabled={!canManage || cancelMutation.isPending}
+                      className="gap-1.5" title="Cancel queued installs">
+                      <Ban className="w-4 h-4" /><span>Cancel</span>
+                    </Button>
+                    {canManage && (
+                      <Button variant="outline" size="sm" onClick={() => setDeleteTarget(patch)} disabled={deleteMutation.isPending}
+                        className="gap-1.5 text-rose-600 border-rose-200 hover:bg-rose-50">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -635,6 +565,62 @@ export function PatchesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+        <span className="text-xs text-slate-500 font-medium">Page {page} of {Math.max(1, Math.ceil(total / 20))}</span>
+        <Button variant="outline" size="sm" disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>Next</Button>
+      </div>
+
+      {/* Detail drawer */}
+      {detailId && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex justify-end">
+          <div className="bg-white w-full max-w-xl h-full overflow-y-auto p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900">Patch details</h3>
+              <button onClick={() => setDetailId(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            {detailQuery.isLoading ? (
+              <div className="text-xs text-slate-500">Loading coverage…</div>
+            ) : detail ? (
+              <>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono">{detail.kbNumber}</Badge>
+                    {severityBadge(detail.status as unknown as PatchSeverity)}
+                    <Badge variant="outline">{detail.status}</Badge>
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-900">{detail.title}</h4>
+                  <p className="text-xs text-slate-500">{detail.description || 'No description.'}</p>
+                  <p className="text-xs text-slate-500">Category: {detail.category} • Released {formatDate(detail.releaseDate)}</p>
+                  <p className="text-xs text-slate-500">
+                    Installed {detail.summary.installed}/{detail.summary.totalDevices} • Missing {detail.summary.missing} • Failed {detail.summary.failed} • In-flight {detail.summary.inFlight}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {detail.devices.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 text-xs">
+                      <div>
+                        <p className="font-semibold text-slate-900">{d.deviceName || d.hostname}</p>
+                        <p className="text-slate-500 font-mono">{d.hostname} • {d.ipAddress}</p>
+                      </div>
+                      <Badge variant="outline" className={
+                        d.patchStatus === 'INSTALLED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : d.patchStatus === 'FAILED' ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }>{d.patchStatus}{d.command ? ` • ${d.command.status}` : ''}</Badge>
+                    </div>
+                  ))}
+                  {detail.devices.length === 0 && (<p className="text-xs text-slate-500">No devices in this organization yet.</p>)}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-rose-600">Failed to load patch details.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

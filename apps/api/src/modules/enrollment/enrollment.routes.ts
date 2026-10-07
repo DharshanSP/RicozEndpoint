@@ -10,6 +10,7 @@ import {
 } from '@ricoz/validation';
 import { generateToken, generateAgentToken, hashToken } from '../../utils/tokens';
 import { loadConfig } from '../../config';
+import { writeAudit } from '../../utils/audit';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -239,6 +240,12 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      await writeAudit(app.prisma, jwtUser, 'ENROLLMENT_TOKEN_CREATED', 'ENROLLMENT_TOKEN', token.id, {
+        label,
+        maxUses,
+        deviceId: deviceId ?? null,
+      }, request).catch(() => undefined);
+
       return reply.status(201).send({
         success: true,
         data: {
@@ -297,6 +304,10 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
         where: { id: existing.id },
         data: { isActive: false },
       });
+
+      await writeAudit(app.prisma, jwtUser, 'ENROLLMENT_TOKEN_REVOKED', 'ENROLLMENT_TOKEN', existing.id, {
+        label: existing.label,
+      }, request).catch(() => undefined);
 
       return reply.send({
         success: true,
