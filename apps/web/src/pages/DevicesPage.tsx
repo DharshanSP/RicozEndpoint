@@ -33,6 +33,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
 import { fetchApi, apiBaseUrl } from '../lib/api';
@@ -1134,8 +1135,7 @@ const handlePageSizeChange = (val: number) => {
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-700">Admin password</label>
-            <input
-              type="password"
+            <PasswordInput
               autoFocus
               value={deletePassword}
               onChange={(e) => setDeletePassword(e.target.value)}
@@ -1143,7 +1143,7 @@ const handlePageSizeChange = (val: number) => {
                 if (e.key === 'Enter') void confirmDeleteDevice();
               }}
               placeholder="Enter your password to confirm"
-              className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 outline-none bg-white text-slate-900"
+              className="w-full text-xs px-3 pr-9 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 outline-none bg-white text-slate-900"
             />
           </div>
 

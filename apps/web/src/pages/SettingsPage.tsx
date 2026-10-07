@@ -14,6 +14,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { PasswordInput } from '../components/ui/PasswordInput';
 import { getSettings, updateSettings, OrgSettings } from '../lib/api/settingsApi';
 import { useAuth } from '../context/AuthContext';
 
@@ -380,12 +381,11 @@ function PasswordSection() {
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Current Password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
+              className="w-full px-3 pr-9 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
             />
           </div>
 
@@ -393,12 +393,11 @@ function PasswordSection() {
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               New Password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
+              className="w-full px-3 pr-9 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
             />
             {tooShort && (
               <p className="text-[11px] text-rose-600 mt-1">Use at least 8 characters.</p>
@@ -409,12 +408,11 @@ function PasswordSection() {
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Confirm New Password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
+              className="w-full px-3 pr-9 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
             />
             {mismatch && (
               <p className="text-[11px] text-rose-600 mt-1">Passwords do not match.</p>

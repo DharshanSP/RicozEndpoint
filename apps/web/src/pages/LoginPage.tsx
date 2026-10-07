@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, KeyRound, Lock, AlertCircle, ArrowRight, UserCheck, Eye, ArrowLeft } from 'lucide-react';
+import { PasswordInput } from '../components/ui/PasswordInput';
 
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
@@ -117,19 +118,14 @@ export function LoginPage() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
                 Password
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Lock className="w-4 h-4" />
-                </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
-                />
-              </div>
+              <PasswordInput
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                icon={<Lock className="w-4 h-4" />}
+                className="block w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+              />
             </div>
 
             <button

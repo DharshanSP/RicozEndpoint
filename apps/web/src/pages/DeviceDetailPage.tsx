@@ -36,6 +36,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
 import type { CommandType } from '../types/command';
 import type {
@@ -1240,13 +1241,12 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
           <label className="text-xs font-medium text-slate-700">
             Admin Password:
           </label>
-          <input
-            type="password"
+          <PasswordInput
             placeholder="Enter admin password to confirm"
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
             disabled={deleteDevice.isPending}
-            className="w-full px-3 py-1.5 text-xs rounded-md border border-slate-300 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 bg-white"
+            className="w-full px-3 pr-9 py-1.5 text-xs rounded-md border border-slate-300 focus:ring-1 focus:ring-rose-500 focus:border-rose-500 bg-white"
           />
         </div>
       </ConfirmDialog>

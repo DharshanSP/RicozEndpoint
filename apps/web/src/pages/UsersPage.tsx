@@ -18,6 +18,7 @@ import {
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
 import { formatDateTime } from '../lib/format';
 import type { UserRole } from '../context/AuthContext';
@@ -555,18 +556,15 @@ export function UsersPage() {
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
                   Initial Password
                 </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    placeholder="••••••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
-                </div>
+                <PasswordInput
+                  required
+                  minLength={8}
+                  placeholder="••••••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  icon={<Lock className="w-4 h-4" />}
+                  className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
               </div>
 
               <div>
