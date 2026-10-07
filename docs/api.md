@@ -36,7 +36,7 @@ Available at: `http://localhost:3001/docs`
 
 | Method | Endpoint | Description | Min. role |
 |--------|----------|-------------|-----------|
-| POST | /api/auth/register | Register a new organization + ORG_ADMIN account | public (toggle: `ALLOW_PUBLIC_SIGNUP`) |
+| POST | /api/auth/register | Register a new organization + workspace account (role: IT_ADMIN, OPERATOR or VIEWER) | public (toggle: `ALLOW_PUBLIC_SIGNUP`) |
 | POST | /api/auth/login | Login with credentials | public |
 | POST | /api/auth/logout | Record a logout event | any |
 | GET | /api/auth/me | Get current user | any |

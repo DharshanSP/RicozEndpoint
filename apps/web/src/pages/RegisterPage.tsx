@@ -1,7 +1,15 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Building2, User, KeyRound, Lock, AlertCircle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Shield, Building2, User, KeyRound, Lock, AlertCircle, ArrowRight, ArrowLeft, UserCog } from 'lucide-react';
+
+type WorkspaceRole = 'IT_ADMIN' | 'OPERATOR' | 'VIEWER';
+
+const ROLE_OPTIONS: { value: WorkspaceRole; label: string; hint: string }[] = [
+  { value: 'IT_ADMIN', label: 'IT Admin', hint: 'Manage devices, policies, patches & tokens' },
+  { value: 'OPERATOR', label: 'Operator', hint: 'Standard fleet management' },
+  { value: 'VIEWER', label: 'Viewer', hint: 'Read-only access' },
+];
 
 export function RegisterPage() {
   const { register, isAuthenticated } = useAuth();
@@ -10,6 +18,7 @@ export function RegisterPage() {
   const [organizationName, setOrganizationName] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<WorkspaceRole>('OPERATOR');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +46,7 @@ export function RegisterPage() {
         name: name.trim(),
         email: email.trim(),
         password,
+        role,
       });
       if (result.success) {
         navigate('/dashboard', { replace: true });
@@ -74,7 +84,7 @@ export function RegisterPage() {
             Create your organization
           </h1>
           <p className="text-sm text-slate-500">
-            Sign up as an <span className="font-semibold text-slate-700">Organization Admin</span> — invite your team with specific roles after setup.
+            Choose the role you'll use in the new workspace — an administrator can upgrade it after setup.
           </p>
         </div>
 
@@ -146,6 +156,29 @@ export function RegisterPage() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
+                Your Role
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <UserCog className="w-4 h-4" />
+                </div>
+                <select
+                  required
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as WorkspaceRole)}
+                  className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition appearance-none"
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label} — {option.hint}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
@@ -181,7 +214,7 @@ export function RegisterPage() {
                 />
               </div>
             </div>
-            <p className="text-[11px] text-slate-400">Minimum 8 characters. You will sign in as Organization Admin of the new workspace.</p>
+            <p className="text-[11px] text-slate-400">Minimum 8 characters. Admin roles (Org Admin, Super Admin) can only be granted by an administrator after setup.</p>
 
             <button
               type="submit"

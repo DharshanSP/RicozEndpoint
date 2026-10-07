@@ -40,7 +40,7 @@ describe('Role-based registration & user management', () => {
     return { authorization: `Bearer ${token}` };
   }
 
-  it('registers a new organization with an ORG_ADMIN account', async () => {
+  it('registers a new organization with the chosen workspace role', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/register',
@@ -49,15 +49,40 @@ describe('Role-based registration & user management', () => {
         name: 'Org Admin',
         email: adminEmail,
         password: 'register123',
+        role: 'ORG_ADMIN',
       },
     });
-    assert.equal(res.statusCode, 201);
-    const body = res.json() as ApiResponse;
+    // Administrative roles are never self-granted.
+    assert.equal(res.statusCode, 400);
+
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        organizationName: orgName,
+        name: 'Org Admin',
+        email: adminEmail,
+        password: 'register123',
+        role: 'IT_ADMIN',
+      },
+    });
+    assert.equal(retry.statusCode, 201);
+    const body = retry.json() as ApiResponse;
     assert.ok(body.data?.token, 'registration should return a session token');
-    assert.equal(body.data?.user?.role, 'ORG_ADMIN');
+    assert.equal(body.data?.user?.role, 'IT_ADMIN');
     orgId = body.data!.user!.organizationId!;
-    adminToken = body.data!.token!;
     adminId = body.data!.user!.id!;
+
+    // Simulate an administrator grant: promote to ORG_ADMIN so the remaining
+    // management flows run with admin privileges.
+    await app.prisma.user.update({ where: { id: adminId }, data: { role: 'ORG_ADMIN' } });
+    const promotedLogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: adminEmail, password: 'register123' },
+    });
+    assert.equal(promotedLogin.statusCode, 200);
+    adminToken = (promotedLogin.json() as ApiResponse).data!.token!;
   });
 
   it('rejects duplicate email and duplicate organization name', async () => {
