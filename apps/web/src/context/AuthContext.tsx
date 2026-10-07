@@ -36,7 +36,7 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
-  role: 'IT_ADMIN' | 'OPERATOR' | 'VIEWER';
+  role: 'OPERATOR' | 'VIEWER';
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

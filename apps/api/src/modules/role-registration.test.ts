@@ -41,19 +41,21 @@ describe('Role-based registration & user management', () => {
   }
 
   it('registers a new organization with the chosen workspace role', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/auth/register',
-      payload: {
-        organizationName: orgName,
-        name: 'Org Admin',
-        email: adminEmail,
-        password: 'register123',
-        role: 'ORG_ADMIN',
-      },
-    });
-    // Administrative roles are never self-granted.
-    assert.equal(res.statusCode, 400);
+    for (const forbiddenRole of ['ORG_ADMIN', 'SUPER_ADMIN', 'IT_ADMIN']) {
+      const denied = await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        payload: {
+          organizationName: orgName,
+          name: 'Org Admin',
+          email: adminEmail,
+          password: 'register123',
+          role: forbiddenRole,
+        },
+      });
+      // Elevated roles are never self-granted.
+      assert.equal(denied.statusCode, 400);
+    }
 
     const retry = await app.inject({
       method: 'POST',
@@ -63,13 +65,13 @@ describe('Role-based registration & user management', () => {
         name: 'Org Admin',
         email: adminEmail,
         password: 'register123',
-        role: 'IT_ADMIN',
+        role: 'OPERATOR',
       },
     });
     assert.equal(retry.statusCode, 201);
     const body = retry.json() as ApiResponse;
     assert.ok(body.data?.token, 'registration should return a session token');
-    assert.equal(body.data?.user?.role, 'IT_ADMIN');
+    assert.equal(body.data?.user?.role, 'OPERATOR');
     orgId = body.data!.user!.organizationId!;
     adminId = body.data!.user!.id!;
 

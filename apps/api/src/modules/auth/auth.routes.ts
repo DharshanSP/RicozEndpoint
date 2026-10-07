@@ -7,13 +7,13 @@ import { getConfig } from '../../config';
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ─── Public tenant signup ─────────────────────────────────────────────────
-  // Creates a brand-new organization with the registrant in their chosen
-  // workspace role (IT_ADMIN / OPERATOR / VIEWER only). Administrative roles
-  // are never self-granted. Disable in production with
+  // Creates a brand-new organization with the registrant in a basic workspace
+  // role (OPERATOR or VIEWER only). IT_ADMIN and administrative roles are
+  // never self-granted. Disable in production with
   // ALLOW_PUBLIC_SIGNUP=false.
   app.post('/register', {
     schema: {
-      description: 'Register a new organization with an initial workspace account (role: IT_ADMIN, OPERATOR or VIEWER)',
+      description: 'Register a new organization with an initial workspace account (role: OPERATOR or VIEWER)',
       tags: ['Auth'],
       body: {
         type: 'object',
@@ -23,7 +23,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           name: { type: 'string', minLength: 2, maxLength: 120 },
           email: { type: 'string', format: 'email' },
           password: { type: 'string', minLength: 8, maxLength: 128 },
-          role: { type: 'string', enum: ['IT_ADMIN', 'OPERATOR', 'VIEWER'] },
+          role: { type: 'string', enum: ['OPERATOR', 'VIEWER'] },
         },
       },
     },

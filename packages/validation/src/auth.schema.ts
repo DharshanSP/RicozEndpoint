@@ -65,11 +65,10 @@ export type AdminResetPasswordInput = z.infer<typeof adminResetPasswordSchema>;
 
 /**
  * Public tenant signup: creates a brand-new organization with the registrant
- * in a workspace role. Only operational roles may self-select — administrative
- * roles (ORG_ADMIN / SUPER_ADMIN) are granted solely by an administrator
- * inside an organization.
+ * in a basic workspace role. IT_ADMIN and administrative roles (ORG_ADMIN /
+ * SUPER_ADMIN) are granted solely by an administrator inside an organization.
  */
-export const selfServiceRoleEnum = z.enum(['IT_ADMIN', 'OPERATOR', 'VIEWER']);
+export const selfServiceRoleEnum = z.enum(['OPERATOR', 'VIEWER']);
 
 export type SelfServiceRoleType = z.infer<typeof selfServiceRoleEnum>;
 

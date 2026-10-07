@@ -3,10 +3,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, Building2, User, KeyRound, Lock, AlertCircle, ArrowRight, ArrowLeft, UserCog } from 'lucide-react';
 
-type WorkspaceRole = 'IT_ADMIN' | 'OPERATOR' | 'VIEWER';
+type WorkspaceRole = 'OPERATOR' | 'VIEWER';
 
 const ROLE_OPTIONS: { value: WorkspaceRole; label: string; hint: string }[] = [
-  { value: 'IT_ADMIN', label: 'IT Admin', hint: 'Manage devices, policies, patches & tokens' },
   { value: 'OPERATOR', label: 'Operator', hint: 'Standard fleet management' },
   { value: 'VIEWER', label: 'Viewer', hint: 'Read-only access' },
 ];
@@ -214,7 +213,7 @@ export function RegisterPage() {
                 />
               </div>
             </div>
-            <p className="text-[11px] text-slate-400">Minimum 8 characters. Admin roles (Org Admin, Super Admin) can only be granted by an administrator after setup.</p>
+            <p className="text-[11px] text-slate-400">Minimum 8 characters. IT Admin and admin roles (Org Admin, Super Admin) can only be granted by an administrator after setup.</p>
 
             <button
               type="submit"
