@@ -10,6 +10,8 @@ export interface User {
   role: UserRole;
   organizationId: string;
   organizationName?: string;
+  /** True for seeded demo logins, which only ever see demo devices. */
+  isDemoAccount?: boolean;
 }
 
 interface AuthContextType {

@@ -6,6 +6,8 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   organizationId: string;
+  /** True for seeded demo login accounts, which only ever see demo devices. */
+  isDemoAccount?: boolean;
 }
 
 const ROLE_HIERARCHY: Record<UserRole, number> = {
@@ -50,7 +52,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   try {
     const user = await request.server.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { isActive: true, role: true, organizationId: true },
+      select: { isActive: true, role: true, organizationId: true, isDemoAccount: true },
     });
 
     if (!user || !user.isActive) {
@@ -75,6 +77,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
 
     // Live role: promotions/demotions apply to in-flight sessions immediately.
     (request.user as JwtPayload).role = user.role as JwtPayload['role'];
+    (request.user as JwtPayload).isDemoAccount = user.isDemoAccount ?? false;
   } catch {
     return reply.status(401).send({
       success: false,

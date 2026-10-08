@@ -10,6 +10,9 @@ const deviceListQuerySchema = z.object({
   complianceStatus: z.enum(['COMPLIANT', 'NON_COMPLIANT', 'UNTESTED']).optional(),
   os: z.string().optional(),
   manufacturer: z.string().optional(),
+  // Device origin: demo-seeded fleet data vs really enrolled endpoints.
+  // Demo login accounts are always forced to SEEDED (see handler).
+  source: z.enum(['ALL', 'SEEDED', 'ENROLLED']).optional().default('ALL'),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
   page: z.preprocess(
@@ -99,11 +102,17 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         complianceStatus,
         os,
         manufacturer,
+        source = 'ALL',
         sortBy,
         sortOrder = 'asc',
         page = 1,
         limit = 20,
       } = parsed.data;
+
+      // Demo login accounts (seeded itadmin/operator/viewer) only ever see
+      // demo-seeded fleet devices — real enrolled endpoints are hidden from
+      // them no matter which `source` filter is requested.
+      const effectiveSource = jwtUser.isDemoAccount ? 'SEEDED' : source;
 
       // `NON_COMPLIANT` is a compliance bucket rather than a device status, so
       // it is translated into a compliance filter instead of a status filter.
@@ -115,6 +124,8 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
         ...(deviceStatus ? { status: deviceStatus } : {}),
         ...(bucket ? complianceWhere(bucket) : {}),
+        ...(effectiveSource === 'SEEDED' ? { isDemoSeed: true } : {}),
+        ...(effectiveSource === 'ENROLLED' ? { isDemoSeed: false } : {}),
         ...(os ? { os: { contains: os } } : {}),
         ...(manufacturer ? { manufacturer: { contains: manufacturer, mode: 'insensitive' } } : {}),
         ...(search
@@ -176,6 +187,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         agentVersion: d.agentVersion,
         status: d.status,
         complianceStatus: complianceMap.get(d.id) ?? 'UNTESTED',
+        isDemoSeed: d.isDemoSeed,
         lastSeenAt: d.lastSeenAt,
         registeredAt: d.registeredAt,
         createdAt: d.createdAt,
@@ -231,6 +243,14 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       }
 
       if (jwtUser.role !== 'SUPER_ADMIN' && device.organizationId !== jwtUser.organizationId) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Device not found' },
+        });
+      }
+
+      // Demo logins are scoped to demo-seeded devices only.
+      if (jwtUser.isDemoAccount && !device.isDemoSeed) {
         return reply.status(404).send({
           success: false,
           error: { code: 'NOT_FOUND', message: 'Device not found' },
@@ -306,6 +326,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
             agentVersion: device.agentVersion,
             status: device.status,
             complianceStatus,
+            isDemoSeed: device.isDemoSeed,
             lastSeenAt: device.lastSeenAt,
             registeredAt: device.registeredAt,
             createdAt: device.createdAt,
@@ -344,6 +365,13 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       });
 
       if (!device || (jwtUser.role !== 'SUPER_ADMIN' && device.organizationId !== jwtUser.organizationId)) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Device not found' },
+        });
+      }
+
+      if (jwtUser.isDemoAccount && !device.isDemoSeed) {
         return reply.status(404).send({
           success: false,
           error: { code: 'NOT_FOUND', message: 'Device not found' },
@@ -392,6 +420,13 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      if (jwtUser.isDemoAccount && !device.isDemoSeed) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Device not found' },
+        });
+      }
+
       return reply.send({
         success: true,
         data: device.software,
@@ -431,6 +466,13 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       });
 
       if (!device || (jwtUser.role !== 'SUPER_ADMIN' && device.organizationId !== jwtUser.organizationId)) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Device not found' },
+        });
+      }
+
+      if (jwtUser.isDemoAccount && !device.isDemoSeed) {
         return reply.status(404).send({
           success: false,
           error: { code: 'NOT_FOUND', message: 'Device not found' },

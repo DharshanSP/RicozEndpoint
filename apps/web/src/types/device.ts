@@ -58,6 +58,7 @@ export interface DeviceSummary {
   registeredAt: string;
   createdAt: string;
   complianceStatus: DeviceComplianceStatus;
+  isDemoSeed?: boolean;
 }
 
 export interface DeviceListData {
@@ -183,6 +184,7 @@ export interface DeviceOverview {
   createdAt: string;
   updatedAt: string;
   complianceStatus: DeviceComplianceStatus;
+  isDemoSeed?: boolean;
 }
 
 export interface DeviceDetail {
@@ -276,6 +278,7 @@ export interface Device {
   createdAt: string;
   updatedAt?: string;
   complianceStatus?: DeviceComplianceStatus;
+  isDemoSeed?: boolean;
 
   // Optional relations
   hardware?: DeviceHardware | null;

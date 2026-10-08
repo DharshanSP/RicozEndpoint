@@ -126,7 +126,8 @@ function getComplianceBadge(complianceStatus?: string) {
 export function DevicesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+  const isDemoView = user?.isDemoAccount === true;
   const canManageDevices = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const deleteDevice = useDeleteDevice();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
@@ -411,6 +412,16 @@ const handlePageSizeChange = (val: number) => {
           )}
         </div>
       </div>
+
+      {/* Demo seeded-data notice */}
+      {isDemoView && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-medium text-blue-800 flex items-center gap-2 shadow-xs">
+          <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>
+            Demo preview — showing seeded fleet devices only. Devices enrolled from real endpoints are hidden for demo logins.
+          </span>
+        </div>
+      )}
 
       {/* Deletion success feedback banner */}
       {deleteNotice && (

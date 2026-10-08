@@ -47,6 +47,8 @@ export interface DeviceListQuery {
   complianceStatus?: DeviceComplianceStatus | string;
   os?: string;
   manufacturer?: string;
+  /** Device origin filter. Demo login accounts are always forced to SEEDED server-side. */
+  source?: 'ALL' | 'SEEDED' | 'ENROLLED';
   sortBy?: DeviceSortField;
   sortOrder?: DeviceSortOrder;
 }
@@ -87,6 +89,7 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
   }
   if (query.os && query.os !== 'ALL') params.set('os', query.os);
   if (query.manufacturer && query.manufacturer !== 'ALL') params.set('manufacturer', query.manufacturer);
+  if (query.source && query.source !== 'ALL') params.set('source', query.source);
   if (query.sortBy) params.set('sortBy', query.sortBy);
   if (query.sortOrder) params.set('sortOrder', query.sortOrder);
 

@@ -373,3 +373,153 @@ describe('Device Management API', () => {
     assert.ok(swagger.paths['/api/devices/{id}/activity']);
   });
 });
+
+describe('Device Management API: demo login scope', () => {
+  let app: FastifyInstance;
+  let demoOrgId: string;
+  let enrolledDeviceId: string;
+
+  interface DeviceListBody {
+    success: boolean;
+    data: { id: string; serialNumber: string; isDemoSeed: boolean }[];
+    pagination: { total: number };
+  }
+
+  async function login(email: string, password: string): Promise<string> {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email, password },
+    });
+    const body = res.json() as LoginResponse;
+    assert.ok(res.statusCode === 200 && body.data?.token, `${email} should log in`);
+    return body.data!.token as string;
+  }
+
+  before(async () => {
+    app = await buildApp();
+
+    const org = await app.prisma.organization.findUniqueOrThrow({
+      where: { name: 'Ricoz Demo Organization' },
+      select: { id: true },
+    });
+    demoOrgId = org.id;
+
+    // A really enrolled (non-seed) endpoint in the demo org.
+    const serial = `SN-REAL-${Date.now()}`;
+    const enrolled = await app.prisma.device.create({
+      data: {
+        organizationId: demoOrgId,
+        deviceName: 'REAL-WKS-001',
+        hostname: 'REAL-WKS-001',
+        serialNumber: serial,
+        manufacturer: 'Test',
+        model: 'VM-1',
+        os: 'Windows',
+        osVersion: 'Windows 11 Pro 23H2',
+        architecture: 'x64',
+        ipAddress: '10.9.9.9',
+        agentVersion: '0.1.0',
+        status: 'ONLINE',
+        lastSeenAt: new Date(),
+      },
+    });
+    enrolledDeviceId = enrolled.id;
+  });
+
+  after(async () => {
+    await app.prisma.device.delete({ where: { id: enrolledDeviceId } }).catch(() => undefined);
+    await app.close();
+  });
+
+  it('shows only demo-seeded devices to demo login accounts', async () => {
+    for (const [email, password] of [
+      ['itadmin@ricoz.local', 'itadmin123'],
+      ['operator@ricoz.local', 'operator123'],
+      ['viewer@ricoz.local', 'viewer123'],
+    ] as const) {
+      const token = await login(email, password);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/devices?limit=100',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json() as DeviceListBody;
+      assert.ok(body.data.length >= 5, `${email} should see the seeded fleet`);
+      assert.ok(
+        body.data.every((device) => device.isDemoSeed === true),
+        `${email} should only see demo-seeded devices`
+      );
+      assert.ok(
+        !body.data.some((device) => device.id === enrolledDeviceId),
+        `${email} must not see really enrolled endpoints`
+      );
+    }
+  });
+
+  it('forces the demo scope even when source=ALL is requested', async () => {
+    const token = await login('itadmin@ricoz.local', 'itadmin123');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/devices?limit=100&source=ALL',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = res.json() as DeviceListBody;
+    assert.ok(body.data.every((device) => device.isDemoSeed === true));
+    assert.ok(!body.data.some((device) => device.id === enrolledDeviceId));
+  });
+
+  it('supports source filtering for regular accounts', async () => {
+    const token = await login('admin@ricoz.local', 'admin123');
+
+    const seeded = await app.inject({
+      method: 'GET',
+      url: `/api/devices?limit=100&source=SEEDED&search=${encodeURIComponent('SN-REAL-')}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(seeded.statusCode, 200);
+    assert.ok(
+      !(seeded.json() as DeviceListBody).data.some((device) => device.id === enrolledDeviceId),
+      'SEEDED must exclude really enrolled endpoints'
+    );
+
+    const enrolled = await app.inject({
+      method: 'GET',
+      url: `/api/devices?limit=100&source=ENROLLED&search=${encodeURIComponent('SN-REAL-')}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(enrolled.statusCode, 200);
+    assert.ok(
+      (enrolled.json() as DeviceListBody).data.some((device) => device.id === enrolledDeviceId),
+      'ENROLLED must include really enrolled endpoints'
+    );
+  });
+
+  it('hides really enrolled device detail from demo logins', async () => {
+    const token = await login('operator@ricoz.local', 'operator123');
+    const headers = { authorization: `Bearer ${token}` };
+
+    const detail = await app.inject({ method: 'GET', url: `/api/devices/${enrolledDeviceId}`, headers });
+    assert.equal(detail.statusCode, 404);
+
+    const hardware = await app.inject({ method: 'GET', url: `/api/devices/${enrolledDeviceId}/hardware`, headers });
+    assert.equal(hardware.statusCode, 404);
+
+    const software = await app.inject({ method: 'GET', url: `/api/devices/${enrolledDeviceId}/software`, headers });
+    assert.equal(software.statusCode, 404);
+
+    const activity = await app.inject({ method: 'GET', url: `/api/devices/${enrolledDeviceId}/activity`, headers });
+    assert.equal(activity.statusCode, 404);
+
+    // Control: a non-demo admin still sees the enrolled endpoint.
+    const adminToken = await login('admin@ricoz.local', 'admin123');
+    const control = await app.inject({
+      method: 'GET',
+      url: `/api/devices/${enrolledDeviceId}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(control.statusCode, 200);
+  });
+});

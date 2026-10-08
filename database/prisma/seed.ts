@@ -68,37 +68,40 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: 'itadmin@ricoz.local' },
-    update: { passwordHash: itAdminPasswordHash, role: 'IT_ADMIN' },
+    update: { passwordHash: itAdminPasswordHash, role: 'IT_ADMIN', isDemoAccount: true },
     create: {
       organizationId: organization.id,
       email: 'itadmin@ricoz.local',
       name: 'IT Administrator',
       passwordHash: itAdminPasswordHash,
       role: 'IT_ADMIN',
+      isDemoAccount: true,
     },
   });
 
   await prisma.user.upsert({
     where: { email: 'operator@ricoz.local' },
-    update: { passwordHash: operatorPasswordHash, role: 'OPERATOR' },
+    update: { passwordHash: operatorPasswordHash, role: 'OPERATOR', isDemoAccount: true },
     create: {
       organizationId: organization.id,
       email: 'operator@ricoz.local',
       name: 'IT Operator',
       passwordHash: operatorPasswordHash,
       role: 'OPERATOR',
+      isDemoAccount: true,
     },
   });
 
   await prisma.user.upsert({
     where: { email: 'viewer@ricoz.local' },
-    update: { passwordHash: viewerPasswordHash, role: 'VIEWER' },
+    update: { passwordHash: viewerPasswordHash, role: 'VIEWER', isDemoAccount: true },
     create: {
       organizationId: organization.id,
       email: 'viewer@ricoz.local',
       name: 'Read Only User',
       passwordHash: viewerPasswordHash,
       role: 'VIEWER',
+      isDemoAccount: true,
     },
   });
 
@@ -190,6 +193,8 @@ async function main() {
   ];
 
   for (const deviceData of demoDevices) {
+    // Every seeded fleet device is demo data: demo login accounts are
+    // scoped to these devices only, never to real enrolled endpoints.
     const device = await prisma.device.upsert({
       where: {
         organizationId_serialNumber: {
@@ -197,8 +202,8 @@ async function main() {
           serialNumber: deviceData.serialNumber,
         },
       },
-      update: { ...deviceData },
-      create: { organizationId: organization.id, ...deviceData },
+      update: { ...deviceData, isDemoSeed: true },
+      create: { organizationId: organization.id, ...deviceData, isDemoSeed: true },
     });
 
     await prisma.deviceHardware.upsert({

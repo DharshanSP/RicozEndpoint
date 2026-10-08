@@ -42,6 +42,9 @@ model User {
   passwordHash   String
   role           String   @default("VIEWER")
   isActive       Boolean  @default(true)
+  /// Seed demo login accounts (itadmin/operator/viewer). Demo logins only
+  /// ever see demo-seeded devices, never real enrolled endpoints.
+  isDemoAccount  Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -74,6 +77,9 @@ model Device {
   ipAddress      String    @default("")
   agentVersion   String    @default("")
   status         String    @default("PENDING")
+  /// True for devices created by the demo seed (SN-DEMO-*). Demo login
+  /// accounts are scoped to these devices only.
+  isDemoSeed     Boolean   @default(false)
   lastSeenAt     DateTime?
   registeredAt   DateTime  @default(now())
   createdAt      DateTime  @default(now())

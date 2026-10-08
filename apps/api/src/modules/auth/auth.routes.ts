@@ -119,6 +119,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
             role: user.role,
             organizationId: organization.id,
             organizationName: organization.name,
+            isDemoAccount: user.isDemoAccount,
           },
         },
       });
@@ -226,6 +227,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
             role: user.role,
             organizationId: user.organizationId,
             organizationName: user.organization.name,
+            isDemoAccount: user.isDemoAccount,
           },
         },
       });
@@ -275,6 +277,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           organizationId: activeOrganizationId,
           organizationName: activeOrganization?.name ?? user.organization.name,
           homeOrganizationId: user.organizationId,
+          isDemoAccount: user.isDemoAccount,
           createdAt: user.createdAt,
         },
       });
@@ -393,6 +396,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
             name: user.name,
             role: user.role,
             organizationId: user.organizationId,
+            isDemoAccount: user.isDemoAccount,
           },
         },
       });
