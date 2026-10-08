@@ -13,6 +13,9 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { PageHeader } from '../components/ui/PageHeader';
+import { EmptyState } from '../components/ui/EmptyState';
+import { TableSkeleton } from '../components/ui/TableSkeleton';
 import { getDevices, Device } from '../lib/api/devicesApi';
 import { getSoftwareCatalog, SoftwareItem } from '../lib/api/softwareApi';
 import { getAuditLogs, AuditLogItem } from '../lib/api/auditLogsApi';
@@ -201,39 +204,32 @@ th{background:#f1f5f9} tr:nth-child(even) td{background:#f8fafc}
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
-            <BarChart3 className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Reports &amp; Analytics</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Generate, review, and export comprehensive endpoint asset, compliance, software and activity reports.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={() => void loadReportData()} disabled={loading}>
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={handleExportCsv} className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs">
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export CSV
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleExportPdf}
-            disabled={exporting}
-            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
-          >
-            <FileText className="w-3.5 h-3.5 mr-1.5" />
-            {exporting ? 'Preparing…' : 'Export PDF'}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={BarChart3}
+        title="Reports & Analytics"
+        description="Generate, review, and export comprehensive endpoint asset, compliance, software and activity reports."
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={() => void loadReportData()} disabled={loading}>
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button size="sm" onClick={handleExportCsv} className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs">
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Export CSV
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={exporting}
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+            >
+              <FileText className="w-3.5 h-3.5 mr-1.5" />
+              {exporting ? 'Preparing…' : 'Export PDF'}
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {summaryCards.map((card) => (
@@ -270,7 +266,8 @@ th{background:#f1f5f9} tr:nth-child(even) td{background:#f8fafc}
         ))}
       </div>
 
-      <Card className="border-slate-200 shadow-xs">
+      {/* Content View */}
+      <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-200 py-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-bold text-slate-800">{REPORT_TITLES[activeTab]}</CardTitle>
           <div className="flex items-center gap-2">
@@ -281,33 +278,35 @@ th{background:#f1f5f9} tr:nth-child(even) td{background:#f8fafc}
 
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-12 text-center text-slate-500">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
-              Generating report dataset...
+            <div className="p-4">
+              <TableSkeleton rows={8} columns={7} />
+              <p className="pt-3 text-center text-xs text-slate-500">Generating report dataset...</p>
             </div>
           ) : tables.rows.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 text-xs space-y-2">
-              <BarChart3 className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="font-medium text-slate-700">No records for this report yet</p>
-              <p>Enroll devices and let agents report telemetry, then refresh.</p>
+            <div className="p-4">
+              <EmptyState
+                icon={BarChart3}
+                title="No records for this report yet"
+                description="Enroll devices and let agents report telemetry, then refresh."
+              />
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-semibold">
                     {tables.headers.map((h) => (
-                      <th key={h} className="p-3 whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-4 py-3 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {tables.rows.slice(0, 200).map((row, i) => (
-                    <tr key={i} className="hover:bg-slate-50">
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
                       {(row as unknown[]).map((cell, j) => (
                         <td
                           key={j}
-                          className={`p-3 ${j === 0 ? 'font-semibold text-slate-900' : 'text-slate-600'} ${typeof cell === 'string' && cell.length > 40 ? 'max-w-[280px] truncate' : ''}`}
+                          className={`px-4 py-3 ${j === 0 ? 'font-semibold text-slate-900' : 'text-slate-600'} ${typeof cell === 'string' && cell.length > 40 ? 'max-w-[280px] truncate' : ''}`}
                           title={String(cell ?? '')}
                         >
                           {String(cell ?? '—')}

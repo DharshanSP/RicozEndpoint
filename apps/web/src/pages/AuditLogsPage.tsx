@@ -10,6 +10,9 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Pagination } from '../components/ui/Pagination';
 import { getAuditLogs, auditLogsToCsv, AuditLogItem } from '../lib/api/auditLogsApi';
 
 const ACTION_OPTIONS = [
@@ -144,60 +147,56 @@ export function AuditLogsPage() {
       {/* Search & Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="relative lg:col-span-2">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Input
             type="text"
+            className="pl-9"
             placeholder="Search by actor email, resource ID, or action..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs h-9"
           />
         </div>
 
-        <select
+        <Select
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
           aria-label="Action filter"
-          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
         >
           <option value="">All actions</option>
           {ACTION_OPTIONS.filter(Boolean).map((a) => (
             <option key={a} value={a}>{a}</option>
           ))}
-        </select>
+        </Select>
 
-        <select
+        <Select
           value={resourceFilter}
           onChange={(e) => setResourceFilter(e.target.value)}
           aria-label="Resource filter"
-          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-9"
         >
           <option value="">All resources</option>
           {RESOURCE_OPTIONS.filter(Boolean).map((r) => (
             <option key={r} value={r}>{r}</option>
           ))}
-        </select>
+        </Select>
 
         <div className="flex items-center gap-2">
-          <input
+          <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
             aria-label="From date"
-            className="w-full px-2 py-2 text-xs bg-white border border-slate-200 rounded-lg h-9"
           />
-          <input
+          <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             aria-label="To date"
-            className="w-full px-2 py-2 text-xs bg-white border border-slate-200 rounded-lg h-9"
           />
         </div>
       </div>
 
       {/* Audit Log Table Card */}
-      <Card className="border-slate-200 shadow-xs overflow-hidden">
+      <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-200 py-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-bold text-slate-800">
             Audit Stream ({total} records)
@@ -221,41 +220,41 @@ export function AuditLogsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Timestamp</th>
-                    <th className="p-3">Actor / Admin</th>
-                    <th className="p-3">Action</th>
-                    <th className="p-3">Target Resource</th>
-                    <th className="p-3">IP Address</th>
-                    <th className="p-3 text-right">Details</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-semibold">
+                    <th className="px-4 py-3">Timestamp</th>
+                    <th className="px-4 py-3">Actor / Admin</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Target Resource</th>
+                    <th className="px-4 py-3">IP Address</th>
+                    <th className="px-4 py-3 text-right">Details</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {logs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 text-slate-500 font-mono whitespace-nowrap">
+                      <td className="px-4 py-3 text-slate-500 font-mono whitespace-nowrap">
                         {new Date(log.timestamp).toLocaleString()}
                       </td>
-                      <td className="p-3 font-semibold text-slate-900">
+                      <td className="px-4 py-3 font-semibold text-slate-900">
                         {log.actor?.email || (log.actorId ? log.actorId.slice(0, 8) : 'system')}
                       </td>
-                      <td className="p-3">
+                      <td className="px-4 py-3">
                         <Badge variant="outline" className="font-mono text-[10px] bg-blue-50 text-blue-700 border-blue-200">
                           {log.action}
                         </Badge>
                       </td>
-                      <td className="p-3 text-slate-700 font-medium font-mono" title={log.resourceId}>
+                      <td className="px-4 py-3 text-slate-700 font-medium font-mono" title={log.resourceId}>
                         {log.resource} ({log.resourceId.slice(0, 8)})
                       </td>
-                      <td className="p-3 font-mono text-slate-500">
+                      <td className="px-4 py-3 font-mono text-slate-500">
                         {log.ipAddress || '—'}
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="px-4 py-3 text-right">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setSelectedLog(log)}
-                          className="text-slate-600 hover:text-blue-600 px-2 py-1 text-xs"
+                          className="text-slate-600 hover:text-blue-600 px-2.5 py-1 text-xs"
                         >
                           <Eye className="w-3.5 h-3.5 mr-1" />
                           View
@@ -271,27 +270,14 @@ export function AuditLogsPage() {
       </Card>
 
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => setPage((p) => p - 1)}
-        >
-          Previous
-        </Button>
-        <span className="text-xs text-slate-500 font-medium">
-          Page {page} of {Math.max(1, Math.ceil(total / 25))}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={page * 25 >= total}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next
-        </Button>
-      </div>
+      <Pagination
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(total / 25))}
+        totalItems={total}
+        pageSize={25}
+        onPageChange={setPage}
+        itemLabel="records"
+      />
 
       {/* Modal: View Log Payload */}
       {selectedLog && (

@@ -13,8 +13,6 @@ import {
   ArrowUp,
   ArrowDown,
   ExternalLink,
-  ChevronLeft,
-  ChevronRight,
   ShieldCheck,
   AlertTriangle,
   Clock,
@@ -32,6 +30,9 @@ import {
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Pagination } from '../components/ui/Pagination';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
@@ -572,16 +573,17 @@ const handlePageSizeChange = (val: number) => {
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             {/* Search Input */}
             <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Input
                 type="text"
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search by device name, hostname, serial number, IP..."
-                className="w-full pl-9 pr-8 py-2 text-xs rounded-md bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                className="pl-9 pr-8"
               />
               {search && (
                 <button
+                  type="button"
                   onClick={() => handleSearchChange('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                 >
@@ -593,48 +595,48 @@ const handlePageSizeChange = (val: number) => {
             {/* Filter Controls Row */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
               {/* Status Filter Dropdown */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 text-xs">
-                <span className="text-slate-500 text-[11px] font-medium">Status:</span>
-                <select
+              <div className="flex items-center gap-1.5 text-xs">
+                <Select
                   value={status}
                   onChange={(e) => handleStatusChange(e.target.value)}
-                  className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
+                  wrapperClassName="w-auto"
+                  className="h-9 font-medium"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="ONLINE">Online</option>
                   <option value="OFFLINE">Offline</option>
                   <option value="PENDING">Pending</option>
-                </select>
+                </Select>
               </div>
 
               {/* Compliance Filter Dropdown */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 text-xs">
-                <span className="text-slate-500 text-[11px] font-medium">Compliance:</span>
-                <select
+              <div className="flex items-center gap-1.5 text-xs">
+                <Select
                   value={compliance}
                   onChange={(e) => handleComplianceChange(e.target.value)}
-                  className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
+                  wrapperClassName="w-auto"
+                  className="h-9 font-medium"
                 >
                   <option value="ALL">All</option>
                   <option value="COMPLIANT">Compliant</option>
                   <option value="NON_COMPLIANT">Non-Compliant</option>
                   <option value="UNTESTED">Not Evaluated</option>
-                </select>
+                </Select>
               </div>
 
               {/* OS Filter Dropdown */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 text-xs">
-                <span className="text-slate-500 text-[11px] font-medium">OS:</span>
-                <select
+              <div className="flex items-center gap-1.5 text-xs">
+                <Select
                   value={os}
                   onChange={(e) => handleOsChange(e.target.value)}
-                  className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer py-1 font-medium"
+                  wrapperClassName="w-auto"
+                  className="h-9 font-medium"
                 >
                   <option value="ALL">All OS</option>
                   <option value="Windows">Windows</option>
                   <option value="macOS">macOS</option>
                   <option value="Linux">Linux</option>
-                </select>
+                </Select>
               </div>
 
               {/* More Filters Toggle */}
@@ -642,7 +644,7 @@ const handlePageSizeChange = (val: number) => {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowMoreFilters(!showMoreFilters)}
-                className={`h-8 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 ${
+                className={`h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 ${
                   manufacturer !== 'ALL' || showMoreFilters
                     ? 'border-blue-300 text-blue-700 bg-blue-50/50'
                     : ''
@@ -662,28 +664,28 @@ const handlePageSizeChange = (val: number) => {
             <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-slate-500 text-[11px] font-medium">Manufacturer:</span>
-                <select
+                <Select
                   value={manufacturer}
                   onChange={(e) => handleManufacturerChange(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-md px-2.5 py-1 text-slate-800 text-xs focus:outline-none cursor-pointer"
+                  wrapperClassName="w-auto"
                 >
                   {manufacturerOptions.map((mfr) => (
                     <option key={mfr} value={mfr}>
                       {mfr === 'ALL' ? 'All Manufacturers' : mfr}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="flex items-center gap-2">
                 <span className="text-slate-500 text-[11px] font-medium">Sort By:</span>
-                <select
+                <Select
                   value={sortBy}
                   onChange={(e) => {
                     setSortBy(e.target.value as DeviceSortField);
                     setPage(1);
                   }}
-                  className="bg-white border border-slate-200 rounded-md px-2.5 py-1 text-slate-800 text-xs focus:outline-none cursor-pointer"
+                  wrapperClassName="w-auto"
                 >
                   <option value="lastSeenAt">Last Seen</option>
                   <option value="deviceName">Device Name</option>
@@ -691,7 +693,7 @@ const handlePageSizeChange = (val: number) => {
                   <option value="status">Status</option>
                   <option value="os">Operating System</option>
                   <option value="registeredAt">Registered Date</option>
-                </select>
+                </Select>
 
                 <Button
                   variant="outline"
@@ -700,16 +702,16 @@ const handlePageSizeChange = (val: number) => {
                     setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
                     setPage(1);
                   }}
-                  className="h-7 px-2 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1"
+                  className="h-9 px-2.5 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1"
                 >
                   {sortOrder === 'asc' ? (
                     <>
-                      <ArrowUp className="w-3 h-3 text-blue-600" />
+                      <ArrowUp className="w-3.5 h-3.5 text-blue-600" />
                       <span>Asc</span>
                     </>
                   ) : (
                     <>
-                      <ArrowDown className="w-3 h-3 text-blue-600" />
+                      <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
                       <span>Desc</span>
                     </>
                   )}
@@ -1031,83 +1033,16 @@ const handlePageSizeChange = (val: number) => {
           </div>
 
           {/* Pagination Footer */}
-          <div className="p-3.5 border-t border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-            {/* Range Counter */}
-            <div className="text-slate-500">
-              Showing{' '}
-              <span className="font-semibold text-slate-800">
-                {pagination.total === 0
-                  ? 0
-                  : Math.min((pagination.page - 1) * pagination.limit + 1, pagination.total)}
-              </span>
-              –
-              <span className="font-semibold text-slate-800">
-                {Math.min(pagination.page * pagination.limit, pagination.total)}
-              </span>{' '}
-              of <span className="font-semibold text-slate-800">{pagination.total}</span> endpoints
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-2">
-              {/* Page size selector */}
-              <div className="flex items-center gap-1 text-[11px] text-slate-500 mr-2">
-                <span>Per page:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                  className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-800 focus:outline-none"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
-              </div>
-
-              {/* Prev Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="h-7 px-2 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <ChevronLeft className="w-3.5 h-3.5 mr-0.5" />
-                <span>Prev</span>
-              </Button>
-
-              {/* Page number buttons */}
-              <div className="flex items-center gap-1">
-                {[...Array(Math.min(pagination.totalPages, 5))].map((_, i) => {
-                  const pNum = i + 1;
-                  return (
-                    <button
-                      key={pNum}
-                      onClick={() => setPage(pNum)}
-                      className={`w-7 h-7 rounded text-xs font-medium transition-colors ${
-                        page === pNum
-                          ? 'bg-blue-600 text-white font-semibold'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
-                      }`}
-                    >
-                      {pNum}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Next Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-                disabled={page >= pagination.totalPages}
-                className="h-7 px-2 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <span>Next</span>
-                <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.total}
+            pageSize={pagination.limit}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={[10, 20, 50]}
+            itemLabel="endpoints"
+          />
         </div>
       )}
 
@@ -1180,22 +1115,20 @@ const handlePageSizeChange = (val: number) => {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700">Label (optional)</label>
-                  <input
+                  <Input
                     value={enrollLabel}
                     onChange={(e) => setEnrollLabel(e.target.value)}
                     placeholder="e.g. Finance Laptops"
-                    className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700">Max Uses</label>
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={1000}
                     value={enrollMaxUses}
                     onChange={(e) => setEnrollMaxUses(Number(e.target.value))}
-                    className="w-full text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>
               </div>

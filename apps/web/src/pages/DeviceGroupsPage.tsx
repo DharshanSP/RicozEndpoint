@@ -16,7 +16,12 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PageHeader } from '../components/ui/PageHeader';
+import { AlertBanner } from '../components/ui/AlertBanner';
+import { EmptyState } from '../components/ui/EmptyState';
 import {
   getDeviceGroups,
   getDeviceGroupDetail,
@@ -181,78 +186,55 @@ export function DeviceGroupsPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Device Groups</h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Organize computers into logical groups for targeted policies, deployments, and compliance monitoring.
-              </p>
-            </div>
+      <PageHeader
+        icon={Layers}
+        title="Device Groups"
+        description="Organize computers into logical groups for targeted policies, deployments, and compliance monitoring."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchGroups}
+              disabled={loading}
+              className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+              <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setSelectedDeviceIds([]);
+                setShowCreateModal(true);
+              }}
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+            >
+              <FolderPlus className="w-4 h-4" />
+              <span>Create Group</span>
+            </Button>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchGroups}
-            disabled={loading}
-            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${loading ? 'animate-spin' : ''}`} />
-            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setSelectedDeviceIds([]);
-              setShowCreateModal(true);
-            }}
-            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
-          >
-            <FolderPlus className="w-4 h-4" />
-            <span>Create Group</span>
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Action success banner */}
       {actionSuccess && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{actionSuccess}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionSuccess(null)}
-            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
-          >
-            Dismiss
-          </button>
-        </div>
+        <AlertBanner
+          variant="success"
+          message={actionSuccess}
+          dismissible
+          onDismiss={() => setActionSuccess(null)}
+        />
       )}
 
       {/* Action error banner */}
       {actionError && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2">
-            <X className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{actionError}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
-          >
-            Dismiss
-          </button>
-        </div>
+        <AlertBanner
+          variant="error"
+          message={actionError}
+          dismissible
+          onDismiss={() => setActionError(null)}
+        />
       )}
 
       {/* Main Layout: List & Detail */}
@@ -260,13 +242,13 @@ export function DeviceGroupsPage() {
         {/* Left Column: Group List */}
         <div className="lg:col-span-1 space-y-4">
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-            <input
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <Input
               type="text"
               placeholder="Search groups..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+              className="pl-9 pr-4"
             />
           </div>
 
@@ -280,11 +262,12 @@ export function DeviceGroupsPage() {
               {error}
             </div>
           ) : groups.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 bg-white rounded-xl border border-slate-200 space-y-3">
-              <Layers className="w-10 h-10 mx-auto text-slate-300" />
-              <p className="text-sm font-medium text-slate-700">No device groups found</p>
-              <p className="text-xs text-slate-500">Create a group to organize endpoints by department or purpose.</p>
-            </div>
+            <EmptyState
+              icon={Layers}
+              title="No device groups found"
+              description="Create a group to organize endpoints by department or purpose."
+              compact
+            />
           ) : (
             <div className="space-y-3">
               {groups.map((group) => {
@@ -522,13 +505,12 @@ export function DeviceGroupsPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Group Name *
                 </label>
-                <input
+                <Input
                   type="text"
                   required
                   placeholder="e.g. Finance Workstations"
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -536,12 +518,11 @@ export function DeviceGroupsPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Description
                 </label>
-                <textarea
+                <Textarea
                   rows={2}
                   placeholder="Describe group purpose or policy requirements..."
                   value={newGroupDesc}
                   onChange={(e) => setNewGroupDesc(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 

@@ -16,6 +16,7 @@ import { useComplianceRollup, useEvaluateCompliance } from '../hooks/useComplian
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Select } from '../components/ui/select';
 import { formatRelativeTime } from '../lib/format';
 import type { ComplianceRange } from '../types/compliance';
 
@@ -91,18 +92,18 @@ export function CompliancePage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={range}
             onChange={(e) => setRange(e.target.value as ComplianceRange)}
             aria-label="Reporting range"
-            className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            wrapperClassName="w-auto"
           >
             {RANGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
 
           <Button
             variant="outline"

@@ -1,8 +1,7 @@
 import { useState, useMemo, type ReactNode } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Root as TabsRoot, List as TabsList, Trigger as TabsTrigger, Content as TabsContent } from '@radix-ui/react-tabs';
 import {
-  ChevronRight,
   Activity,
   CheckSquare,
   Clock,
@@ -18,7 +17,6 @@ import {
   Terminal,
   Power,
   Search,
-  CheckCircle2,
   Copy,
   Check,
   SlidersHorizontal,
@@ -35,9 +33,14 @@ import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
+import { PageHeader } from '../components/ui/PageHeader';
+import { AlertBanner } from '../components/ui/AlertBanner';
+import { EmptyState } from '../components/ui/EmptyState';
+import { TableSkeleton } from '../components/ui/TableSkeleton';
 import type { CommandType } from '../types/command';
 import type {
   ActivityEvent,
@@ -170,15 +173,7 @@ function InfoTile({ label, value, mono = false }: { label: string; value: ReactN
 }
 
 function EmptyTab({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
-  return (
-    <div className="p-10 rounded-xl bg-white border border-slate-200 text-center space-y-3 shadow-xs">
-      <div className="inline-flex p-3 rounded-full bg-blue-50 text-blue-600 border border-blue-200">
-        <Icon className="w-6 h-6" />
-      </div>
-      <h3 className="text-sm font-bold text-slate-900">{title}</h3>
-      <p className="text-xs text-slate-500 max-w-sm mx-auto">{description}</p>
-    </div>
-  );
+  return <EmptyState icon={Icon} title={title} description={description} />;
 }
 
 function TabError({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -193,13 +188,7 @@ function TabError({ message, onRetry }: { message: string; onRetry: () => void }
 }
 
 function TabSkeleton({ rows = 3 }: { rows?: number }) {
-  return (
-    <div className="animate-pulse space-y-3">
-      {[...Array(rows)].map((_, i) => (
-        <div key={i} className="h-14 bg-slate-100 rounded-lg border border-slate-200" />
-      ))}
-    </div>
-  );
+  return <TableSkeleton rows={rows} showHeader={false} />;
 }
 
 interface CommandAction {
@@ -308,7 +297,6 @@ export function DeviceDetailPage() {
   if (!id) {
     return (
       <div className="space-y-6 max-w-7xl mx-auto">
-        <Breadcrumbs deviceName="Unknown" />
         <TabError message="This device route is missing a device identifier." onRetry={() => detail.refetch()} />
       </div>
     );
@@ -318,7 +306,6 @@ export function DeviceDetailPage() {
   if (detail.isError) {
     return (
       <div className="space-y-6 max-w-7xl mx-auto">
-        <Breadcrumbs deviceName="Error" />
         <TabError
           message={
             detail.error instanceof Error
@@ -350,36 +337,22 @@ export function DeviceDetailPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Breadcrumb Navigation */}
-      <Breadcrumbs deviceName={overview.deviceName} />
-
       {/* Command Feedback Notification */}
       {createCommand.isError && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
-          <span className="font-medium">{(createCommand.error as Error).message}</span>
-          <button
-            onClick={() => createCommand.reset()}
-            className="text-rose-500 hover:text-rose-700 font-semibold"
-          >
-            Dismiss
-          </button>
-        </div>
+        <AlertBanner
+          variant="error"
+          message={(createCommand.error as Error).message}
+          dismissible
+          onDismiss={() => createCommand.reset()}
+        />
       )}
       {createCommand.isSuccess && (
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs shadow-xs animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-medium">
-              Command {String((createCommand.data as { data?: { type?: string } })?.data?.type ?? '')} queued for this device.
-            </span>
-          </div>
-          <button
-            onClick={() => createCommand.reset()}
-            className="text-emerald-600 hover:text-emerald-800 font-semibold"
-          >
-            Dismiss
-          </button>
-        </div>
+        <AlertBanner
+          variant="success"
+          message={`Command ${String((createCommand.data as { data?: { type?: string } })?.data?.type ?? '')} queued for this device.`}
+          dismissible
+          onDismiss={() => createCommand.reset()}
+        />
       )}
 
       {/* Shared Command Confirmation Dialog */}
@@ -403,47 +376,42 @@ export function DeviceDetailPage() {
         />
       )}
 
-      {/* Device Header Card */}
-      <div className="pb-5 border border-slate-200 bg-white p-6 rounded-xl shadow-xs space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
-                <Server className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
-                  {overview.deviceName}
-                  <button
-                    onClick={copyDeviceId}
-                    title="Click to copy device ID"
-                    className="inline-flex items-center gap-1 text-xs font-mono text-slate-600 font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors"
-                  >
-                    <span>{overview.serialNumber}</span>
-                    {copiedId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
-                  </button>
-                </h1>
-                <p className="text-xs text-slate-500 mt-0.5 font-mono">
-                  {overview.hostname} • IP {overview.ipAddress || '—'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap pt-1">
-              <Badge variant={statusBadgeVariant(overview.status)} className="text-[11px] font-semibold">
-                {statusText}
-              </Badge>
-              <Badge variant={complianceBadgeVariant(overview.complianceStatus)} className="text-[11px] font-medium">
-                {overview.complianceStatus.replace('_', ' ')}
-              </Badge>
-              <Badge variant="outline" className="gap-1 text-[11px] border-slate-200 text-slate-600 bg-slate-50 font-normal">
-                <Clock className="w-3 h-3 text-slate-500" />
-                Last seen {formatRelativeTime(overview.lastSeenAt)}
-              </Badge>
-            </div>
+      {/* Page Header */}
+      <PageHeader
+        icon={Server}
+        title={
+          <span className="flex items-center gap-2.5 flex-wrap">
+            <span>{overview.deviceName}</span>
+            <button
+              onClick={copyDeviceId}
+              title="Click to copy device ID"
+              className="inline-flex items-center gap-1 text-xs font-mono text-slate-600 font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors"
+            >
+              <span>{overview.serialNumber}</span>
+              {copiedId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
+            </button>
+          </span>
+        }
+        description={
+          <span className="font-mono">
+            {overview.hostname} • IP {overview.ipAddress || '—'}
+          </span>
+        }
+        badge={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant={statusBadgeVariant(overview.status)} className="text-[11px] font-semibold">
+              {statusText}
+            </Badge>
+            <Badge variant={complianceBadgeVariant(overview.complianceStatus)} className="text-[11px] font-medium">
+              {overview.complianceStatus.replace('_', ' ')}
+            </Badge>
+            <Badge variant="outline" className="gap-1 text-[11px] border-slate-200 text-slate-600 bg-slate-50 font-normal">
+              <Clock className="w-3 h-3 text-slate-500" />
+              Last seen {formatRelativeTime(overview.lastSeenAt)}
+            </Badge>
           </div>
-
-          {/* Quick Actions Toolbar */}
+        }
+        actions={
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
@@ -496,8 +464,8 @@ export function DeviceDetailPage() {
               <span>{detail.isFetching ? 'Syncing...' : 'Refresh'}</span>
             </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs */}
       <TabsRoot value={activeTab} onValueChange={handleTabChange} className="space-y-4">
@@ -639,22 +607,6 @@ export function DeviceDetailPage() {
   );
 }
 
-function Breadcrumbs({ deviceName }: { deviceName: string }) {
-  return (
-    <nav className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-      <Link to="/dashboard" className="hover:text-slate-800 transition-colors">
-        Dashboard
-      </Link>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-      <Link to="/devices" className="hover:text-slate-800 transition-colors">
-        Devices
-      </Link>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-      <span className="text-slate-900 font-semibold">{deviceName}</span>
-    </nav>
-  );
-}
-
 function SoftwareSection({
   items,
   searchTerm,
@@ -679,13 +631,13 @@ function SoftwareSection({
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
         <div className="relative w-full sm:w-72">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Input
             type="text"
             placeholder="Search software or publisher..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
+            className="pl-9 pr-3"
           />
         </div>
         <span className="text-xs text-slate-500 self-start sm:self-center font-medium">

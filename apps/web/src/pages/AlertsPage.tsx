@@ -4,12 +4,9 @@ import {
   Bell,
   Check,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   Search,
   Server,
-  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -22,6 +19,12 @@ import type { AlertItem, AlertSeverity, AlertStatus, AlertType } from '../types/
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
+import { Pagination } from '../components/ui/Pagination';
+import { PageHeader } from '../components/ui/PageHeader';
+import { AlertBanner } from '../components/ui/AlertBanner';
 import { formatDateTime, formatRelativeTime } from '../lib/format';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple';
@@ -29,9 +32,6 @@ type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'succe
 type StatusFilter = 'UNRESOLVED' | AlertStatus | 'ALL';
 
 const PAGE_SIZE = 20;
-
-const inputClass =
-  'w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors';
 
 function severityBadgeVariant(severity: string): BadgeVariant {
   switch (severity) {
@@ -180,65 +180,43 @@ export function AlertsPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
-            <Bell className="w-5 h-5" />
+      <PageHeader
+        icon={Bell}
+        title="Security & Operational Alerts"
+        badge={
+          <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
+            {total} matching
+          </Badge>
+        }
+        description="Real-time incident detection, severity classification, and administrator triage workflows."
+        actions={
+          <div className="flex items-center gap-2">
+            {listQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />}
+            <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={() => void listQuery.refetch()}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+            </Button>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                Security &amp; Operational Alerts
-              </h1>
-              <Badge variant="outline" className="text-[11px] font-mono border-slate-200 text-slate-700 bg-slate-50">
-                {total} matching
-              </Badge>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Real-time incident detection, severity classification, and administrator triage workflows.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {listQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />}
-          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={() => void listQuery.refetch()}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Success banner */}
       {actionSuccess && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between shadow-xs animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{actionSuccess}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionSuccess(null)}
-            className="text-emerald-600 hover:text-emerald-800 font-semibold p-0.5 rounded text-[11px]"
-          >
-            Dismiss
-          </button>
-        </div>
+        <AlertBanner
+          variant="success"
+          message={actionSuccess}
+          dismissible
+          onDismiss={() => setActionSuccess(null)}
+        />
       )}
 
       {/* Error banner */}
       {actionError && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700 flex items-center justify-between shadow-xs animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{actionError}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            className="text-rose-600 hover:text-rose-800 font-semibold p-0.5 rounded text-[11px]"
-          >
-            Dismiss
-          </button>
-        </div>
+        <AlertBanner
+          variant="error"
+          message={actionError}
+          dismissible
+          onDismiss={() => setActionError(null)}
+        />
       )}
 
       {/* Summary strip */}
@@ -280,9 +258,9 @@ export function AlertsPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            className={`${inputClass} pl-9 h-9`}
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <Input
+            className="pl-9"
             placeholder="Search alert titles..."
             value={search}
             onChange={(e) => {
@@ -291,8 +269,8 @@ export function AlertsPage() {
             }}
           />
         </div>
-        <select
-          className={`${inputClass} w-auto h-9`}
+        <Select
+          wrapperClassName="w-auto"
           value={statusFilter}
           onChange={(e) => {
             setStatusFilter(e.target.value as StatusFilter);
@@ -305,9 +283,9 @@ export function AlertsPage() {
           <option value="OPEN">Open</option>
           <option value="ACKNOWLEDGED">Acknowledged</option>
           <option value="RESOLVED">Resolved</option>
-        </select>
-        <select
-          className={`${inputClass} w-auto h-9`}
+        </Select>
+        <Select
+          wrapperClassName="w-auto"
           value={severityFilter}
           onChange={(e) => {
             setSeverityFilter(e.target.value as AlertSeverity | 'ALL');
@@ -318,9 +296,9 @@ export function AlertsPage() {
           <option value="CRITICAL">Critical</option>
           <option value="WARNING">Warning</option>
           <option value="INFO">Info</option>
-        </select>
-        <select
-          className={`${inputClass} w-auto`}
+        </Select>
+        <Select
+          wrapperClassName="w-auto"
           value={typeFilter}
           onChange={(e) => {
             setTypeFilter(e.target.value as AlertType | 'ALL');
@@ -334,7 +312,7 @@ export function AlertsPage() {
           <option value="SECURITY">Security</option>
           <option value="POLICY">Policy</option>
           <option value="INFO">Info</option>
-        </select>
+        </Select>
         {(statusFilter !== 'UNRESOLVED' ||
           severityFilter !== 'ALL' ||
           typeFilter !== 'ALL' ||
@@ -434,31 +412,16 @@ export function AlertsPage() {
           )}
 
           {/* Pagination */}
-          {total > PAGE_SIZE && (
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-2">
-              <span className="text-[11px] text-slate-500">
-                Page {page} of {totalPages} · {total} alerts
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1 || listQuery.isFetching}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages || listQuery.isFetching}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <div className="mt-4">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={total}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              itemLabel="alerts"
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -478,9 +441,8 @@ export function AlertsPage() {
             <p className="text-xs text-slate-500 mt-1">
               Resolved alerts are removed from the unresolved queue and recorded with your account.
             </p>
-            <label className="block text-xs font-medium text-slate-600 mt-4">Resolution note (optional)</label>
-            <textarea
-              className={inputClass}
+            <label className="block text-xs font-medium text-slate-600 mt-4 mb-1">Resolution note (optional)</label>
+            <Textarea
               rows={3}
               placeholder="What action was taken?"
               value={bulkNote}
@@ -646,9 +608,8 @@ function AlertRow({
       {/* Inline resolve form */}
       {expanding && (
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
-          <label className="text-xs font-medium text-slate-600">Resolution note (optional)</label>
-          <textarea
-            className={inputClass}
+          <label className="text-xs font-medium text-slate-600 mb-1 block">Resolution note (optional)</label>
+          <Textarea
             rows={2}
             placeholder="What action was taken?"
             value={note}

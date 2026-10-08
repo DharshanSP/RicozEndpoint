@@ -14,6 +14,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 import { PasswordInput } from '../components/ui/PasswordInput';
 import { getSettings, updateSettings, OrgSettings } from '../lib/api/settingsApi';
 import { useAuth } from '../context/AuthContext';
@@ -164,20 +165,21 @@ export function SettingsPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Agent Heartbeat Interval (Seconds)
                 </label>
-                <input
-                  type="number"
-                  min={10}
-                  max={3600}
-                  disabled={!canManage}
-                  value={settings.agentHeartbeatIntervalSeconds}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      agentHeartbeatIntervalSeconds: parseInt(e.target.value) || 60,
-                    }))
-                  }
-                  className="w-full max-w-xs px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="max-w-xs">
+                  <Input
+                    type="number"
+                    min={10}
+                    max={3600}
+                    disabled={!canManage}
+                    value={settings.agentHeartbeatIntervalSeconds}
+                    onChange={(e) =>
+                      setSettings((s) => ({
+                        ...s,
+                        agentHeartbeatIntervalSeconds: parseInt(e.target.value) || 60,
+                      }))
+                    }
+                  />
+                </div>
                 <p className="text-xs text-slate-500 mt-1">
                   Interval at which installed agents report online liveness and check for pending actions.
                 </p>
@@ -188,7 +190,7 @@ export function SettingsPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Alert Retention (Days)
                   </label>
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     disabled={!canManage}
@@ -199,7 +201,6 @@ export function SettingsPage() {
                         alertRetentionDays: parseInt(e.target.value) || 30,
                       }))
                     }
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -207,7 +208,7 @@ export function SettingsPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Audit Log Retention (Days)
                   </label>
-                  <input
+                  <Input
                     type="number"
                     min={30}
                     disabled={!canManage}
@@ -218,7 +219,6 @@ export function SettingsPage() {
                         auditRetentionDays: parseInt(e.target.value) || 365,
                       }))
                     }
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
