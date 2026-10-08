@@ -36,17 +36,26 @@ export interface HeartbeatResponse {
   pendingCommands: PendingCommand[];
 }
 
-async function request<T>(path: string, options: { method?: string; token?: string; body?: unknown }): Promise<T> {
-  const { method = 'GET', token, body } = options;
-  const response = await fetch(`${config.apiUrl}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'X-Agent-Token': token } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
+async function request<T>(path: string, options: { method?: string; token?: string; body?: unknown; timeoutMs?: number }): Promise<T> {
+  const { method = 'GET', token, body, timeoutMs = config.requestTimeoutMs } = options;
+  let response: Response;
+  try {
+    response = await fetch(`${config.apiUrl}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'X-Agent-Token': token } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    // Network failure / DNS / refused / timeout — always retryable.
+    throw new AgentApiError(
+      error instanceof Error && error.name === 'TimeoutError' ? 'AGENT_REQUEST_TIMEOUT' : 'AGENT_CONNECTION_FAILED',
+      error instanceof Error ? `Could not reach API at ${config.apiUrl}${path}: ${error.message}` : 'Could not reach API',
+    );
+  }
 
   const json = (await response.json().catch(() => null)) as {
     success?: boolean;
@@ -60,6 +69,29 @@ async function request<T>(path: string, options: { method?: string; token?: stri
     throw new AgentApiError(code, message);
   }
   return json.data as T;
+}
+
+/** HTTP-level failures worth retrying (5xx + rate limiting). Auth failures are not. */
+export function isRetryableApiError(error: unknown): boolean {
+  if (!(error instanceof AgentApiError)) return true;
+  return (
+    error.code === 'AGENT_CONNECTION_FAILED' ||
+    error.code === 'AGENT_REQUEST_TIMEOUT' ||
+    error.code === 'AGENT_REQUEST_FAILED' ||
+    error.code === 'RATE_LIMITED' ||
+    error.code === 'INTERNAL_ERROR'
+  );
+}
+
+/** Full-jitter exponential backoff: base * 2^attempt capped at max, randomised. */
+export function backoffDelayMs(attempt: number, baseMs = config.backoffBaseMs, maxMs = config.backoffMaxMs): number {
+  const grown = baseMs * 2 ** Math.max(0, attempt);
+  const capped = Math.min(grown, maxMs);
+  return Math.floor(Math.random() * (capped + 1));
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class AgentApiError extends Error {

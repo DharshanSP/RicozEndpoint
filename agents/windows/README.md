@@ -27,9 +27,26 @@ npx tsx src/index.ts
 |-------------------------|------------------------------------------|-----------------------------------------|
 | `API_URL`               | `http://localhost:3001/api`              | Backend base URL                        |
 | `ENROLLMENT_TOKEN`      | *(optional)*                             | One-time enrollment code for noninteractive starts; interactive first starts prompt for a token |
-| `HEARTBEAT_INTERVAL_MS` | `30000`                                  | Heartbeat interval                      |
-| `TELEMETRY_INTERVAL_MS` | `300000`                                 | Inventory (hardware/software) interval  |
+| `HEARTBEAT_INTERVAL_MS` | `60000`                                  | Heartbeat interval                      |
+| `TELEMETRY_INTERVAL_MS` | `600000`                                 | Inventory (hardware/software) interval  |
 | `AGENT_STATE_FILE`      | `%APPDATA%\RicozEndpoint\agent.json`     | Persisted device id + agent token       |
+| `AGENT_REQUEST_TIMEOUT_MS` | `30000`                               | Per-request HTTP timeout                |
+| `AGENT_BACKOFF_BASE_MS` | `5000`                                   | Base exponential-backoff delay after failed heartbeats (jittered, capped by `AGENT_BACKOFF_MAX_MS`) |
+| `AGENT_BACKOFF_MAX_MS`  | `300000`                                 | Maximum backoff delay between retries   |
+| `AGENT_RESULT_RETRIES`  | `3`                                      | Command-result report retries before queueing for the next heartbeat |
+
+## Connection & retry handling
+
+- Heartbeat failures use exponential backoff with full jitter (`base * 2^attempt`,
+  capped at `AGENT_BACKOFF_MAX_MS`) instead of hammering the API on outages.
+- After 2+ consecutive failures the next successful heartbeat forces a full
+  telemetry re-sync so the server inventory is refreshed once connectivity returns.
+- Inventory collectors are isolated: one failing sensor logs a warning and the
+  heartbeat still sends the remaining telemetry.
+- Command results retry `AGENT_RESULT_RETRIES` times, then queue in memory (max 50)
+  and flush on the next successful heartbeat — results are not lost on blips.
+- Enrollment retries with backoff; invalid/expired tokens exit (noninteractive) or
+  re-prompt (interactive). `SIGINT`/`SIGTERM` shut the loop down gracefully.
 
 On first start the agent calls `POST /api/enroll` with the enrollment token and
 system info, receives a `deviceId` and agent token, then stores them in the state

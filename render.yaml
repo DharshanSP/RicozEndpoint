@@ -1,4 +1,5 @@
 services:
+  # ── Backend API (Node + Fastify + Prisma/Postgres) ──────────────────────────
   - type: web
     name: ricoz-api
     runtime: node
@@ -25,4 +26,24 @@ services:
       - key: JWT_EXPIRY
         value: 12h
       - key: ALLOW_PUBLIC_SIGNUP
-        value: "true"
+        value: "false"
+
+  # ── Frontend (Vite static bundle) ───────────────────────────────────────────
+  # Set VITE_API_URL to the live API above (e.g. https://ricoz-api.onrender.com/api)
+  # and CORS_ORIGIN on the API to this service's URL.
+  - type: web
+    name: ricoz-web
+    runtime: static
+    plan: free
+    branch: main
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @ricoz/web build
+    staticPublishPath: apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_AGENT_DOWNLOAD_URL
+        sync: false

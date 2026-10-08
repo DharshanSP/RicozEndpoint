@@ -11,15 +11,17 @@ RUN pnpm install --frozen-lockfile --prod=false \
   && pnpm --filter @ricoz/shared-types build \
   && pnpm --filter @ricoz/validation build \
   && pnpm --filter @ricoz/database generate \
-  && pnpm --filter @ricoz/api build \
-  && pnpm --filter @ricoz/api exec pnpm prune --prod
+  && pnpm --filter @ricoz/api build
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/package.json ./package.json
-COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/database ./database
+COPY --from=build /app/node_modules ./node_modules
 EXPOSE 3001
-CMD ["node", "dist/server.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.API_PORT || '3001') + '/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+# Apply pending Prisma migrations on container start, then launch the API.
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy --schema ./database/prisma/schema.prisma && node dist/server.js"]

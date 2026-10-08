@@ -3,15 +3,30 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { clearState, loadState, saveState, type AgentState } from './state';
 import { collectInstalledPatches, collectInstalledSoftware, collectSecurityState, collectSystemInfo } from './inventory';
-import { AgentApiError, enrollDevice, reportCommandResult, sendHeartbeat } from './api';
+import {
+  AgentApiError,
+  backoffDelayMs,
+  enrollDevice,
+  isRetryableApiError,
+  reportCommandResult,
+  sendHeartbeat,
+  sleep,
+} from './api';
 import { executeCommand } from './commands';
 import type { PendingCommand } from './api';
 
 const startedAt = Date.now();
 let lastTelemetryAt = 0;
+let lastSuccessfulHeartbeatAt = 0;
+let consecutiveFailures = 0;
 let forceTelemetry = false;
 let state: AgentState | null = null;
 let enrolling = false;
+let shuttingDown = false;
+let loopTimer: NodeJS.Timeout | null = null;
+
+/** Command results that could not be reported (offline). Retried on each heartbeat. */
+const pendingResults: Array<{ commandId: string; payload: { status: string; result?: string; errorMessage?: string } }> = [];
 
 const REENROLL_CODES = new Set(['INVALID_AGENT_TOKEN', 'EXPIRED_AGENT_TOKEN', 'AGENT_TOKEN_REQUIRED']);
 const INVALID_ENROLLMENT_CODES = new Set([
@@ -61,6 +76,7 @@ async function enroll(): Promise<AgentState> {
 
 export async function processCommands(state: AgentState, pending: PendingCommand[]): Promise<void> {
   for (const command of pending) {
+    if (shuttingDown) break;
     log('info', `Executing command ${command.id} (${command.type})`);
     try {
       const outcome = await executeCommand(command.type, {
@@ -70,13 +86,52 @@ export async function processCommands(state: AgentState, pending: PendingCommand
       if (outcome.status === 'COMPLETED' && command.type === 'REFRESH_INVENTORY') {
         forceTelemetry = true;
       }
-      await reportCommandResult(state.agentToken, command.id, {
+      await reportResultWithRetry(state, command.id, {
         status: outcome.status,
         ...(outcome.status === 'COMPLETED' ? { result: outcome.result } : { errorMessage: outcome.errorMessage }),
       });
       log('info', `Command ${command.id} -> ${outcome.status}`);
     } catch (error) {
       log('error', `Command ${command.id} failed to report: ${(error as Error).message}`);
+    }
+  }
+}
+
+/** Report a command result with retries; on persistent failure queue it for the next heartbeat. */
+async function reportResultWithRetry(
+  state: AgentState,
+  commandId: string,
+  payload: { status: string; result?: string; errorMessage?: string },
+): Promise<void> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      await reportCommandResult(state.agentToken, commandId, payload);
+      return;
+    } catch (error) {
+      attempt += 1;
+      if (!isRetryableApiError(error) || attempt > config.commandResultRetries) {
+        pendingResults.push({ commandId, payload });
+        if (pendingResults.length > 50) pendingResults.shift();
+        throw error;
+      }
+      log('warn', `Result report for ${commandId} failed (attempt ${attempt}), retrying...`);
+      await sleep(backoffDelayMs(attempt, 1000, 15_000));
+    }
+  }
+}
+
+/** Flush queued command results from earlier offline periods. */
+async function flushPendingResults(activeState: AgentState): Promise<void> {
+  while (pendingResults.length > 0 && !shuttingDown) {
+    const item = pendingResults[0]!;
+    try {
+      await reportCommandResult(activeState.agentToken, item.commandId, item.payload);
+      pendingResults.shift();
+      log('info', `Flushed queued result for command ${item.commandId}`);
+    } catch (error) {
+      if (!isRetryableApiError(error)) pendingResults.shift();
+      break;
     }
   }
 }
@@ -91,19 +146,35 @@ async function heartbeat(
   let patches;
   if (includeTelemetry) {
     log('info', 'Collecting hardware/software/security telemetry...');
+    // Each collector is isolated so one failing sensor (e.g. AV WMI
+    // namespace missing) still sends the remaining inventory instead of
+    // dropping the whole heartbeat.
     const [info, apps, sec, hotfixes] = await Promise.all([
-      collectSystemInfo(),
-      collectInstalledSoftware(),
-      collectSecurityState(),
-      collectInstalledPatches(),
+      collectSystemInfo().catch((e) => {
+        log('warn', `System inventory collection failed: ${(e as Error).message}`);
+        return null;
+      }),
+      collectInstalledSoftware().catch((e) => {
+        log('warn', `Software inventory collection failed: ${(e as Error).message}`);
+        return null;
+      }),
+      collectSecurityState().catch((e) => {
+        log('warn', `Security state collection failed: ${(e as Error).message}`);
+        return null;
+      }),
+      collectInstalledPatches().catch((e) => {
+        log('warn', `Patch inventory collection failed: ${(e as Error).message}`);
+        return null;
+      }),
     ]);
+    if (!info) throw new Error('System inventory unavailable; skipping telemetry this cycle');
     hardware = info;
-    software = apps;
-    security = sec;
-    patches = hotfixes;
+    software = apps ?? [];
+    security = sec ?? { firewallEnabled: false, antivirusEnabled: false };
+    patches = hotfixes ?? [];
     log(
       'info',
-      `Telemetry collected: ${apps.length} applications, ${hotfixes.length} hotfixes, firewall=${sec.firewallEnabled}, antivirus=${sec.antivirusEnabled}`,
+      `Telemetry collected: ${software.length} applications, ${patches.length} hotfixes, firewall=${security.firewallEnabled}, antivirus=${security.antivirusEnabled}`,
     );
   }
 
@@ -113,6 +184,9 @@ async function heartbeat(
     security,
     patches,
   });
+
+  consecutiveFailures = 0;
+  lastSuccessfulHeartbeatAt = Date.now();
   log(
     'info',
     `Heartbeat OK: device=${response.device.status}, pendingCommands=${response.pendingCommands.length}`,
@@ -123,15 +197,23 @@ async function heartbeat(
     forceTelemetry = false;
   }
 
+  await flushPendingResults(state);
+
   if (response.pendingCommands.length > 0) {
     await processCommands(state, response.pendingCommands);
   }
 }
 
+function scheduleNext(delayMs: number): void {
+  if (shuttingDown) return;
+  if (loopTimer) clearTimeout(loopTimer);
+  loopTimer = setTimeout(() => void loop(), delayMs);
+}
+
 async function loop(): Promise<void> {
   const activeState = state;
-  if (!activeState || enrolling) {
-    setTimeout(() => void loop(), config.heartbeatIntervalMs);
+  if (!activeState || enrolling || shuttingDown) {
+    scheduleNext(config.heartbeatIntervalMs);
     return;
   }
 
@@ -139,14 +221,26 @@ async function loop(): Promise<void> {
     const includeTelemetry =
       forceTelemetry || Date.now() - lastTelemetryAt >= config.telemetryIntervalMs;
     await heartbeat(activeState, includeTelemetry);
+    scheduleNext(config.heartbeatIntervalMs);
   } catch (error) {
     if (error instanceof AgentApiError && REENROLL_CODES.has(error.code)) {
       startEnrollment(`Saved agent credentials were rejected (${error.code})`);
-    } else {
-      log('error', `Heartbeat failed: ${(error as Error).message}`);
+      scheduleNext(config.heartbeatIntervalMs);
+      return;
     }
-  } finally {
-    setTimeout(() => void loop(), config.heartbeatIntervalMs);
+    consecutiveFailures += 1;
+    const retryable = isRetryableApiError(error);
+    // Exponential backoff with jitter keeps the agent from hammering a
+    // struggling API while still recovering quickly from blips. Telemetry is
+    // forced on the next success after failures so the server gets a fresh
+    // inventory snapshot once connectivity returns.
+    const delay = retryable
+      ? backoffDelayMs(consecutiveFailures)
+      : config.heartbeatIntervalMs;
+    if (retryable && consecutiveFailures >= 2) forceTelemetry = true;
+    const offlineFor = lastSuccessfulHeartbeatAt ? ` (no success for ${Math.round((Date.now() - lastSuccessfulHeartbeatAt) / 1000)}s)` : '';
+    log('error', `Heartbeat failed (attempt ${consecutiveFailures})${offlineFor}: ${(error as Error).message}. Retrying in ${Math.round(delay / 1000)}s.`);
+    scheduleNext(delay);
   }
 }
 
@@ -183,7 +277,8 @@ function startEnrollment(reason: string): void {
   log('warn', `${reason}. Starting enrollment...`);
 
   let shouldPrompt = interactive;
-  const attempt = async (): Promise<void> => {
+  const attempt = async (retryCount = 0): Promise<void> => {
+    if (shuttingDown) return;
     try {
       if (shouldPrompt) {
         config.enrollmentToken = '';
@@ -198,10 +293,13 @@ function startEnrollment(reason: string): void {
 
       state = await enroll();
       enrolling = false;
+      consecutiveFailures = 0;
       lastTelemetryAt = 0;
       forceTelemetry = true;
       log('info', 'Enrollment complete; device telemetry will be sent on the next heartbeat.');
+      scheduleNext(1000);
     } catch (error) {
+      if (shuttingDown) return;
       if (error instanceof AgentApiError && INVALID_ENROLLMENT_CODES.has(error.code)) {
         log('error', `Enrollment token rejected: ${error.message}`);
         if (!interactive) {
@@ -214,13 +312,27 @@ function startEnrollment(reason: string): void {
         void attempt();
         return;
       }
+      const delay = backoffDelayMs(retryCount, 10_000, 300_000);
       log('error', `Enrollment failed: ${(error as Error).message}`);
-      log('warn', 'Retrying automatically in 30 seconds...');
-      setTimeout(() => void attempt(), 30_000);
+      log('warn', `Retrying enrollment automatically in ${Math.round(delay / 1000)}s...`);
+      setTimeout(() => void attempt(retryCount + 1), delay);
     }
   };
 
   void attempt();
+}
+
+function installShutdownHandlers(): void {
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (loopTimer) clearTimeout(loopTimer);
+    log('warn', `Received ${signal}; agent shutting down gracefully (${pendingResults.length} queued result(s) preserved in memory).`);
+    // Queued results are best-effort in-memory; state file already holds identity.
+    setTimeout(() => process.exit(0), 500).unref();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 async function main(): Promise<void> {
@@ -231,7 +343,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  installShutdownHandlers();
+
   log('info', `Agent ${config.agentVersion} starting (api=${config.apiUrl})`);
+  log(
+    'info',
+    `Heartbeat every ${Math.round(config.heartbeatIntervalMs / 1000)}s, telemetry every ${Math.round(config.telemetryIntervalMs / 1000)}s, request timeout ${Math.round(config.requestTimeoutMs / 1000)}s.`,
+  );
 
   state = loadState(config.agentStateFile);
 

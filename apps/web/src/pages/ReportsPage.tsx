@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   BarChart3,
   Download,
+  FileText,
   Laptop,
   Package,
   ShieldCheck,
@@ -15,196 +16,267 @@ import { Badge } from '../components/ui/badge';
 import { getDevices, Device } from '../lib/api/devicesApi';
 import { getSoftwareCatalog, SoftwareItem } from '../lib/api/softwareApi';
 import { getAuditLogs, AuditLogItem } from '../lib/api/auditLogsApi';
+import { getComplianceRollup } from '../lib/api/complianceApi';
+import { listPatches } from '../lib/api/patchesApi';
+import type { ComplianceDeviceRow } from '../types/compliance';
+import type { PatchCoverage } from '../types/patch';
 
-type ReportType = 'DEVICES' | 'SOFTWARE' | 'COMPLIANCE' | 'PATCHES' | 'AUDIT';
+type ReportType = 'DEVICES' | 'SOFTWARE' | 'COMPLIANCE' | 'PATCHES' | 'ACTIVITY';
+
+const REPORT_TITLES: Record<ReportType, string> = {
+  DEVICES: 'Device Inventory Executive Report',
+  SOFTWARE: 'Organizational Software Distribution Report',
+  COMPLIANCE: 'Security Baseline Compliance Audit',
+  PATCHES: 'Vulnerability & Patch Rollout Summary',
+  ACTIVITY: 'System Activity & Audit Trail Report',
+};
+
+/** RFC-4180 field escaping: wrap in quotes when needed and double inner quotes. */
+function csvCell(value: unknown): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsv(headers: string[], rows: unknown[][]): string {
+  const lines = [[...headers.map(csvCell)].join(',')];
+  for (const row of rows) lines.push(row.map(csvCell).join(','));
+  return lines.join('\r\n');
+}
+
+function downloadBlob(filename: string, mime: string, content: string | Blob) {
+  const blob = typeof content === 'string' ? new Blob([content], { type: `${mime};charset=utf-8` }) : content;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function stampedName(prefix: string, ext: string): string {
+  return `${prefix}_${new Date().toISOString().slice(0, 10)}.${ext}`;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 export function ReportsPage() {
   const [activeTab, setActiveTab] = useState<ReportType>('DEVICES');
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [devices, setDevices] = useState<Device[]>([]);
   const [software, setSoftware] = useState<SoftwareItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [complianceDevices, setComplianceDevices] = useState<ComplianceDeviceRow[]>([]);
+  const [complianceScore, setComplianceScore] = useState<number | null>(null);
+  const [patches, setPatches] = useState<PatchCoverage[]>([]);
 
-  const loadReportData = async () => {
+  const loadReportData = useCallback(async () => {
     setLoading(true);
-    const [devRes, swRes, auditRes] = await Promise.all([
-      getDevices({ limit: 100 }),
-      getSoftwareCatalog({ limit: 100 }),
-      getAuditLogs({ limit: 100 }),
-    ]);
+    try {
+      const [devRes, swRes, auditRes, compRes, patchRes] = await Promise.all([
+        getDevices({ limit: 500 }),
+        getSoftwareCatalog({ limit: 500 }),
+        getAuditLogs({ limit: 500 }),
+        getComplianceRollup({ limit: 500 }).catch(() => null),
+        listPatches({ limit: 500 }).catch(() => null),
+      ]);
 
-    if (devRes.success && devRes.data) {
-      const dList = Array.isArray(devRes.data) ? devRes.data : (devRes.data as { items?: Device[] }).items || [];
-      setDevices(dList as Device[]);
+      if (devRes.success && devRes.data) {
+        const raw = devRes.data as unknown;
+        const dList = Array.isArray(raw)
+          ? (raw as Device[])
+          : ((raw as { items?: Device[]; devices?: Device[] }).items ??
+            (raw as { devices?: Device[] }).devices ??
+            []);
+        setDevices(dList);
+      }
+      if (swRes.success && swRes.data) setSoftware(swRes.data.items || []);
+      if (auditRes.success && auditRes.data) setAuditLogs(auditRes.data.items || []);
+      if (compRes?.success && compRes.data) {
+        setComplianceDevices(compRes.data.devices || []);
+        setComplianceScore(typeof compRes.data.score === 'number' ? compRes.data.score : null);
+      }
+      if (patchRes?.success) setPatches(patchRes.data.items || []);
+    } finally {
+      setLoading(false);
     }
-    if (swRes.success && swRes.data) setSoftware(swRes.data.items || []);
-    if (auditRes.success && auditRes.data) setAuditLogs(auditRes.data.items || []);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadReportData();
   }, []);
 
-  const downloadCsv = (filename: string, rows: string[][]) => {
-    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((e) => e.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${filename}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  useEffect(() => {
+    void loadReportData();
+  }, [loadReportData]);
+
+  const tables = useMemo(() => {
+    switch (activeTab) {
+      case 'DEVICES':
+        return {
+          headers: ['Device Name', 'Hostname', 'Serial', 'OS', 'OS Version', 'IP Address', 'Status', 'Compliance', 'Last Seen'],
+          rows: devices.map((d) => [
+            d.deviceName, d.hostname, d.serialNumber ?? '', d.os, d.osVersion,
+            d.ipAddress, d.status, (d as { complianceStatus?: string }).complianceStatus ?? '', d.lastSeenAt || 'Never',
+          ]),
+        };
+      case 'SOFTWARE':
+        return {
+          headers: ['Application Name', 'Publisher', 'Latest Version', 'Installed Device Count'],
+          rows: software.map((s) => [s.name, s.publisher, s.latestVersion, s.deviceCount]),
+        };
+      case 'COMPLIANCE':
+        return {
+          headers: ['Device', 'Hostname', 'OS', 'Compliance', 'Violations', 'Checks', 'Evaluated At'],
+          rows: complianceDevices.map((c) => [
+            c.deviceName, c.hostname, `${c.os} ${c.osVersion}`, c.status, c.violations, c.checks, c.evaluatedAt ?? 'Never',
+          ]),
+        };
+      case 'PATCHES':
+        return {
+          headers: ['KB', 'Title', 'Severity', 'Status', 'Installed', 'Missing', 'Failed', 'Coverage Devices'],
+          rows: patches.map((p) => [
+            p.kbNumber, p.title, p.severity, p.status, p.installedCount, p.missingCount, p.failedCount, p.totalDevices,
+          ]),
+        };
+      case 'ACTIVITY':
+      default:
+        return {
+          headers: ['Timestamp', 'Actor', 'Action', 'Resource', 'Resource ID', 'IP Address'],
+          rows: auditLogs.map((a) => [
+            a.timestamp, a.actor?.email || a.actorId, a.action, a.resource, a.resourceId, a.ipAddress,
+          ]),
+        };
+    }
+  }, [activeTab, devices, software, complianceDevices, patches, auditLogs]);
 
   const handleExportCsv = () => {
-    if (activeTab === 'DEVICES') {
-      const headers = ['Device Name', 'Hostname', 'OS', 'OS Version', 'IP Address', 'Status', 'Last Seen'];
-      const rows = devices.map((d) => [
-        `"${d.deviceName}"`,
-        `"${d.hostname}"`,
-        `"${d.os}"`,
-        `"${d.osVersion}"`,
-        `"${d.ipAddress}"`,
-        `"${d.status}"`,
-        `"${d.lastSeenAt || 'Never'}"`,
-      ]);
-      downloadCsv('Ricoz_Device_Report', [headers, ...rows]);
-    } else if (activeTab === 'SOFTWARE') {
-      const headers = ['Application Name', 'Publisher', 'Latest Version', 'Installed Machine Count'];
-      const rows = software.map((s) => [
-        `"${s.name}"`,
-        `"${s.publisher}"`,
-        `"${s.latestVersion}"`,
-        `"${s.deviceCount}"`,
-      ]);
-      downloadCsv('Ricoz_Software_Inventory_Report', [headers, ...rows]);
-    } else if (activeTab === 'AUDIT') {
-      const headers = ['Timestamp', 'Actor', 'Action', 'Resource', 'Resource ID', 'IP Address'];
-      const rows = auditLogs.map((a) => [
-        `"${a.timestamp}"`,
-        `"${a.actor?.email || a.actorId}"`,
-        `"${a.action}"`,
-        `"${a.resource}"`,
-        `"${a.resourceId}"`,
-        `"${a.ipAddress}"`,
-      ]);
-      downloadCsv('Ricoz_Audit_Logs_Report', [headers, ...rows]);
-    } else {
-      alert('Generating report package...');
+    const { headers, rows } = tables;
+    downloadBlob(stampedName(`Ricoz_${activeTab}_Report`, 'csv'), 'text/csv', toCsv(headers, rows));
+  };
+
+  const handleExportPdf = () => {
+    setExporting(true);
+    try {
+      const { headers, rows } = tables;
+      const title = REPORT_TITLES[activeTab];
+      const generated = new Date().toLocaleString();
+      const win = window.open('', '_blank', 'width=1000,height=700');
+      if (!win) return;
+      win.document.write(`<!doctype html><html><head><title>${escapeHtml(title)}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;margin:32px;font-size:12px}
+h1{font-size:20px;margin:0 0 4px} p.meta{color:#64748b;margin:0 0 16px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f1f5f9} tr:nth-child(even) td{background:#f8fafc}
+.footer{margin-top:16px;color:#64748b;font-size:10px}
+@media print{.no-print{display:none}}
+</style></head><body>
+<h1>RicozEndpoint — ${escapeHtml(title)}</h1>
+<p class="meta">Generated ${escapeHtml(generated)} · ${rows.length} record(s)${complianceScore !== null && activeTab === 'COMPLIANCE' ? ` · Fleet score ${complianceScore}%` : ''}</p>
+<table><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+<tbody>${rows.map((r) => `<tr>${(r as unknown[]).map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length}">No records</td></tr>`}</tbody></table>
+<p class="footer">RicozEndpoint compliance &amp; asset report — internal use.</p>
+<div class="no-print" style="margin-top:16px"><button onclick="window.print()">Print / Save as PDF</button></div>
+<script>window.onload=function(){window.print();}</script>
+</body></html>`);
+      win.document.close();
+    } finally {
+      setExporting(false);
     }
   };
+
+  const summaryCards = [
+    { label: 'Fleet Devices', value: devices.length, hint: `${devices.filter((d) => d.status === 'ONLINE').length} online` },
+    { label: 'Software Titles', value: software.length, hint: `${software.reduce((a, s) => a + (s.deviceCount || 0), 0)} installs` },
+    { label: 'Compliance Score', value: complianceScore !== null ? `${complianceScore}%` : '—', hint: `${complianceDevices.filter((c) => c.status === 'NON_COMPLIANT').length} non-compliant` },
+    { label: 'Activity Records', value: auditLogs.length, hint: `${patches.length} patches tracked` },
+  ];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 shrink-0">
             <BarChart3 className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Reports &amp; Analytics
-            </h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Reports &amp; Analytics</h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Generate, review, and export comprehensive enterprise endpoint asset, compliance, and audit reports.
+              Generate, review, and export comprehensive endpoint asset, compliance, software and activity reports.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={loadReportData} disabled={loading}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" className="h-9 text-xs border-slate-200 bg-white shadow-xs" onClick={() => void loadReportData()} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-
-          <Button
-            size="sm"
-            onClick={handleExportCsv}
-            className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-          >
+          <Button size="sm" onClick={handleExportCsv} className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs">
             <Download className="w-3.5 h-3.5 mr-1.5" />
             Export CSV
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleExportPdf}
+            disabled={exporting}
+            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5 mr-1.5" />
+            {exporting ? 'Preparing…' : 'Export PDF'}
           </Button>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto gap-2">
-        <button
-          onClick={() => setActiveTab('DEVICES')}
-          className={`py-2.5 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-            activeTab === 'DEVICES'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Laptop className="w-4 h-4" />
-          Fleet Devices ({devices.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('SOFTWARE')}
-          className={`py-2.5 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-            activeTab === 'SOFTWARE'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Package className="w-4 h-4" />
-          Software Catalog ({software.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('COMPLIANCE')}
-          className={`py-2.5 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-            activeTab === 'COMPLIANCE'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          Compliance Baseline
-        </button>
-
-        <button
-          onClick={() => setActiveTab('PATCHES')}
-          className={`py-2.5 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-            activeTab === 'PATCHES'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Wrench className="w-4 h-4" />
-          Missing Patches
-        </button>
-
-        <button
-          onClick={() => setActiveTab('AUDIT')}
-          className={`py-2.5 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-            activeTab === 'AUDIT'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <History className="w-4 h-4" />
-          Audit Activity ({auditLogs.length})
-        </button>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {summaryCards.map((card) => (
+          <Card key={card.label} className="border-slate-200 bg-white shadow-xs">
+            <CardContent className="p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{card.label}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{card.value}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{card.hint}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Content View */}
+      <div className="flex border-b border-slate-200 overflow-x-auto gap-2">
+        {(
+          [
+            { id: 'DEVICES', label: `Fleet Devices (${devices.length})`, icon: Laptop },
+            { id: 'SOFTWARE', label: `Software Catalog (${software.length})`, icon: Package },
+            { id: 'COMPLIANCE', label: 'Compliance Baseline', icon: ShieldCheck },
+            { id: 'PATCHES', label: `Missing Patches (${patches.length})`, icon: Wrench },
+            { id: 'ACTIVITY', label: `Audit Activity (${auditLogs.length})`, icon: History },
+          ] as { id: ReportType; label: string; icon: typeof Laptop }[]
+        ).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`py-2.5 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
+              activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <tab.icon className="w-4 h-4" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <Card className="border-slate-200 shadow-xs">
         <CardHeader className="bg-slate-50/50 border-b border-slate-200 py-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-bold text-slate-800">
-            {activeTab === 'DEVICES' && 'Device Inventory Executive Report'}
-            {activeTab === 'SOFTWARE' && 'Organizational Software Distribution Report'}
-            {activeTab === 'COMPLIANCE' && 'Security Baseline Compliance Audit'}
-            {activeTab === 'PATCHES' && 'Vulnerability & Patch Rollout Summary'}
-            {activeTab === 'AUDIT' && 'System Audit Trail Report'}
-          </CardTitle>
-          <span className="text-xs text-slate-500">Live Backend Stream</span>
+          <CardTitle className="text-sm font-bold text-slate-800">{REPORT_TITLES[activeTab]}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[11px]">{tables.rows.length} records</Badge>
+            <span className="text-xs text-slate-500 hidden sm:inline">Live Backend Stream</span>
+          </div>
         </CardHeader>
 
         <CardContent className="p-0">
@@ -213,86 +285,43 @@ export function ReportsPage() {
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
               Generating report dataset...
             </div>
-          ) : activeTab === 'DEVICES' ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Device</th>
-                    <th className="p-3">OS</th>
-                    <th className="p-3">IP Address</th>
-                    <th className="p-3">Agent Version</th>
-                    <th className="p-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {devices.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-semibold text-slate-900">{d.deviceName}</td>
-                      <td className="p-3 text-slate-600">{d.os} ({d.osVersion})</td>
-                      <td className="p-3 font-mono text-slate-600">{d.ipAddress || '127.0.0.1'}</td>
-                      <td className="p-3 text-slate-600">{d.agentVersion || 'v1.0.0'}</td>
-                      <td className="p-3">
-                        <Badge variant={d.status === 'ONLINE' ? 'success' : 'secondary'} className="text-[10px]">
-                          {d.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : activeTab === 'SOFTWARE' ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Application</th>
-                    <th className="p-3">Publisher</th>
-                    <th className="p-3">Latest Version</th>
-                    <th className="p-3">Installed Fleet Devices</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {software.map((s) => (
-                    <tr key={s.name} className="hover:bg-slate-50">
-                      <td className="p-3 font-semibold text-slate-900">{s.name}</td>
-                      <td className="p-3 text-slate-600">{s.publisher}</td>
-                      <td className="p-3 font-mono text-slate-600">v{s.latestVersion}</td>
-                      <td className="p-3 font-bold text-slate-800">{s.deviceCount} machines</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : activeTab === 'AUDIT' ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                    <th className="p-3">Timestamp</th>
-                    <th className="p-3">Actor</th>
-                    <th className="p-3">Action</th>
-                    <th className="p-3">Resource</th>
-                    <th className="p-3">IP Address</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {auditLogs.map((a) => (
-                    <tr key={a.id} className="hover:bg-slate-50">
-                      <td className="p-3 text-slate-500 font-mono">{a.timestamp}</td>
-                      <td className="p-3 font-semibold text-slate-900">{a.actor?.email || a.actorId}</td>
-                      <td className="p-3 font-mono text-blue-600 font-semibold">{a.action}</td>
-                      <td className="p-3 text-slate-700">{a.resource} ({a.resourceId.slice(0, 8)})</td>
-                      <td className="p-3 font-mono text-slate-500">{a.ipAddress || '127.0.0.1'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          ) : tables.rows.length === 0 ? (
+            <div className="p-12 text-center text-slate-500 text-xs space-y-2">
+              <BarChart3 className="w-8 h-8 mx-auto text-slate-300" />
+              <p className="font-medium text-slate-700">No records for this report yet</p>
+              <p>Enroll devices and let agents report telemetry, then refresh.</p>
             </div>
           ) : (
-            <div className="p-8 text-center text-slate-500 text-xs">
-              Previewing baseline compliance telemetry report dataset...
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                    {tables.headers.map((h) => (
+                      <th key={h} className="p-3 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tables.rows.slice(0, 200).map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-50">
+                      {(row as unknown[]).map((cell, j) => (
+                        <td
+                          key={j}
+                          className={`p-3 ${j === 0 ? 'font-semibold text-slate-900' : 'text-slate-600'} ${typeof cell === 'string' && cell.length > 40 ? 'max-w-[280px] truncate' : ''}`}
+                          title={String(cell ?? '')}
+                        >
+                          {String(cell ?? '—')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {tables.rows.length > 200 && (
+                <p className="p-3 text-[11px] text-slate-500 border-t border-slate-100">
+                  Showing first 200 of {tables.rows.length} records — export CSV/PDF for the full dataset.
+                </p>
+              )}
             </div>
           )}
         </CardContent>

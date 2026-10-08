@@ -17,5 +17,36 @@ services:
       timeout: 5s
       retries: 5
 
+  # Production-like local stack: `docker compose up --build` serves the API
+  # against the bundled Postgres. Web (Vite) is deployed as a static site
+  # (see render.yaml `ricoz-web`); point VITE_API_URL at this API when testing.
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: ricoz-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      API_PORT: "3001"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ricoz_endpoint
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-secure-random-string-in-production}
+      JWT_EXPIRY: ${JWT_EXPIRY:-12h}
+      AGENT_ENROLLMENT_SECRET: ${AGENT_ENROLLMENT_SECRET:-change-me-to-a-secure-random-string-in-production}
+      ALLOW_PUBLIC_SIGNUP: ${ALLOW_PUBLIC_SIGNUP:-false}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres-data:
