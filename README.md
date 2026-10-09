@@ -32,11 +32,16 @@ Enterprise endpoint management platform for managing, monitoring, and securing d
 
 | Role | View | Devices | Policies | Commands | Alerts | Users |
 | ---- | ---- | ------- | -------- | -------- | ------ | ----- |
-| SUPER_ADMIN | ✅ all orgs | ✅ | ✅ | ✅ | ✅ | ✅ |
-| ORG_ADMIN | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| IT_ADMIN | ✅ | ✅ | ✅ (create) | ✅ resolve | ✅ | list |
-| OPERATOR | ✅ | view | view | legacy | view | — |
+| SUPER_ADMIN | ✅ all orgs | ✅ | ✅ | ✅ all types | ✅ resolve/ack | ✅ |
+| ORG_ADMIN | ✅ | ✅ | ✅ | ✅ all types | ✅ resolve/ack | ✅ |
+| IT_ADMIN | ✅ | ✅ | ✅ (create) | ✅ all types | ✅ resolve/ack | list |
+| OPERATOR | ✅ | view | view | ✅ safe only* | ✅ ack (view resolve) | — |
 | VIEWER | ✅ | view | view | view | view | — |
+
+> \* **OPERATOR safe commands**: `REFRESH_INVENTORY`, `SYNC_POLICY`, `INSTALL_PATCH`,
+> `INSTALL_APPLICATION`, `UNINSTALL_APPLICATION`. Destructive `LOCK_DEVICE` /
+> `RESTART_DEVICE` / `SHUTDOWN_DEVICE` require **IT_ADMIN+** (enforced server-side
+> with `confirmed: true`). **VIEWER** is strictly read-only — all mutations return `403`.
 
 ## Tech Stack
 

@@ -15,7 +15,6 @@ import {
 import { executeCommand } from './commands';
 import type { PendingCommand } from './api';
 
-const startedAt = Date.now();
 let lastTelemetryAt = 0;
 let lastSuccessfulHeartbeatAt = 0;
 let consecutiveFailures = 0;
@@ -167,14 +166,20 @@ async function heartbeat(
         return null;
       }),
     ]);
-    if (!info) throw new Error('System inventory unavailable; skipping telemetry this cycle');
-    hardware = info;
-    software = apps ?? [];
-    security = sec ?? { firewallEnabled: false, antivirusEnabled: false };
-    patches = hotfixes ?? [];
+    // Partial-failure safe: a failed collector sends `undefined` (skipped
+    // server-side) instead of an empty list, so a broken sensor never wipes
+    // the server's stored inventory. Hardware failure degrades to a
+    // lightweight heartbeat; telemetry is retried next cycle.
+    if (!info) {
+      log('warn', 'System inventory unavailable; sending lightweight heartbeat this cycle');
+    }
+    hardware = info ?? undefined;
+    software = apps ?? undefined;
+    security = sec ?? undefined;
+    patches = hotfixes ?? undefined;
     log(
       'info',
-      `Telemetry collected: ${software.length} applications, ${patches.length} hotfixes, firewall=${security.firewallEnabled}, antivirus=${security.antivirusEnabled}`,
+      `Telemetry collected: ${software ? `${software.length} applications` : 'software skipped'}, ${patches ? `${patches.length} hotfixes` : 'patches skipped'}, firewall=${security?.firewallEnabled ?? 'unknown'}, antivirus=${security?.antivirusEnabled ?? 'unknown'}`,
     );
   }
 
@@ -192,9 +197,14 @@ async function heartbeat(
     `Heartbeat OK: device=${response.device.status}, pendingCommands=${response.pendingCommands.length}`,
   );
 
-  if (includeTelemetry) {
+  // Only advance the telemetry clock when hardware (the anchor for an
+  // inventory snapshot) was actually collected. Otherwise keep
+  // forceTelemetry so the next cycle retries a full sync (network recovery).
+  if (includeTelemetry && hardware) {
     lastTelemetryAt = Date.now();
     forceTelemetry = false;
+  } else if (includeTelemetry) {
+    forceTelemetry = true;
   }
 
   await flushPendingResults(state);
@@ -359,7 +369,12 @@ async function main(): Promise<void> {
     log('info', `Loaded saved device credentials. Heartbeat every ${Math.round(config.heartbeatIntervalMs / 1000)} seconds.`);
   }
 
-  if (state) lastTelemetryAt = startedAt;
+  if (state) {
+    // Fresh inventory snapshot on every (re)start so the server recovers an
+    // accurate baseline after offline periods, restarts, or updates.
+    lastTelemetryAt = 0;
+    forceTelemetry = true;
+  }
   setTimeout(() => void loop(), 1000);
 }
 

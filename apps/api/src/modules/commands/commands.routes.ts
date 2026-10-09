@@ -7,6 +7,8 @@ import {
   commandParamsSchema,
   commandListQuerySchema,
   CreateCommandInput,
+  DESTRUCTIVE_COMMANDS,
+  OPERATOR_ALLOWED_COMMANDS,
 } from '@ricoz/validation';
 
 function toIso(value: Date | null | undefined): string | null {
@@ -108,10 +110,13 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Create command (destructive types require confirmed: true) ────────────
+  // Role matrix: VIEWER read-only; OPERATOR may issue approved non-destructive
+  // commands (REFRESH_INVENTORY, SYNC_POLICY, INSTALL_*, UNINSTALL_*);
+  // LOCK/RESTART/SHUTDOWN require IT_ADMIN+. Enforced server-side.
   app.post('/', {
-    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    preHandler: [requireMinRole(UserRole.OPERATOR)],
     schema: {
-      description: 'Issue a command to a device. Destructive commands (LOCK/RESTART/SHUTDOWN) require confirmed: true',
+      description: 'Issue a command to a device. OPERATOR: approved non-destructive commands only. Destructive commands (LOCK/RESTART/SHUTDOWN) require IT_ADMIN+ and confirmed: true',
       tags: ['Commands'],
       body: {
         type: 'object',
@@ -141,6 +146,18 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const input = body.data as CreateCommandInput;
+
+      // OPERATOR is limited to approved non-destructive actions. IT_ADMIN+
+      // (and SUPER_ADMIN via requireMinRole bypass) may issue all types.
+      if (jwtUser.role === 'OPERATOR' && !OPERATOR_ALLOWED_COMMANDS.includes(input.type as (typeof OPERATOR_ALLOWED_COMMANDS)[number])) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: `Forbidden: role 'OPERATOR' may only issue ${OPERATOR_ALLOWED_COMMANDS.join(', ')}; '${input.type}' requires IT_ADMIN or above`,
+          },
+        });
+      }
 
       const device = await app.prisma.device.findFirst({
         where:
@@ -185,10 +202,11 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Cancel a queued command ───────────────────────────────────────────────
+  // OPERATOR may cancel only commands they could have issued (non-destructive).
   app.post('/:id/cancel', {
-    preHandler: [requireMinRole(UserRole.IT_ADMIN)],
+    preHandler: [requireMinRole(UserRole.OPERATOR)],
     schema: {
-      description: 'Cancel a QUEUED command before the agent picks it up',
+      description: 'Cancel a QUEUED command before the agent picks it up (OPERATOR: non-destructive types only)',
       tags: ['Commands'],
       params: {
         type: 'object',
@@ -215,6 +233,15 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({
           success: false,
           error: { code: 'NOT_FOUND', message: 'Command not found' },
+        });
+      }
+      if (jwtUser.role === 'OPERATOR' && DESTRUCTIVE_COMMANDS.includes(command.type as (typeof DESTRUCTIVE_COMMANDS)[number])) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: `Forbidden: cancelling '${command.type}' requires IT_ADMIN or above`,
+          },
         });
       }
       if (command.status !== 'QUEUED') {

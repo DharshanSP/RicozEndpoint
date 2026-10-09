@@ -26,12 +26,28 @@
 
 ### Role Hierarchy
 ```
-SUPER_ADMIN ──▶ Full system access
+SUPER_ADMIN ──▶ Full system access (all orgs)
 ORG_ADMIN   ──▶ Full organization access
-IT_ADMIN    ──▶ Device and policy management
-OPERATOR    ──▶ View devices, execute commands
-VIEWER      ──▶ Read-only access
+IT_ADMIN    ──▶ Device and policy management (all commands)
+OPERATOR    ──▶ Read + approved device-management actions (safe commands, ack alerts)
+VIEWER      ──▶ Read-only access (all mutations 403)
 ```
+
+### Role Permission Matrix (server-enforced via `requireMinRole` + type guards)
+
+| Capability | VIEWER | OPERATOR | IT_ADMIN | ORG_ADMIN | SUPER_ADMIN |
+| ---------- | ------ | -------- | -------- | --------- | ----------- |
+| View dashboard / devices / policies / commands / alerts / compliance / patches / software / groups / audit | ✅ | ✅ | ✅ | ✅ | ✅ (all orgs) |
+| Acknowledge alerts (`POST /alerts/:id/acknowledge`) | — | ✅ | ✅ | ✅ | ✅ |
+| Issue safe commands (`REFRESH_INVENTORY`, `SYNC_POLICY`, `INSTALL_PATCH`, `INSTALL_APPLICATION`, `UNINSTALL_APPLICATION`) | — | ✅ | ✅ | ✅ | ✅ |
+| Issue destructive commands (`LOCK/RESTART/SHUTDOWN_DEVICE`, `confirmed: true` required) | — | — | ✅ | ✅ | ✅ |
+| Cancel queued commands (OPERATOR: safe types only) | — | ✅ safe | ✅ | ✅ | ✅ |
+| Resolve / batch-resolve / raise alerts | — | — | ✅ | ✅ | ✅ |
+| Edit / delete devices, manage policies, enrollment tokens, patch/software deploy, compliance evaluate | — | — | ✅ | ✅ | ✅ |
+| Manage users (list: IT_ADMIN; create/update/delete: ORG_ADMIN+) | list | — | list | ✅ | ✅ |
+
+Frontend role checks are UX only — every mutation is re-checked server-side,
+and OPERATOR destructive attempts return `403 FORBIDDEN` even with `confirmed: true`.
 
 ### Enforcement
 - All authorization checks performed server-side

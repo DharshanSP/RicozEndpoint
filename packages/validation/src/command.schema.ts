@@ -14,7 +14,25 @@ export const commandTypeEnum = z.enum([
 
 export type CommandType = z.infer<typeof commandTypeEnum>;
 
-const DESTRUCTIVE_COMMANDS: CommandType[] = ['LOCK_DEVICE', 'RESTART_DEVICE', 'SHUTDOWN_DEVICE'];
+export const DESTRUCTIVE_COMMANDS: CommandType[] = ['LOCK_DEVICE', 'RESTART_DEVICE', 'SHUTDOWN_DEVICE'];
+
+/**
+ * Role permission matrix (server-enforced, see commands.routes.ts):
+ * - VIEWER: read-only (list/get commands, no mutations).
+ * - OPERATOR: read + approved non-destructive device-management actions
+ *   (REFRESH_INVENTORY, SYNC_POLICY, INSTALL_PATCH, INSTALL_APPLICATION,
+ *   UNINSTALL_APPLICATION) + acknowledge alerts. Destructive LOCK/RESTART/
+ *   SHUTDOWN require IT_ADMIN or above.
+ * - IT_ADMIN+: full device management (all commands, resolve alerts,
+ *   policies, enrollment, patches/software deploy, device edit/delete).
+ */
+export const OPERATOR_ALLOWED_COMMANDS: CommandType[] = [
+  'REFRESH_INVENTORY',
+  'SYNC_POLICY',
+  'INSTALL_PATCH',
+  'INSTALL_APPLICATION',
+  'UNINSTALL_APPLICATION',
+];
 
 export const createCommandSchema = z
   .object({

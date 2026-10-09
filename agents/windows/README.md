@@ -96,13 +96,16 @@ file. It runs a heartbeat loop and sends hardware/software telemetry on the
 
 Only allow-listed commands are supported ([`apps/agent/src/commands.ts`](../../apps/agent/src/commands.ts)):
 
-| Command            | Description                              |
-|--------------------|------------------------------------------|
-| `REFRESH_INVENTORY`| Re-collects hardware and software inventory |
-| `SYNC_POLICY`      | Pulls latest policy assignments from backend |
-| `LOCK`             | Locks the Windows workstation             |
-| `RESTART`          | Schedules a system restart (10s)          |
-| `SHUTDOWN`         | Schedules a system shutdown (10s)         |
+| Command                 | Description                                                        | Min role |
+|-------------------------|--------------------------------------------------------------------|----------|
+| `REFRESH_INVENTORY`     | Re-collects hardware/software/security telemetry (forces full sync) | OPERATOR |
+| `SYNC_POLICY`           | Pulls latest effective policy assignments from backend              | OPERATOR |
+| `INSTALL_PATCH`         | Installs a Windows Update by KB via WUA (never forces reboot)       | OPERATOR |
+| `INSTALL_APPLICATION`   | Downloads + silently installs an .msi/.exe/.msu package             | OPERATOR |
+| `UNINSTALL_APPLICATION` | Removes a product by DisplayName via msiexec/UninstallString        | OPERATOR |
+| `LOCK_DEVICE`           | Locks the Windows workstation (`confirmed: true` required)          | IT_ADMIN |
+| `RESTART_DEVICE`        | Schedules a system restart in 10s (`confirmed: true` required)      | IT_ADMIN |
+| `SHUTDOWN_DEVICE`       | Schedules a system shutdown in 10s (`confirmed: true` required)     | IT_ADMIN |
 
 Results are reported via `POST /api/agent/commands/:id/result`.
 

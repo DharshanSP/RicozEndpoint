@@ -241,6 +241,9 @@ export function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { hasRole } = useAuth();
   const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  // OPERATOR may issue approved non-destructive commands (REFRESH_INVENTORY,
+  // SYNC_POLICY); destructive LOCK/RESTART/SHUTDOWN stay IT_ADMIN+.
+  const canOperate = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN', 'OPERATOR']);
   const [activeTab, setActiveTab] = useState<TabValue>('overview');
   const [copiedId, setCopiedId] = useState(false);
 
@@ -262,9 +265,12 @@ export function DeviceDetailPage() {
   const pendingAction = COMMAND_ACTIONS.find((action) => action.type === pendingType) ?? null;
 
   const dispatch = (type: CommandType) => {
-    if (!canManage || !id) return;
+    if (!id) return;
     const action = COMMAND_ACTIONS.find((a) => a.type === type);
     if (!action) return;
+    // Server enforces the same matrix: OPERATOR → safe commands only.
+    if (action.destructive && !canManage) return;
+    if (!action.destructive && !canOperate) return;
     if (action.destructive) {
       setPendingType(type);
       return;
@@ -447,7 +453,8 @@ export function DeviceDetailPage() {
               variant="outline"
               size="sm"
               onClick={() => dispatch('SYNC_POLICY')}
-              disabled={!canManage || createCommand.isPending}
+              disabled={!canOperate || createCommand.isPending}
+              title={canOperate && !canManage ? 'Operator-safe action' : undefined}
               className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
@@ -1126,17 +1133,18 @@ interface ActionsTabProps {
 function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
   const { hasRole } = useAuth();
   const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
+  const canOperate = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN', 'OPERATOR']);
   const navigate = useNavigate();
   const deleteDevice = useDeleteDevice();
   const [pendingDelete, setPendingDelete] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
 
-  if (!canManage) {
+  if (!canOperate) {
     return (
       <EmptyTab
         icon={ShieldAlert}
         title="Read-only access"
-        description="Your role does not permit issuing remote commands. This requires IT_ADMIN or above."
+        description="Your role does not permit issuing remote commands. OPERATOR or above can run safe actions (Refresh Inventory, Sync Policy); destructive actions require IT_ADMIN or above."
       />
     );
   }
@@ -1203,7 +1211,9 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
         </div>
       </ConfirmDialog>
 
-      {COMMAND_ACTIONS.map((action) => (
+      {COMMAND_ACTIONS.map((action) => {
+        const blocked = action.destructive && !canManage;
+        return (
         <div key={action.type} className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <div className={`p-2 rounded-md border shrink-0 ${action.destructive ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-blue-50 border-blue-200 text-blue-600'}`}>
@@ -1220,8 +1230,13 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
                     Destructive
                   </Badge>
                 )}
+                {blocked && (
+                  <Badge variant="secondary" className="text-[10px] font-medium">
+                    IT_ADMIN+
+                  </Badge>
+                )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">{action.description}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{blocked ? `${action.description} (Requires IT_ADMIN or above.)` : action.description}</p>
             </div>
           </div>
           <Button
@@ -1229,13 +1244,16 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
             size="sm"
             className={action.destructive ? 'text-rose-700 border-rose-300 hover:bg-rose-50' : ''}
             onClick={() => dispatch(action.type)}
-            disabled={running}
+            disabled={running || blocked}
+            title={blocked ? 'Requires IT_ADMIN or above' : undefined}
           >
             {action.destructive ? 'Request...' : 'Run'}
           </Button>
         </div>
-      ))}
+        );
+      })}
 
+      {canManage && (
       <div className="p-4 rounded-lg bg-white border border-rose-200 shadow-xs flex items-center justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           <div className="p-2 rounded-md border shrink-0 bg-rose-50 border-rose-200 text-rose-600">
@@ -1264,6 +1282,7 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
           Delete Device
         </Button>
       </div>
+      )}
     </div>
   );
 }
