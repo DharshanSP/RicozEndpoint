@@ -4,7 +4,7 @@ import { requireMinRole, JwtPayload } from '../../middleware/rbac.middleware';
 import { hashPassword } from '../../utils/password';
 import { writeAudit } from '../../utils/audit';
 import { UserRole } from '@ricoz/shared-types';
-import { adminResetPasswordSchema, createUserSchema, updateUserSchema } from '@ricoz/validation';
+import { adminResetPasswordSchema, createUserSchema, updateUserSchema, userListQuerySchema } from '@ricoz/validation';
 
 const ROLE_WEIGHT: Record<UserRole, number> = {
   SUPER_ADMIN: 5,
@@ -41,24 +41,64 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     handler: async (request, reply) => {
       const jwtUser = request.user as JwtPayload;
 
-      const users = await app.prisma.user.findMany({
-        where: jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          isActive: true,
-          organizationId: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      const query = userListQuerySchema.safeParse(request.query);
+      if (!query.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: query.error.issues[0]?.message ?? 'Invalid query parameters',
+          },
+        });
+      }
+
+      const { page, limit, search, role, isActive } = query.data;
+
+      const where = {
+        ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+        ...(role ? { role } : {}),
+        ...(isActive ? { isActive: isActive === 'true' } : {}),
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' as const } },
+                { email: { contains: search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      };
+
+      const select = {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        organizationId: true,
+        createdAt: true,
+        updatedAt: true,
+      } as const;
+
+      const [total, items] = await Promise.all([
+        app.prisma.user.count({ where }),
+        app.prisma.user.findMany({
+          where,
+          select,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+      ]);
 
       return reply.send({
         success: true,
-        data: users,
+        data: {
+          items,
+          total,
+          page,
+          limit,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        },
       });
     },
   });

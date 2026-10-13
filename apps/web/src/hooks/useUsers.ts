@@ -6,13 +6,13 @@ import {
   deleteUser,
   type CreateUserPayload,
   type UpdateUserPayload,
-  type UserSummary,
+  type UserListParams,
 } from '../lib/api/usersApi';
 
-export function useUsersList() {
+export function useUsersList(params: UserListParams = {}) {
   return useQuery({
-    queryKey: ['users', 'list'],
-    queryFn: (): Promise<UserSummary[]> => listUsers(),
+    queryKey: ['users', 'list', params],
+    queryFn: (): Promise<Awaited<ReturnType<typeof listUsers>>> => listUsers(params),
   });
 }
 

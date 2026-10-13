@@ -270,47 +270,55 @@ export async function evaluateDeviceCompliance(
   }
 
   const orgId = organizationId ?? device.organizationId;
-  let violation = 0;
 
-  for (const policy of effectivePolicies) {
-    const result = evaluatePolicy(policy, {
+  // Evaluate first (pure), then persist every result in a single insert and
+  // fire the alert side effects in parallel. The previous loop awaited up to
+  // three queries per policy, one after another, on every re-evaluation.
+  const evaluations = effectivePolicies.map((policy) => ({
+    policy,
+    result: evaluatePolicy(policy, {
       ...device,
       freeStorageBytes: hardware?.freeStorageBytes,
       installedPatches,
-    });
+    }),
+  }));
 
-    await prisma.complianceResult.create({
-      data: {
+  if (evaluations.length > 0) {
+    const evaluatedAt = new Date();
+    await prisma.complianceResult.createMany({
+      data: evaluations.map(({ policy, result }) => ({
         deviceId: device.id,
         status: result.status,
         reason: `${result.reason} [${markerFor(policy.id)}]`,
-        evaluatedAt: new Date(),
-      },
+        evaluatedAt,
+      })),
     });
-
-    if (result.status === 'NON_COMPLIANT') {
-      violation += 1;
-      await createAlertDedup(prisma, {
-        organizationId: orgId,
-        deviceId: device.id,
-        type: 'COMPLIANCE_VIOLATION',
-        severity: 'WARNING',
-        title: `Policy violation: ${policy.name}`,
-        message: `Device is non-compliant with policy "${policy.name}": ${result.reason}`,
-        dedupKey: `policy:${policy.id}`,
-      });
-    } else {
-      // The policy is satisfied again: close any alert still open for it.
-      await resolveAlertsMatching(prisma, {
-        organizationId: orgId,
-        deviceId: device.id,
-        type: 'COMPLIANCE_VIOLATION',
-        dedupKey: `policy:${policy.id}`,
-        resolvedBy: null,
-        note: `Policy "${policy.name}" requirements satisfied`,
-      });
-    }
   }
+
+  const violation = evaluations.filter((entry) => entry.result.status === 'NON_COMPLIANT').length;
+
+  await Promise.all(
+    evaluations.map(({ policy, result }) =>
+      result.status === 'NON_COMPLIANT'
+        ? createAlertDedup(prisma, {
+            organizationId: orgId,
+            deviceId: device.id,
+            type: 'COMPLIANCE_VIOLATION',
+            severity: 'WARNING',
+            title: `Policy violation: ${policy.name}`,
+            message: `Device is non-compliant with policy "${policy.name}": ${result.reason}`,
+            dedupKey: `policy:${policy.id}`,
+          })
+        : resolveAlertsMatching(prisma, {
+            organizationId: orgId,
+            deviceId: device.id,
+            type: 'COMPLIANCE_VIOLATION',
+            dedupKey: `policy:${policy.id}`,
+            resolvedBy: null,
+            note: `Policy "${policy.name}" requirements satisfied`,
+          })
+    )
+  );
 
   // Also flag devices that report a security state but no effective policy at all.
   const hasSecurityExpectation =

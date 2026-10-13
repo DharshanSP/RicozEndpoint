@@ -134,21 +134,85 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const since = new Date(Date.now() - (RANGE_MS[range] ?? RANGE_MS['24h'] ?? 24 * 60 * 60 * 1000));
       const orgWhere = jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId };
 
-      // Device fleet status breakdown
-      const [totalDevices, onlineDevices, offlineDevices, pendingEnrollment] = await Promise.all([
-        app.prisma.device.count({ where: orgWhere }),
-        app.prisma.device.count({ where: { ...orgWhere, status: 'ONLINE' } }),
-        app.prisma.device.count({ where: { ...orgWhere, status: 'OFFLINE' } }),
-        app.prisma.device.count({ where: { ...orgWhere, status: 'PENDING' } }),
-      ]);
+      const unresolvedWhere = { ...orgWhere, status: { in: ['OPEN', 'ACKNOWLEDGED'] } };
+      // A device is non-compliant when any stored result for it is
+      // NON_COMPLIANT, compliant when it has results and none are failing,
+      // untested when it has no results at all.
+      const complianceScope =
+        jwtUser.role === 'SUPER_ADMIN' ? {} : { device: { organizationId: jwtUser.organizationId } };
 
-      // Operating system distribution
-      const osGroups = await app.prisma.device.groupBy({
-        by: ['osVersion'],
-        where: orgWhere,
-        _count: { _all: true },
-        orderBy: { _count: { osVersion: 'desc' } },
-      });
+      // Every aggregation below is independent, so they are issued as a single
+      // round of parallel queries instead of one await per widget. This handler
+      // is the landing page, so the round trips add up on every navigation.
+      const [
+        [totalDevices, onlineDevices, offlineDevices, pendingEnrollment],
+        osGroups,
+        openAlerts,
+        [openAlertsCount, criticalAlertsCount, warningAlertsCount, failedActionsCount],
+        [testedGroups, nonCompliantGroups],
+        complianceRules,
+        recentAuditLogs,
+      ] = await Promise.all([
+        // Device fleet status breakdown
+        Promise.all([
+          app.prisma.device.count({ where: orgWhere }),
+          app.prisma.device.count({ where: { ...orgWhere, status: 'ONLINE' } }),
+          app.prisma.device.count({ where: { ...orgWhere, status: 'OFFLINE' } }),
+          app.prisma.device.count({ where: { ...orgWhere, status: 'PENDING' } }),
+        ]),
+        // Operating system distribution
+        app.prisma.device.groupBy({
+          by: ['osVersion'],
+          where: orgWhere,
+          _count: { _all: true },
+          orderBy: { _count: { osVersion: 'desc' } },
+        }),
+        // Recent unresolved alerts (the widget only renders host + address)
+        app.prisma.alert.findMany({
+          where: { ...unresolvedWhere, createdAt: { gte: since } },
+          select: {
+            id: true,
+            severity: true,
+            title: true,
+            createdAt: true,
+            device: { select: { hostname: true, ipAddress: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        // Unresolved alert counts by severity + failed agent actions
+        Promise.all([
+          app.prisma.alert.count({ where: unresolvedWhere }),
+          app.prisma.alert.count({ where: { ...unresolvedWhere, severity: 'CRITICAL' } }),
+          app.prisma.alert.count({ where: { ...unresolvedWhere, severity: 'WARNING' } }),
+          app.prisma.command.count({ where: { ...orgWhere, status: 'FAILED' } }),
+        ]),
+        // Compliance status rolled up per device
+        Promise.all([
+          app.prisma.complianceResult.groupBy({
+            by: ['deviceId'],
+            where: complianceScope,
+            _count: { _all: true },
+          }),
+          app.prisma.complianceResult.groupBy({
+            by: ['deviceId'],
+            where: { ...complianceScope, status: 'NON_COMPLIANT' },
+            _count: { _all: true },
+          }),
+        ]),
+        // Active compliance rules (per-rule counts are aggregated in round 2)
+        app.prisma.complianceRule.findMany({
+          where: { organizationId: jwtUser.organizationId, isActive: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        // Recent environment activity
+        app.prisma.auditLog.findMany({
+          where: { ...orgWhere, timestamp: { gte: since } },
+          include: { actor: { select: { name: true } } },
+          orderBy: { timestamp: 'desc' },
+          take: 10,
+        }),
+      ]);
 
       const osDistribution = osGroups.map((group, index) => {
         const count = group._count._all ?? 0;
@@ -160,39 +224,6 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         };
       });
 
-      // Unresolved alerts (open or acknowledged) + severity buckets
-      const unresolvedWhere = { ...orgWhere, status: { in: ['OPEN', 'ACKNOWLEDGED'] } };
-      const openAlerts = await app.prisma.alert.findMany({
-        where: { ...unresolvedWhere, createdAt: { gte: since } },
-        include: { device: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      });
-
-      const [openAlertsCount, criticalAlertsCount, warningAlertsCount, failedActionsCount] = await Promise.all([
-        app.prisma.alert.count({ where: unresolvedWhere }),
-        app.prisma.alert.count({ where: { ...unresolvedWhere, severity: 'CRITICAL' } }),
-        app.prisma.alert.count({ where: { ...unresolvedWhere, severity: 'WARNING' } }),
-        app.prisma.command.count({ where: { ...orgWhere, status: 'FAILED' } }),
-      ]);
-
-      // Compliance status rolled up per device: a device is non-compliant when
-      // any stored result for it is NON_COMPLIANT, compliant when it has results
-      // and none are failing, untested when it has no results at all.
-      const complianceScope = jwtUser.role === 'SUPER_ADMIN' ? {} : { device: { organizationId: jwtUser.organizationId } };
-      const [testedGroups, nonCompliantGroups] = await Promise.all([
-        app.prisma.complianceResult.groupBy({
-          by: ['deviceId'],
-          where: complianceScope,
-          _count: { _all: true },
-        }),
-        app.prisma.complianceResult.groupBy({
-          by: ['deviceId'],
-          where: { ...complianceScope, status: 'NON_COMPLIANT' },
-          _count: { _all: true },
-        }),
-      ]);
-
       const nonCompliantIds = new Set(nonCompliantGroups.map((group) => group.deviceId));
       let compliantDevices = 0;
       let nonCompliantDevices = 0;
@@ -202,48 +233,38 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       }
       const untestedDevices = Math.max(0, totalDevices - compliantDevices - nonCompliantDevices);
 
-      // Compliance rules + per-rule result aggregation (all stored results, so a
-      // 24h window cannot make every control read "Not Evaluated").
-      const complianceRules = await app.prisma.complianceRule.findMany({
-        where: { organizationId: jwtUser.organizationId, isActive: true },
-        orderBy: { createdAt: 'asc' },
-      });
+      // Round 2: per-rule result aggregation over all stored results (a 24h
+      // window would otherwise make every control read "Not Evaluated"). Two
+      // grouped aggregations instead of two counts per rule: the dashboard used
+      // to issue 2 * N queries whenever the tenant had N active controls.
+      const ruleIds = complianceRules.map((rule) => rule.id);
+      const [ruleTotalGroups, ruleCompliantGroups] = await Promise.all([
+        app.prisma.complianceResult.groupBy({
+          by: ['ruleId'],
+          where: { ruleId: { in: ruleIds } },
+          _count: { _all: true },
+        }),
+        app.prisma.complianceResult.groupBy({
+          by: ['ruleId'],
+          where: { ruleId: { in: ruleIds }, status: 'COMPLIANT' },
+          _count: { _all: true },
+        }),
+      ]);
 
-      const ruleResultCounts = await Promise.all(
-        complianceRules.map(async (rule) => {
-          const [compliantCount, total] = await Promise.all([
-            app.prisma.complianceResult.count({
-              where: { ruleId: rule.id, status: 'COMPLIANT' },
-            }),
-            app.prisma.complianceResult.count({
-              where: { ruleId: rule.id },
-            }),
-          ]);
-          return { rule, compliantCount, total };
-        })
-      );
+      const totalsByRule = new Map(ruleTotalGroups.map((group) => [group.ruleId, group._count._all]));
+      const compliantByRule = new Map(ruleCompliantGroups.map((group) => [group.ruleId, group._count._all]));
 
-      const complianceControls = ruleResultCounts.map(({ rule, compliantCount, total }) => {
-        const status = total > 0 && compliantCount === total ? 'Compliant' : total === 0 ? 'Not Evaluated' : 'At Risk';
-        return {
-          name: rule.name,
-          compliantCount,
-          total,
-          status,
-        };
+      const complianceControls = complianceRules.map((rule) => {
+        const total = totalsByRule.get(rule.id) ?? 0;
+        const compliantCount = compliantByRule.get(rule.id) ?? 0;
+        const status =
+          total > 0 && compliantCount === total ? 'Compliant' : total === 0 ? 'Not Evaluated' : 'At Risk';
+        return { name: rule.name, compliantCount, total, status };
       });
 
       const evaluatedDevices = compliantDevices + nonCompliantDevices;
       const complianceScore =
         evaluatedDevices > 0 ? Math.round((compliantDevices / evaluatedDevices) * 1000) / 10 : 100;
-
-      // Recent environment activity
-      const recentAuditLogs = await app.prisma.auditLog.findMany({
-        where: { ...orgWhere, timestamp: { gte: since } },
-        include: { actor: { select: { name: true } } },
-        orderBy: { timestamp: 'desc' },
-        take: 10,
-      });
 
       const activeAlerts = openAlerts.map((alert) => ({
         id: alert.id.slice(0, 8).toUpperCase(),

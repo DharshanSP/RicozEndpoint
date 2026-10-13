@@ -11,7 +11,7 @@ export type PatchDeviceStatus = z.infer<typeof patchDeviceStatusEnum>;
 
 export const patchListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(20),
   severity: patchSeverityEnum.optional(),
   status: patchStatusEnum.optional(),
   deviceStatus: patchDeviceStatusEnum.optional(),

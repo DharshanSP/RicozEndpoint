@@ -2,11 +2,10 @@ import { fetchApi } from '../api';
 
 export interface OrgSettings {
   agentHeartbeatIntervalSeconds: number;
+  offlineTimeoutMinutes: number;
   alertRetentionDays: number;
   auditRetentionDays: number;
-  requireMfa: boolean;
-  autoApproveCriticalPatches: boolean;
-  allowedIpSubnets?: string[];
+  defaultPolicyPriority?: number;
 }
 
 export interface SettingsResponse {

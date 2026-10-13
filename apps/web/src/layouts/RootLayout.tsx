@@ -1,5 +1,8 @@
-import { useState, useEffect, useMemo, type ElementType } from 'react';
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+'use client';
+
+import { useState, useEffect, useMemo, type ElementType, type ReactNode } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { listOrganizations, type OrganizationSummary } from '../lib/api/organizationsApi';
 import { useQueryClient } from '@tanstack/react-query';
@@ -47,21 +50,24 @@ interface NavSection {
 
 const SIDEBAR_COLLAPSED_KEY = 'ricoz_sidebar_collapsed';
 
-export function RootLayout() {
+export function RootLayout({ children }: { children: ReactNode }) {
   const { user, logout, hasRole, switchOrganization } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
   const [switchingOrg, setSwitchingOrg] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+
+  // Read the stored sidebar preference after mount so server and client HTML match.
+  useEffect(() => {
     try {
-      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+      if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true') setIsCollapsed(true);
     } catch {
-      return false;
+      // ignore storage errors
     }
-  });
+  }, []);
 
   // Only a super administrator can traverse tenants, so only they get the switcher.
   const canSwitchOrg = hasRole(['SUPER_ADMIN']);
@@ -112,7 +118,7 @@ export function RootLayout() {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    router.push('/login');
   };
 
   const getRoleBadgeVariant = (role?: string) => {
@@ -187,7 +193,7 @@ export function RootLayout() {
 
   // Helper to compute dynamic breadcrumbs from location
   const getBreadcrumbTitle = () => {
-    const path = location.pathname;
+    const path = pathname;
     if (path === '/dashboard' || path === '' || path === '/') {
       return { section: 'Overview', page: 'Dashboard', sectionTo: '/dashboard', pageTo: '/dashboard' };
     }
@@ -234,7 +240,7 @@ export function RootLayout() {
   };
 
   const isItemActive = (to: string) => {
-    const path = location.pathname;
+    const path = pathname;
     if (to === '/dashboard') return path === '/dashboard' || path === '/';
     if (to === '/devices') return path === '/devices' || (path.startsWith('/devices/') && !path.startsWith('/devices/groups'));
     if (to === '/devices/groups' || to === '/device-groups') return path.startsWith('/devices/groups') || path.startsWith('/device-groups');
@@ -509,9 +515,9 @@ export function RootLayout() {
                       const Icon = item.icon;
                       const active = isItemActive(item.to);
                       return (
-                        <NavLink
+                        <Link
                           key={item.name}
-                          to={item.to}
+                          href={item.to}
                           title={item.name}
                           onClick={() => setMobileMenuOpen(false)}
                           className={
@@ -533,7 +539,7 @@ export function RootLayout() {
                               {item.badge}
                             </span>
                           )}
-                        </NavLink>
+                        </Link>
                       );
                     })}
                   </div>
@@ -612,12 +618,12 @@ export function RootLayout() {
 
             {/* Breadcrumb Trail */}
             <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-slate-500 min-w-0 truncate">
-              <NavLink
-                to={breadcrumbs.sectionTo}
+              <Link
+                href={breadcrumbs.sectionTo}
                 className="font-medium text-slate-500 hover:text-slate-800 transition-colors shrink-0"
               >
                 {breadcrumbs.section}
-              </NavLink>
+              </Link>
               <span className="text-slate-300 shrink-0">/</span>
               <span className="font-semibold text-slate-900 truncate">{breadcrumbs.page}</span>
             </div>
@@ -653,7 +659,7 @@ export function RootLayout() {
 
         {/* Page Content Body */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50/70 overflow-x-hidden">
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>

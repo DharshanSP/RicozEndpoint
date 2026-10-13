@@ -28,22 +28,24 @@ services:
       - key: ALLOW_PUBLIC_SIGNUP
         value: "false"
 
-  # ── Frontend (Vite static bundle) ───────────────────────────────────────────
-  # Set VITE_API_URL to the live API above (e.g. https://ricoz-api.onrender.com/api)
+  # ── Frontend (Next.js) ───────────────────────────────────────────
+  # Set NEXT_PUBLIC_API_URL to the live API above (e.g. https://ricoz-api.onrender.com/api)
   # and CORS_ORIGIN on the API to this service's URL.
   - type: web
     name: ricoz-web
-    runtime: static
+    runtime: node
     plan: free
     branch: main
     buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @ricoz/web build
-    staticPublishPath: apps/web/dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    # next start honors Render's PORT when -p is not passed.
+    startCommand: pnpm --filter @ricoz/web exec next start
+    healthCheckPath: /login
     envVars:
-      - key: VITE_API_URL
+      - key: NODE_ENV
+        value: production
+      # Public runtime config, inlined at build time: point this at the API above
+      # (e.g. https://ricoz-api.onrender.com/api) before the first deploy.
+      - key: NEXT_PUBLIC_API_URL
         sync: false
-      - key: VITE_AGENT_DOWNLOAD_URL
+      - key: NEXT_PUBLIC_AGENT_DOWNLOAD_URL
         sync: false

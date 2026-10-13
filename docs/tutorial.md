@@ -311,7 +311,7 @@ log_level = "info"
 | Policy not applying | Priority conflict or device not in group | Verify group membership, check policy priority |
 | Login fails | Wrong org / password | Ensure user belongs to org; SUPER_ADMIN bypasses org scope |
 | Commands fail | Agent version mismatch / offline | Agent must be ≥0.1.0 and ONLINE |
-| Web shows blank page | Vite dev server not running / API URL wrong | Check `VITE_API_URL` in web `.env` |
+| Web shows blank page | Vite dev server not running / API URL wrong | Check `NEXT_PUBLIC_API_URL` in web `.env` |
 
 ---
 
@@ -335,7 +335,7 @@ Agent evaluates `condition` against collected facts. Extend agent fact collector
 ```
 ├── apps/
 │   ├── api/          # Fastify + Prisma backend
-│   ├── web/          # React + Vite + TanStack Query frontend
+│   ├── web/          # React + Next.js + TanStack Query frontend
 │   └── agent/        # Go/Rust agent (separate repo)
 ├── packages/
 │   ├── shared-types/ # TypeScript interfaces

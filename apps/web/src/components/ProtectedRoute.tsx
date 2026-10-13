@@ -1,6 +1,8 @@
-import type { FC, ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth, UserRole } from '../context/AuthContext';
+'use client';
+
+import { type FC, type ReactNode, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth, type UserRole } from '../context/AuthContext';
 import { LoadingPage } from './LoadingPage';
 import { Shield } from 'lucide-react';
 
@@ -11,14 +13,23 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
   const { isAuthenticated, isLoading, user, hasRole } = useAuth();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Preserve the attempted destination so LoginPage can send the user back after auth.
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace(`/login?from=${encodeURIComponent(pathname)}`);
+    }
+  }, [isLoading, isAuthenticated, pathname, router]);
 
   if (isLoading) {
     return <LoadingPage message="Verifying security session..." subtext="Validating authentication tokens..." />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // Navigation to /login is in flight; render nothing to avoid a logged-out flash.
+    return null;
   }
 
   if (allowedRoles && allowedRoles.length > 0 && !hasRole(allowedRoles)) {

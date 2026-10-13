@@ -1,4 +1,4 @@
-const rawBaseUrl: string = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const rawBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 /** Normalized API base URL (no trailing slash) shared by UI snippets and requests. */
 export const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');

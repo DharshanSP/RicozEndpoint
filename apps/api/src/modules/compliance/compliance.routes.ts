@@ -199,28 +199,29 @@ export async function complianceRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const { range, status, page, limit, search } = parsed.data;
-      const since = new Date(Date.now() - (RANGE_MS[range] ?? RANGE_MS['24h'] ?? 0));
+      // "All time" has no window: start at the epoch instead of silently
+      // falling back to the 24h default (RANGE_MS has no `all` entry).
+      const since =
+        range === 'all' ? new Date(0) : new Date(Date.now() - (RANGE_MS[range] ?? RANGE_MS['24h'] ?? 0));
 
-      const devices = await app.prisma.device.findMany({
-        where: orgFilter(jwtUser),
-        select: {
-          id: true,
-          deviceName: true,
-          hostname: true,
-          serialNumber: true,
-          os: true,
-          osVersion: true,
-          agentVersion: true,
-          status: true,
-          lastSeenAt: true,
-          firewallEnabled: true,
-          antivirusEnabled: true,
-        },
-        orderBy: { deviceName: 'asc' },
-      });
-      const deviceIds = devices.map((d) => d.id);
-
-      const [rules, policies, allResults, windowResults] = await Promise.all([
+      const [devices, rules, policies] = await Promise.all([
+        app.prisma.device.findMany({
+          where: orgFilter(jwtUser),
+          select: {
+            id: true,
+            deviceName: true,
+            hostname: true,
+            serialNumber: true,
+            os: true,
+            osVersion: true,
+            agentVersion: true,
+            status: true,
+            lastSeenAt: true,
+            firewallEnabled: true,
+            antivirusEnabled: true,
+          },
+          orderBy: { deviceName: 'asc' },
+        }),
         app.prisma.complianceRule.findMany({
           where: { organizationId: jwtUser.organizationId, isActive: true },
           select: { id: true, name: true, description: true },
@@ -231,9 +232,13 @@ export async function complianceRoutes(app: FastifyInstance): Promise<void> {
           select: { id: true, name: true, description: true },
           orderBy: { createdAt: 'asc' },
         }),
+      ]);
+      const deviceIds = devices.map((d) => d.id);
+
+      const allResults =
         deviceIds.length === 0
-          ? Promise.resolve([])
-          : app.prisma.complianceResult.findMany({
+          ? []
+          : await app.prisma.complianceResult.findMany({
               where: { deviceId: { in: deviceIds } },
               orderBy: { evaluatedAt: 'desc' },
               select: {
@@ -245,23 +250,12 @@ export async function complianceRoutes(app: FastifyInstance): Promise<void> {
                 evaluatedAt: true,
               },
               take: MAX_RESULTS_SCAN,
-            }),
-        deviceIds.length === 0
-          ? Promise.resolve([])
-          : app.prisma.complianceResult.findMany({
-              where: { deviceId: { in: deviceIds }, evaluatedAt: { gte: since } },
-              orderBy: { evaluatedAt: 'desc' },
-              select: {
-                id: true,
-                deviceId: true,
-                ruleId: true,
-                status: true,
-                reason: true,
-                evaluatedAt: true,
-              },
-              take: MAX_RESULTS_SCAN,
-            }),
-      ]);
+            });
+
+      // Results inside the selected window are always a prefix of the full set
+      // (both are ordered by evaluatedAt desc), so the second scan of the same
+      // table is derived in memory instead of issued again.
+      const windowResults = allResults.filter((row) => row.evaluatedAt >= since);
 
       const ruleMeta = new Map(rules.map((r) => [r.id, { name: r.name, description: r.description }]));
       const policyMeta = new Map(policies.map((p) => [p.id, { name: p.name, description: p.description }]));

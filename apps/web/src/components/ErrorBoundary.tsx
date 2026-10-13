@@ -1,5 +1,6 @@
+'use client';
+
 import { Component, useState, type ErrorInfo, type ReactNode } from 'react';
-import { useRouteError, isRouteErrorResponse } from 'react-router-dom';
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -30,7 +31,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
     // In production, route to observability / monitoring service if configured
-    if (import.meta.env.DEV) {
+    if (process.env.NODE_ENV !== 'production') {
       console.error('[ErrorBoundary caught error]:', error, errorInfo);
     }
   }
@@ -140,27 +141,46 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 }
 
+interface RouteErrorViewProps {
+  error?: unknown;
+  /** Next.js error boundary reset callback; falls back to a hard reload. */
+  reset?: () => void;
+  /** Overrides the derived headline (e.g. "Page Not Found"). */
+  title?: string;
+  /** Overrides the derived description. */
+  message?: string;
+  /** Optional status badge shown above the headline (e.g. "404 Not Found"). */
+  statusText?: string;
+}
+
 /**
- * Route-level error element fallback for React Router.
+ * Route-level error UI rendered by `app/error.tsx` and `app/not-found.tsx`.
  */
-export function RouteErrorBoundary() {
-  const error = useRouteError();
+export function RouteErrorView({ error, reset, title: titleProp, message: messageProp, statusText: statusProp }: RouteErrorViewProps) {
   const [showDetails, setShowDetails] = useState(false);
 
   let title = 'Unexpected Application Error';
-  let message = 'An unhandled exception occurred in the application interface. You can reload or return to the dashboard.';
+  let message =
+    'An unhandled exception occurred in the application interface. You can reload or return to the dashboard.';
   let statusText = '';
   let errorDetails: { name: string; message: string; stack?: string } | null = null;
 
-  if (isRouteErrorResponse(error)) {
-    statusText = `${error.status} ${error.statusText}`;
-    title = error.status === 404 ? 'Page Not Found' : 'Navigation Error';
-    message = error.data?.message || error.statusText || 'The requested page or route could not be loaded.';
-  } else if (error instanceof Error) {
+  if (error instanceof Error) {
     title = 'Unexpected Application Error';
     message = error.message || message;
     errorDetails = { name: error.name, message: error.message, stack: error.stack };
+  } else if (typeof error === 'string' && error) {
+    message = error;
   }
+
+  if (titleProp) title = titleProp;
+  if (messageProp) message = messageProp;
+  if (statusProp) statusText = statusProp;
+
+  const handleRetry = () => {
+    if (reset) reset();
+    else window.location.reload();
+  };
 
   return (
     <div
@@ -178,22 +198,26 @@ export function RouteErrorBoundary() {
               {statusText}
             </span>
           )}
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            {title}
-          </h2>
-          <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-            {message}
-          </p>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h2>
+          <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">{message}</p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <Button
             variant="default"
             size="sm"
-            onClick={() => window.location.reload()}
+            onClick={handleRetry}
             className="text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
           >
             <RefreshCw className="w-3.5 h-3.5" />
+            <span>Try Again</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.location.reload()}
+            className="text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5"
+          >
             <span>Reload Page</span>
           </Button>
           <Button
@@ -225,7 +249,9 @@ export function RouteErrorBoundary() {
 
             {showDetails && (
               <div className="mt-2 p-3 bg-slate-900 text-slate-200 rounded-lg text-[11px] font-mono overflow-auto max-h-40 space-y-1">
-                <p className="text-red-400 font-semibold">{errorDetails.name}: {errorDetails.message}</p>
+                <p className="text-red-400 font-semibold">
+                  {errorDetails.name}: {errorDetails.message}
+                </p>
                 {errorDetails.stack && (
                   <pre className="text-[10px] text-slate-400 whitespace-pre-wrap">{errorDetails.stack}</pre>
                 )}

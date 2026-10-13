@@ -37,6 +37,20 @@ export const updateUserSchema = z.object({
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
 /**
+ * Organization user directory query. Filtering happens in the database so the
+ * console never pulls the whole tenant just to render one page.
+ */
+export const userListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().optional(),
+  role: userRoleEnum.optional(),
+  isActive: z.enum(['true', 'false']).optional(),
+});
+
+export type UserListQueryInput = z.infer<typeof userListQuerySchema>;
+
+/**
  * Password policy applied to every self-service or admin-set password.
  * Mirrors the seed/demo credentials minimum of 8 characters.
  */

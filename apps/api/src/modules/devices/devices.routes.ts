@@ -257,28 +257,31 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Compliance bucket + activity feed only depend on the device that was
+      // just loaded, not on each other: run them together.
+      const [complianceRows, auditLogs] = await Promise.all([
+        app.prisma.complianceResult.groupBy({
+          by: ['status'],
+          where: { deviceId: device.id },
+          _count: { _all: true },
+        }),
+        app.prisma.auditLog.findMany({
+          where: {
+            organizationId: device.organizationId,
+            resourceId: device.id,
+          },
+          take: 20,
+          orderBy: { timestamp: 'desc' },
+          include: { actor: { select: { id: true, email: true, name: true } } },
+        }),
+      ]);
+
       // Real compliance bucket from stored evaluation results.
-      const complianceRows = await app.prisma.complianceResult.groupBy({
-        by: ['status'],
-        where: { deviceId: device.id },
-        _count: { _all: true },
-      });
       const totalResults = complianceRows.reduce((sum, row) => sum + row._count._all, 0);
       const nonCompliantResults =
         complianceRows.find((row) => row.status === 'NON_COMPLIANT')?._count._all ?? 0;
       const complianceStatus: ComplianceBucket =
         totalResults === 0 ? 'UNTESTED' : nonCompliantResults > 0 ? 'NON_COMPLIANT' : 'COMPLIANT';
-
-      // Fetch audit logs as activity
-      const auditLogs = await app.prisma.auditLog.findMany({
-        where: {
-          organizationId: device.organizationId,
-          resourceId: device.id,
-        },
-        take: 20,
-        orderBy: { timestamp: 'desc' },
-        include: { actor: { select: { id: true, email: true, name: true } } },
-      });
 
       const activity = [
         ...auditLogs.map((log) => ({

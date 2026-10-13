@@ -18,8 +18,9 @@ services:
       retries: 5
 
   # Production-like local stack: `docker compose up --build` serves the API
-  # against the bundled Postgres. Web (Vite) is deployed as a static site
-  # (see render.yaml `ricoz-web`); point VITE_API_URL at this API when testing.
+  # against the bundled Postgres. The web app is a Node service (Next.js,
+  # see render.yaml `ricoz-web`) and proxies /api to this API; point
+  # NEXT_PUBLIC_API_URL at this API when testing.
   api:
     build:
       context: .

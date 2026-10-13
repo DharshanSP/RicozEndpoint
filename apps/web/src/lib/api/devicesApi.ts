@@ -16,7 +16,7 @@ import type {
  * DEVICE MANAGEMENT API CONTRACT
  * ============================================================================
  *
- * Base path: /api/devices  (proxied by Vite to the API server on :3001)
+ * Base path: /api/devices  (proxied by Next.js rewrites to the API server on :3001)
  * Auth: Authorization: Bearer <jwt_token> (injected by fetchApi)
  *
  * GET /api/devices?page=&limit=&search=&status=&os=&sortBy=&sortOrder=

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { createAlertDedup, resolveAlertsMatching } from '../modules/alerts/alerts.service';
+import { createAlertsDedupBatch, resolveAlertsMatching } from '../modules/alerts/alerts.service';
 
 const DEFAULT_OFFLINE_TIMEOUT_MINUTES = 15;
 const DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60;
@@ -57,19 +57,23 @@ export async function sweepOfflineDevices(prisma: PrismaClient): Promise<number>
     const settings = parseSettings(organization.settingsJson);
     const timeoutMinutes = settings.offlineTimeoutMinutes ?? DEFAULT_OFFLINE_TIMEOUT_MINUTES;
 
-    for (const device of stale) {
-      await createAlertDedup(prisma, {
+    // One batched dedup lookup + insert for the whole org. Alerting per device
+    // meant up to 2 queries each, serially, every time an outage took a large
+    // chunk of the fleet stale at once.
+    await createAlertsDedupBatch(
+      prisma,
+      stale.map((device) => ({
         organizationId: organization.id,
         deviceId: device.id,
         type: 'DEVICE_OFFLINE',
-        severity: 'WARNING',
+        severity: 'WARNING' as const,
         title: `Device offline: ${device.hostname}`,
         message: `No agent heartbeat received in the last ${timeoutMinutes} minute(s). Last seen ${
           device.lastSeenAt ? device.lastSeenAt.toISOString() : 'never'
         }.`,
         dedupKey: `offline:${device.id}`,
-      });
-    }
+      }))
+    );
 
     await prisma.auditLog.create({
       data: {

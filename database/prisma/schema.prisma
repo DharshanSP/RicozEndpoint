@@ -195,6 +195,7 @@ model DeviceGroupMember {
   device Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, deviceId])
+  @@index([deviceId])
   @@map("device_group_members")
 }
 
@@ -272,6 +273,7 @@ model ComplianceResult {
   rule   ComplianceRule? @relation(fields: [ruleId], references: [id])
 
   @@index([deviceId])
+  @@index([ruleId])
   @@index([evaluatedAt])
   @@map("compliance_results")
 }
@@ -298,6 +300,7 @@ model Command {
   requester    User?        @relation("RequestedBy", fields: [requestedBy], references: [id])
   deployment   Deployment?  @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
 
+  @@index([organizationId])
   @@index([deviceId])
   @@index([status])
   @@index([patchId])
@@ -381,6 +384,7 @@ model Alert {
   @@index([severity])
   @@index([status])
   @@index([organizationId, type, status])
+  @@index([dedupKey])
   @@map("alerts")
 }
 

@@ -1,31 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class'],
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {
-        sans: [
-          'Inter',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          '"Segoe UI"',
-          'Roboto',
-          '"Helvetica Neue"',
-          'Arial',
-          'sans-serif',
-        ],
-        mono: [
-          '"JetBrains Mono"',
-          'ui-monospace',
-          'SFMono-Regular',
-          'Menlo',
-          'Monaco',
-          'Consolas',
-          '"Liberation Mono"',
-          '"Courier New"',
-          'monospace',
-        ],
+        // Resolved by next/font (self-hosted, zero layout shift) in app/layout.tsx.
+        sans: ['var(--font-sans)'],
+        mono: ['var(--font-mono)'],
       },
       colors: {
         border: 'hsl(var(--border))',

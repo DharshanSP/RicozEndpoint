@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, type ElementType, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Search, X, CornerDownLeft, ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -37,7 +37,7 @@ export function GlobalSearch({
   trigger,
   showTrigger = false,
 }: GlobalSearchProps) {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
   const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
@@ -138,10 +138,10 @@ export function GlobalSearch({
       if (onSelect) {
         onSelect(item);
       } else if (item.path) {
-        navigate(item.path);
+        router.push(item.path);
       }
     },
-    [navigate, onSelect, setOpen],
+    [router, onSelect, setOpen],
   );
 
   // Keyboard navigation within the dialog

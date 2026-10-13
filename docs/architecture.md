@@ -9,7 +9,7 @@ RicozEndpoint is an enterprise endpoint management platform that enables IT admi
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Web Dashboard │────▶│   Backend API   │◀────│  Windows Agent  │
-│   (React/Vite)  │     │   (Fastify)     │     │  (C# Service)   │
+│   (React/Next.js)│     │   (Fastify)     │     │  (C# Service)   │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
                           ┌──────▼──────┐
@@ -22,12 +22,11 @@ RicozEndpoint is an enterprise endpoint management platform that enables IT admi
 
 ### Frontend (apps/web)
 - **Framework**: React 19 with TypeScript
-- **Build**: Vite
+- **Build**: Next.js 16 (App Router, Turbopack)
 - **Styling**: Tailwind CSS + shadcn/ui
 - **State**: TanStack Query for server state
-- **Routing**: React Router v7
-- **Forms**: React Hook Form + Zod validation
-- **Charts**: Recharts
+- **Routing**: Next.js App Router (file-system routes under `src/app`)
+- **Rendering**: Server-rendered route tree; interactive views are client components
 
 ### Backend (apps/api)
 - **Framework**: Fastify with TypeScript

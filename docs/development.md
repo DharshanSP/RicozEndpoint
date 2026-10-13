@@ -100,7 +100,7 @@ RicozEndpoint/
 
 ### Frontend
 - React DevTools
-- Vite HMR for instant feedback
+- Next.js dev server with fast refresh (`pnpm dev:web`, http://localhost:5173)
 
 ### Database
 - Prisma Studio: `pnpm db:studio`

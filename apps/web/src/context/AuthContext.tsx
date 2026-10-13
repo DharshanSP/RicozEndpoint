@@ -45,6 +45,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'ricoz_auth_token';
 
+/** Refresh a session this long before it expires so long-lived dashboards stay signed in. */
+const REFRESH_WINDOW_MS = 15 * 60 * 1000;
+
+/** Milliseconds until a JWT expires, or null when the token cannot be parsed. */
+function msUntilTokenExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/') ?? ''));
+    if (typeof payload?.exp !== 'number') return null;
+    return payload.exp * 1000 - Date.now();
+  } catch {
+    return null;
+  }
+}
+
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   SUPER_ADMIN: 5,
   ORG_ADMIN: 4,
@@ -55,7 +69,11 @@ export const ROLE_HIERARCHY: Record<UserRole, number> = {
 
 export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  // localStorage only exists in the browser; the server render starts without a token
+  // and hydrates from storage on the client (the token itself is never rendered).
+  const [token, setToken] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY)
+  );
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Any 401 from the API clears the session so ProtectedRoute redirects to /login.
@@ -75,6 +93,18 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
       if (!token) {
         setIsLoading(false);
         return;
+      }
+
+      // Exchange a near-expiry token for a fresh one instead of letting the session lapse.
+      const remaining = msUntilTokenExpiry(token);
+      if (remaining !== null && remaining < REFRESH_WINDOW_MS) {
+        const refreshed = await fetchApi<{ token: string }>('/auth/refresh', { method: 'POST' });
+        if (refreshed.success && refreshed.data?.token) {
+          localStorage.setItem(TOKEN_KEY, refreshed.data.token);
+          setToken(refreshed.data.token);
+          // Re-run this effect with the new token; isLoading stays true until it resolves.
+          return;
+        }
       }
 
       const res = await fetchApi<User>('/auth/me');
@@ -115,6 +145,9 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
   };
 
   const logout = () => {
+    // Best-effort server-side logout so the API audit log records the session end.
+    // fetchApi reads the token synchronously, so clearing storage afterwards is safe.
+    void fetchApi('/auth/logout', { method: 'POST' });
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);

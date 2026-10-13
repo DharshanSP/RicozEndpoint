@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const auditLogListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(20),
   search: z.string().optional(),
   action: z.string().max(255).optional(),
   resource: z.string().max(255).optional(),

@@ -56,6 +56,59 @@ export async function createAlertDedup(prisma: PrismaClient, input: CreateAlertC
   return { id: alert.id, deduplicated: false };
 }
 
+/**
+ * Batched createAlertDedup: one findMany over the union of the scopes plus a
+ * single createMany, instead of up to two round trips per input. Each input is
+ * de-duplicated with the exact same semantics as the single-row version — a
+ * scope that omits deviceId or dedupKey still matches any row on that field.
+ * Used by the offline sweeper, where an outage can take hundreds of devices
+ * stale at once.
+ */
+export async function createAlertsDedupBatch(prisma: PrismaClient, inputs: CreateAlertCommand[]) {
+  if (inputs.length === 0) return { created: 0, deduplicated: 0 };
+
+  const existing = await prisma.alert.findMany({
+    where: {
+      OR: inputs.map((input) => ({
+        organizationId: input.organizationId,
+        ...(input.deviceId ? { deviceId: input.deviceId } : {}),
+        type: input.type,
+        status: { in: UNRESOLVED },
+        ...(input.dedupKey ? { dedupKey: input.dedupKey } : {}),
+      })),
+    },
+    select: { organizationId: true, deviceId: true, type: true, dedupKey: true },
+  });
+
+  const alreadyOpen = (input: CreateAlertCommand) =>
+    existing.some(
+      (row) =>
+        row.organizationId === input.organizationId &&
+        row.type === input.type &&
+        (!input.deviceId || row.deviceId === input.deviceId) &&
+        (!input.dedupKey || row.dedupKey === input.dedupKey)
+    );
+
+  const toCreate = inputs.filter((input) => !alreadyOpen(input));
+  if (toCreate.length > 0) {
+    await prisma.alert.createMany({
+      data: toCreate.map((input) => ({
+        organizationId: input.organizationId,
+        deviceId: input.deviceId ?? null,
+        type: input.type,
+        dedupKey: input.dedupKey ?? null,
+        severity: input.severity,
+        title: input.title,
+        message: input.message,
+        status: 'OPEN',
+        resolvedAt: null,
+      })),
+    });
+  }
+
+  return { created: toCreate.length, deduplicated: inputs.length - toCreate.length };
+}
+
 export interface ResolveAlertsCommand {
   organizationId?: string;
   deviceId?: string;

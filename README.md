@@ -45,7 +45,7 @@ Enterprise endpoint management platform for managing, monitoring, and securing d
 
 ## Tech Stack
 
-- **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Frontend**: React, TypeScript, Next.js (App Router), Tailwind CSS, shadcn/ui
 - **Backend**: Node.js, Fastify, TypeScript, Prisma ORM
 - **Database**: PostgreSQL
 - **Agent**: TypeScript agent (`apps/agent`), downloadable Windows EXE, and C# Windows Service (`agents/windows`)
@@ -101,10 +101,10 @@ The agent collects device inventory, enrolls the device, saves its agent credent
 
 ## Agent distribution
 
-Release builds are published as **GitHub Release assets** (`RicozEndpointAgent.exe` + `RicozEndpointAgent.zip`) by the `agent-release` workflow — push a tag like `agent-v0.1.1` to cut one. The web app links to the release via `VITE_AGENT_DOWNLOAD_URL`:
+Release builds are published as **GitHub Release assets** (`RicozEndpointAgent.exe` + `RicozEndpointAgent.zip`) by the `agent-release` workflow — push a tag like `agent-v0.1.1` to cut one. The web app links to the release via `NEXT_PUBLIC_AGENT_DOWNLOAD_URL`:
 
 ```bash
-VITE_AGENT_DOWNLOAD_URL=https://github.com/DharshanSP/RicozEndpoint/releases/latest/download/RicozEndpointAgent.zip
+NEXT_PUBLIC_AGENT_DOWNLOAD_URL=https://github.com/DharshanSP/RicozEndpoint/releases/latest/download/RicozEndpointAgent.zip
 ```
 
 For local development, build the EXE yourself (it lands in `apps/web/public/downloads/` and is served from there when the env var is unset):

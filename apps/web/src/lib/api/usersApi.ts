@@ -29,16 +29,36 @@ export interface UpdateUserPayload {
   isActive?: boolean;
 }
 
-export async function listUsers(): Promise<UserSummary[]> {
-  const res = await fetchApi<UserSummary[]>('/users');
+export interface UserListParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+export interface UserListPage {
+  items: UserSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export async function listUsers(params: UserListParams = {}): Promise<UserListPage> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.search) query.set('search', params.search);
+  if (params.role) query.set('role', params.role);
+  if (params.isActive !== undefined) query.set('isActive', String(params.isActive));
+
+  const search = query.toString();
+  const res = await fetchApi<UserListPage>(`/users${search ? `?${search}` : ''}`);
   if (!res.success || !res.data) {
     throw new Error(res.error?.message ?? 'Failed to retrieve organization users');
   }
   return res.data;
-}
-
-export async function getUsers() {
-  return fetchApi<UserSummary[]>('/users');
 }
 
 export async function createUser(payload: CreateUserPayload): Promise<UserSummary> {

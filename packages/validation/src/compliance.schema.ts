@@ -12,7 +12,7 @@ export const complianceListQuerySchema = z.object({
   range: complianceRangeEnum.default('24h'),
   status: z.enum(['NON_COMPLIANT', 'COMPLIANT', 'UNTESTED', 'ALL']).default('NON_COMPLIANT'),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
   search: z.string().trim().min(1).optional(),
 });
 
