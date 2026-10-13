@@ -1,14 +1,21 @@
-const rawBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+/** Deployed API used when no NEXT_PUBLIC_API_URL override is present. */
+const DEPLOYED_API_URL = 'https://ricoz-api.onrender.com/api';
+const LOCAL_API_URL = 'http://localhost:3001/api';
+
+const servedLocally =
+  typeof window === 'undefined' || LOCAL_HOSTS.has(window.location.hostname);
+
+const rawBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || (servedLocally ? LOCAL_API_URL : DEPLOYED_API_URL);
 
 /** Normalized API base URL (no trailing slash) shared by UI snippets and requests. */
 export const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');
 export const apiBaseUrl = API_BASE_URL;
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-
 /**
- * True when this build was deployed without NEXT_PUBLIC_API_URL, so requests
- * would silently target http://localhost:3001 and fail with "Failed to fetch".
+ * True when this deployment points at a local API (e.g. NEXT_PUBLIC_API_URL was
+ * set to localhost for a hosted build), so requests would fail with "Failed to fetch".
  */
 export const API_BASE_URL_MISCONFIGURED = (() => {
   if (typeof window === 'undefined') return false;
@@ -21,9 +28,9 @@ export const API_BASE_URL_MISCONFIGURED = (() => {
 })();
 
 const MISCONFIGURED_MESSAGE =
-  'API base URL is not configured for this deployment (still pointing at localhost). ' +
-  'Set NEXT_PUBLIC_API_URL (e.g. https://ricoz-api.onrender.com/api) in your hosting ' +
-  'environment and redeploy — it is baked in at build time.';
+  'API base URL points at localhost for this deployment. Set NEXT_PUBLIC_API_URL ' +
+  '(e.g. https://ricoz-api.onrender.com/api) in your hosting environment and redeploy — ' +
+  'it is baked in at build time.';
 
 /** Fired when the API rejects the current session (401) so auth state can be cleared. */
 export const UNAUTHORIZED_EVENT = 'ricoz:unauthorized';
