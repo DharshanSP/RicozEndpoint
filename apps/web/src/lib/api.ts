@@ -4,6 +4,27 @@ const rawBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:
 export const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');
 export const apiBaseUrl = API_BASE_URL;
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+/**
+ * True when this build was deployed without NEXT_PUBLIC_API_URL, so requests
+ * would silently target http://localhost:3001 and fail with "Failed to fetch".
+ */
+export const API_BASE_URL_MISCONFIGURED = (() => {
+  if (typeof window === 'undefined') return false;
+  if (LOCAL_HOSTS.has(window.location.hostname)) return false;
+  try {
+    return LOCAL_HOSTS.has(new URL(API_BASE_URL).hostname);
+  } catch {
+    return true;
+  }
+})();
+
+const MISCONFIGURED_MESSAGE =
+  'API base URL is not configured for this deployment (still pointing at localhost). ' +
+  'Set NEXT_PUBLIC_API_URL (e.g. https://ricoz-api.onrender.com/api) in your hosting ' +
+  'environment and redeploy — it is baked in at build time.';
+
 /** Fired when the API rejects the current session (401) so auth state can be cleared. */
 export const UNAUTHORIZED_EVENT = 'ricoz:unauthorized';
 
@@ -28,6 +49,13 @@ export async function fetchApi<T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiEnvelope<T>> {
+  if (API_BASE_URL_MISCONFIGURED) {
+    return {
+      success: false,
+      error: { code: 'CONFIG_ERROR', message: MISCONFIGURED_MESSAGE },
+    };
+  }
+
   const token = localStorage.getItem('ricoz_auth_token');
 
   const headers: Record<string, string> = {
