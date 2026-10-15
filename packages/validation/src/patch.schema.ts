@@ -49,6 +49,9 @@ export const patchUpdateSchema = z
     description: z.string().max(2000).optional(),
     severity: patchSeverityEnum.optional(),
     category: z.string().max(120).optional(),
+    cveIds: z.array(z.string().trim().min(1).max(32)).max(20).optional(),
+    cvssScore: z.number().min(0).max(10).nullable().optional(),
+    cvssVector: z.string().trim().max(255).nullable().optional(),
     releaseDate: z.coerce.date().nullable().optional(),
     status: patchStatusEnum.optional(),
   })

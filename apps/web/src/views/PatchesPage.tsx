@@ -620,6 +620,11 @@ export function PatchesPage() {
                   <h4 className="text-sm font-semibold text-slate-900">{detail.title}</h4>
                   <p className="text-xs text-slate-500">{detail.description || 'No description.'}</p>
                   <p className="text-xs text-slate-500">Category: {detail.category} • Released {formatDate(detail.releaseDate)}</p>
+                  {(detail.cveIds && detail.cveIds.length > 0) || detail.cvssScore != null ? (
+                    <p className="text-xs text-slate-500">
+                      {detail.cveIds && detail.cveIds.length > 0 ? `CVEs: ${detail.cveIds.join(', ')}` : ''}{detail.cveIds && detail.cveIds.length > 0 && detail.cvssScore != null ? ' • ' : ''}{detail.cvssScore != null ? `CVSS ${detail.cvssScore.toFixed(1)}${detail.cvssVector ? ` (${detail.cvssVector})` : ''}` : ''}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-slate-500">
                     Installed {detail.summary.installed}/{detail.summary.totalDevices} • Missing {detail.summary.missing} • Failed {detail.summary.failed} • In-flight {detail.summary.inFlight}
                   </p>
@@ -653,11 +658,16 @@ export function PatchesPage() {
                           {d.command.completedAt ? ` • finished ${formatDateTime(d.command.completedAt)}` : ''}
                         </p>
                       )}
-                      {d.command?.errorMessage && (
-                        <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded px-2 py-1 break-words">
-                          {d.command.errorMessage}
-                        </p>
-                      )}
+                        {d.command?.errorMessage && (
+                          <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded px-2 py-1 break-words">
+                            {d.command.errorMessage}
+                          </p>
+                        )}
+                        {d.needsReboot && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+                            Reboot required to complete this update
+                          </p>
+                        )}
                     </div>
                   ))}
                   {detail.devices.length === 0 && (<p className="text-xs text-slate-500">No devices in this organization yet.</p>)}

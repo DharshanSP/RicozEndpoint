@@ -449,18 +449,20 @@ Write-Host "Installed and started agent at $target"
           const patchState = body.data.status === 'COMPLETED' ? 'INSTALLED' : 'FAILED';
           await tx.devicePatch.upsert({
             where: { deviceId_patchId: { deviceId: agentDevice.id, patchId: existing.patchId } },
-            create: {
-              deviceId: agentDevice.id,
-              patchId: existing.patchId,
-              status: patchState,
-              installedAt: body.data.status === 'COMPLETED' ? now : null,
-              lastReportedAt: now,
-            },
-            update: {
-              status: patchState,
-              installedAt: body.data.status === 'COMPLETED' ? now : undefined,
-              lastReportedAt: now,
-            },
+    create: {
+      deviceId: agentDevice.id,
+      patchId: existing.patchId,
+      status: patchState,
+      needsReboot: body.data.result?.includes('reboot-required') ?? false,
+      installedAt: body.data.status === 'COMPLETED' ? now : null,
+      lastReportedAt: now,
+    },
+    update: {
+      status: patchState,
+      needsReboot: body.data.result?.includes('reboot-required') ?? false,
+      installedAt: body.data.status === 'COMPLETED' ? now : undefined,
+      lastReportedAt: now,
+    },
           });
         }
 

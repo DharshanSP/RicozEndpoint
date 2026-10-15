@@ -12,6 +12,9 @@ export interface PatchItem {
   description: string;
   severity: PatchSeverity;
   category: string;
+  cveIds?: string[];
+  cvssScore?: number | null;
+  cvssVector?: string | null;
   status: PatchStatus;
   releaseDate: string | null;
   createdById: string | null;
@@ -76,6 +79,7 @@ export interface PatchDeviceRow {
   patchStatus: PatchDeviceStatus;
   installedAt: string | null;
   lastReportedAt: string | null;
+  needsReboot: boolean;
   command: PatchCommandRef | null;
 }
 
@@ -97,6 +101,7 @@ export interface DevicePatchItem extends PatchItem {
   deviceStatus: PatchDeviceStatus;
   installedAt: string | null;
   lastReportedAt: string | null;
+  needsReboot: boolean;
   command: PatchCommandRef | null;
 }
 
@@ -122,6 +127,9 @@ export interface CreatePatchPayload {
   description?: string;
   severity?: PatchSeverity;
   category?: string;
+  cveIds?: string[];
+  cvssScore?: number | null;
+  cvssVector?: string | null;
   releaseDate?: string;
   status?: PatchStatus;
 }
@@ -131,6 +139,9 @@ export interface UpdatePatchPayload {
   description?: string;
   severity?: PatchSeverity;
   category?: string;
+  cveIds?: string[];
+  cvssScore?: number | null;
+  cvssVector?: string | null;
   releaseDate?: string | null;
   status?: PatchStatus;
 }

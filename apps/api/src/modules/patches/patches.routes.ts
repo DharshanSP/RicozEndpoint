@@ -24,9 +24,12 @@ interface PatchRow {
   kbNumber: string;
   title: string;
   description: string;
-  severity: string;
-  category: string;
-  status: string;
+severity: string;
+category: string;
+cveIds: string[];
+cvssScore: number | null;
+cvssVector: string | null;
+status: string;
   releaseDate: Date | null;
   createdById: string | null;
   createdAt: Date;
@@ -40,9 +43,12 @@ function patchDetails(patch: PatchRow): Record<string, unknown> {
     kbNumber: patch.kbNumber,
     title: patch.title,
     description: patch.description,
-    severity: patch.severity,
-    category: patch.category,
-    status: patch.status,
+severity: patch.severity,
+category: patch.category,
+cveIds: patch.cveIds ?? [],
+cvssScore: patch.cvssScore ?? null,
+cvssVector: patch.cvssVector ?? null,
+status: patch.status,
     releaseDate: toIso(patch.releaseDate),
     createdById: patch.createdById,
     createdAt: toIso(patch.createdAt),
@@ -63,7 +69,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     value: string
   ): number => rows.find((row) => row[key] === value)?._count._all ?? 0;
 
-  // ─── List patches (org-scoped) ──────────────────────────────────────────────
+  // â”€â”€â”€ List patches (org-scoped) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/', {
     preHandler: [requireMinRole(UserRole.VIEWER)],
     schema: {
@@ -202,7 +208,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Patches for a single device ───────────────────────────────────────────
+  // â”€â”€â”€ Patches for a single device â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/device/:id', {
     preHandler: [requireMinRole(UserRole.VIEWER)],
     schema: {
@@ -305,7 +311,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Get patch by id (with per-device coverage) ────────────────────────────
+  // â”€â”€â”€ Get patch by id (with per-device coverage) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/:id', {
     preHandler: [requireMinRole(UserRole.VIEWER)],
     schema: {
@@ -358,7 +364,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
         }),
         app.prisma.devicePatch.findMany({
           where: { patchId: patch.id },
-          select: { deviceId: true, status: true, installedAt: true, lastReportedAt: true },
+          select: { deviceId: true, status: true, installedAt: true, needsReboot: true, lastReportedAt: true },
         }),
         app.prisma.command.findMany({
           // Latest command per device for this patch (terminal states included),
@@ -409,6 +415,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           patchStatus: deviceStatus,
           installedAt: toIso(state?.installedAt),
           lastReportedAt: toIso(state?.lastReportedAt),
+          needsReboot: state?.needsReboot ?? false,
           command: command
             ? {
                 ...command,
@@ -436,7 +443,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Create a patch entry (IT Admin+) ──────────────────────────────────────
+  // â”€â”€â”€ Create a patch entry (IT Admin+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.post('/', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
     schema: {
@@ -493,9 +500,12 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           kbNumber,
           title: body.data.title.trim(),
           description: body.data.description?.trim() ?? '',
-          severity: body.data.severity,
-          category: body.data.category?.trim() || 'Security Updates',
-          releaseDate: body.data.releaseDate ?? null,
+severity: body.data.severity,
+category: body.data.category?.trim() || 'Security Updates',
+cveIds: body.data.cveIds ?? [],
+cvssScore: body.data.cvssScore ?? null,
+cvssVector: body.data.cvssVector?.trim() || null,
+releaseDate: body.data.releaseDate ?? null,
           status: body.data.status ?? 'PENDING',
           createdById: jwtUser.sub,
         },
@@ -511,11 +521,11 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Update a patch entry (IT Admin+) ──────────────────────────────────────
+  // â”€â”€â”€ Update a patch entry (IT Admin+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.patch('/:id', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
     schema: {
-      description: 'Update patch metadata or move it through PENDING → APPROVED → DEPLOYED',
+      description: 'Update patch metadata or move it through PENDING â†’ APPROVED â†’ DEPLOYED',
       tags: ['Patches'],
       params: {
         type: 'object',
@@ -580,8 +590,11 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           ...(input.title !== undefined ? { title: input.title.trim() } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.severity !== undefined ? { severity: input.severity } : {}),
-          ...(input.category !== undefined ? { category: input.category } : {}),
-          ...(input.releaseDate !== undefined ? { releaseDate: input.releaseDate } : {}),
+...(input.category !== undefined ? { category: input.category } : {}),
+...(input.cveIds !== undefined ? { cveIds: input.cveIds } : {}),
+...(input.cvssScore !== undefined ? { cvssScore: input.cvssScore } : {}),
+...(input.cvssVector !== undefined ? { cvssVector: input.cvssVector?.trim() || null } : {}),
+...(input.releaseDate !== undefined ? { releaseDate: input.releaseDate } : {}),
           ...(input.status !== undefined ? { status: input.status } : {}),
         },
       });
@@ -595,7 +608,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Deploy a patch (IT Admin+) ────────────────────────────────────────────
+  // â”€â”€â”€ Deploy a patch (IT Admin+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.post('/:id/deploy', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
     schema: {
@@ -787,7 +800,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Retry failed installs (IT Admin+) ─────────────────────────────────────
+  // â”€â”€â”€ Retry failed installs (IT Admin+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.post('/:id/retry', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
     schema: {
@@ -875,7 +888,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Cancel in-flight deployment (IT Admin+) ───────────────────────────────
+  // â”€â”€â”€ Cancel in-flight deployment (IT Admin+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.post('/:id/cancel', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
     schema: {
@@ -933,7 +946,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
-  // ─── Delete a patch entry (IT Admin+) ──────────────────────────────────────
+  // â”€â”€â”€ Delete a patch entry (IT Admin+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.delete('/:id', {
     preHandler: [requireMinRole(UserRole.IT_ADMIN)],
     schema: {
