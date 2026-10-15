@@ -445,16 +445,18 @@ export async function complianceRoutes(app: FastifyInstance): Promise<void> {
       let source: 'RULE' | 'POLICY';
       let name: string;
 
-      if (result.ruleId !== null) {
-        sourceId = result.ruleId;
-        source = 'RULE';
-        name = ruleName.get(result.ruleId) ?? 'Deleted rule';
-      } else {
-        sourceId = policyIdFromReason(result.reason);
-        if (!sourceId) continue;
-        source = 'POLICY';
-        name = policyName.get(sourceId) ?? 'Deleted policy';
-      }
+const policyId = policyIdFromReason(result.reason);
+if (policyId) {
+  sourceId = policyId;
+  source = 'POLICY';
+  name = policyName.get(policyId) ?? 'Deleted policy';
+} else if (result.ruleId !== null) {
+  sourceId = result.ruleId;
+  source = 'RULE';
+  name = ruleName.get(result.ruleId) ?? 'Deleted rule';
+} else {
+  continue;
+}
 
       const key = `${source}:${sourceId}`;
       if (seen.has(key)) continue;
@@ -477,25 +479,25 @@ export async function complianceRoutes(app: FastifyInstance): Promise<void> {
       .filter((r) => status === 'ALL' || r.status === status)
       .slice(0, limit)
       .map((result) => {
-        const policyId = policyIdFromReason(result.reason);
-        const sourceId = result.ruleId ?? policyId;
-        return {
-          id: result.id,
-          status: result.status,
-          reason: stripPolicyMarker(result.reason),
-          evaluatedAt: result.evaluatedAt,
-          source: (result.ruleId !== null ? 'RULE' : policyId ? 'POLICY' : 'UNKNOWN') as
-            | 'RULE'
-            | 'POLICY'
-            | 'UNKNOWN',
-          sourceName:
-            result.ruleId !== null
-              ? ruleName.get(result.ruleId) ?? 'Deleted rule'
-              : policyId
-                ? policyName.get(policyId) ?? 'Deleted policy'
-                : 'Manual evaluation',
-          sourceId,
-        };
+const policyId = policyIdFromReason(result.reason);
+const isPolicy = policyId !== null;
+const sourceId = isPolicy ? policyId : result.ruleId;
+return {
+  id: result.id,
+  status: result.status,
+  reason: stripPolicyMarker(result.reason),
+  evaluatedAt: result.evaluatedAt,
+  source: (isPolicy ? 'POLICY' : result.ruleId !== null ? 'RULE' : 'UNKNOWN') as
+    | 'RULE'
+    | 'POLICY'
+    | 'UNKNOWN',
+  sourceName: isPolicy
+    ? policyName.get(policyId!) ?? 'Deleted policy'
+    : result.ruleId !== null
+      ? ruleName.get(result.ruleId) ?? 'Deleted rule'
+      : 'Manual evaluation',
+  sourceId,
+};
       });
 
     const summaryStatus =
