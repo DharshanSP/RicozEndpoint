@@ -53,3 +53,8 @@ docker-data/
 #   pnpm build:agent:exe
 apps/web/public/downloads/RicozEndpointAgent.exe
 apps/web/public/downloads/RicozEndpointAgent.zip
+
+# Playwright
+test-results/
+playwright-report/
+
