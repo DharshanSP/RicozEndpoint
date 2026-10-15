@@ -421,14 +421,22 @@ describe('Compliance, Alerts & Commands API', () => {
       },
     });
 
-    const list = await app.inject({
-      method: 'GET',
-      url: '/api/alerts?severity=CRITICAL',
-      headers: { authorization: `Bearer ${adminToken}` },
-    });
-    assert.equal(list.statusCode, 200);
-    const listBody = list.json() as { data: { items: Array<{ id: string }> } };
-    assert.ok(listBody.data.items.some((a) => a.id === alert.id));
+  const list = await app.inject({
+    method: 'GET',
+    url: '/api/alerts?severity=CRITICAL',
+    headers: { authorization: `Bearer ${viewerToken}` },
+  });
+  assert.equal(list.statusCode, 200);
+  const listBody = list.json() as { data: { items: Array<{ id: string }> } };
+  assert.ok(listBody.data.items.some((a) => a.id === alert.id));
+
+  const forbiddenResolve = await app.inject({
+    method: 'POST',
+    url: `/api/alerts/${alert.id}/resolve`,
+    headers: { authorization: `Bearer ${viewerToken}` },
+    payload: { note: 'Viewer attempt' },
+  });
+  assert.equal(forbiddenResolve.statusCode, 403);
 
     // VIEWER can read the same alert…
     const viewerList = await app.inject({
