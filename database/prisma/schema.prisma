@@ -477,6 +477,9 @@ model Patch {
   description    String    @default("")
   severity       String    @default("IMPORTANT")
   category       String    @default("Security Updates")
+  cveIds         String[]  @default([])
+  cvssScore      Float?
+  cvssVector     String?
   status         String    @default("PENDING")
   releaseDate    DateTime?
   createdById    String?
@@ -502,6 +505,7 @@ model DevicePatch {
   patchId        String
   status         String    @default("MISSING")
   installedAt    DateTime?
+  needsReboot    Boolean   @default(false)
   lastReportedAt DateTime  @default(now())
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

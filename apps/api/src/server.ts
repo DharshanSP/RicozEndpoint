@@ -147,6 +147,11 @@ export async function buildApp() {
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(enrollmentRoutes, { prefix: '/api' });
   await app.register(agentRoutes, { prefix: '/api/agent' });
+  // Public alias: some enrollment snippets / docs / browsers call /agent/install.ps1
+  // (without the /api prefix). Keep it in sync with /api/agent/install.ps1.
+  app.get('/agent/install.ps1', {}, async (_request, reply) =>
+    reply.redirect('/api/agent/install.ps1'),
+  );
   await app.register(policiesRoutes, { prefix: '/api/policies' });
   await app.register(commandsRoutes, { prefix: '/api/commands' });
   await app.register(alertsRoutes, { prefix: '/api/alerts' });
