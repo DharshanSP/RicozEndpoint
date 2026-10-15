@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { getSystemHealth } from '../lib/api/dashboardApi';
+import { getSettings } from '../lib/api/settingsApi';
 import {
   Laptop,
   CheckCircle2,
@@ -18,11 +19,13 @@ import {
   PlusCircle,
   CheckSquare,
   LayoutDashboard,
+  Wrench,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { ErrorState } from '../components/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
 import Link from 'next/link';
 
 /** Safe percentage: never renders NaN when the denominator is zero. */
@@ -35,7 +38,7 @@ export function DashboardPage() {
   const { user, hasRole } = useAuth();
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('24h');
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const { data: telemetryData, loading, error, refresh } = useDashboardData(timeRange);
+  const { data: telemetryData, loading, error, refresh, isFetching } = useDashboardData(timeRange);
 
   const healthQuery = useQuery({
     queryKey: ['system-health'],
@@ -43,6 +46,28 @@ export function DashboardPage() {
     refetchInterval: 60_000,
     retry: 1,
   });
+
+  // Offline threshold comes from org settings (default 15 min server-side).
+  const settingsQuery = useQuery({
+    queryKey: ['org-settings'],
+    queryFn: async () => {
+      const res = await getSettings();
+      if (!res.success || !res.data) {
+        throw new Error(res.error?.message ?? 'Failed to load organization settings');
+      }
+      return res.data.settings;
+    },
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const offlineTimeoutMinutes = settingsQuery.data?.offlineTimeoutMinutes ?? 15;
+
+  // "Last sync" tracks every successful fetch (polls included), not just manual clicks.
+  useEffect(() => {
+    if (telemetryData) {
+      setLastRefreshed(new Date());
+    }
+  }, [telemetryData]);
 
   const handleRefresh = async () => {
     await refresh();
@@ -147,7 +172,8 @@ export function DashboardPage() {
           <div>
             <span className="font-semibold text-slate-900">Telemetry Data Mode: </span>
             <span className="text-slate-600">
-              Live counters computed from enrolled endpoints, agent heartbeats, alerts and compliance results. The
+              Live counters computed from enrolled endpoints, agent heartbeats, alerts and compliance results. KPI
+              cards are all-time totals; the alert and activity streams below follow the selected time range. The
               board refreshes automatically every 30 seconds.
             </span>
           </div>
@@ -157,6 +183,25 @@ export function DashboardPage() {
           <span>Last sync: {lastRefreshed.toLocaleTimeString()}</span>
         </div>
       </div>
+
+      {/* Background-refetch failure banner (data on screen may be stale) */}
+      {error && telemetryData && (
+        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+          <span className="text-amber-800">
+            <span className="font-semibold">Refresh failed:</span> {error} Showing last known data.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isFetching}
+            className="h-7 text-xs border-amber-200 bg-white text-amber-800 hover:bg-amber-100 gap-1.5 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+            <span>Retry</span>
+          </Button>
+        </div>
+      )}
 
       {/* 5 Core Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -224,7 +269,7 @@ export function DashboardPage() {
               </span>
             </div>
             <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Threshold: &gt; 5m</span>
+              <span className="text-slate-500">Threshold: &gt; {offlineTimeoutMinutes}m</span>
               <span className="text-amber-700 font-semibold">Review Needed</span>
             </div>
           </CardContent>
@@ -282,9 +327,56 @@ export function DashboardPage() {
         </Link>
       </div>
 
+      {/* Patch Posture Strip (catalog approval + failed installs, all-time) */}
+      <Link href="/patches" className="block group">
+        <Card className="border-slate-200 bg-white shadow-xs group-hover:border-blue-300 group-hover:shadow-sm transition-all">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
+                <Wrench className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-blue-600 transition-colors">
+                  Patch Posture
+                </div>
+                <div className="text-[11px] text-slate-500">Catalog approval and install failures</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1">
+              <div>
+                <div className="text-[11px] text-slate-500 font-medium">Catalog patches</div>
+                <div className="text-xl font-bold text-slate-900 tracking-tight">
+                  {telemetryData.patchSummary.total}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-slate-500 font-medium">Pending approval</div>
+                <div className="text-xl font-bold text-amber-600 tracking-tight">
+                  {telemetryData.patchSummary.pending}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-slate-500 font-medium">Failed installs</div>
+                <div className="text-xl font-bold text-rose-600 tracking-tight">
+                  {telemetryData.patchSummary.failedInstalls}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-slate-500 font-medium">Deployed</div>
+                <div className="text-xl font-bold text-emerald-600 tracking-tight">
+                  {telemetryData.patchSummary.deployed}
+                </div>
+              </div>
+            </div>
+            <span className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-600 font-medium shrink-0">
+              Open patch management <ArrowUpRight className="w-3.5 h-3.5" />
+            </span>
+          </CardContent>
+        </Card>
+      </Link>
+
       {/* Main Operational Section: Health Distribution & Compliance Posture */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Device Fleet Health & Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">        {/* Device Fleet Health & Status */}
         <Card className="border-slate-200 bg-white shadow-xs">
           <CardHeader className="p-5 pb-3 border-b border-slate-100">
             <div className="flex items-center justify-between">
@@ -341,6 +433,14 @@ export function DashboardPage() {
             {/* Operating System Distribution */}
             <div className="pt-3 border-t border-slate-100 space-y-2.5">
               <span className="text-xs font-semibold text-slate-700 block">Operating System Distribution</span>
+              {telemetryData.osDistribution.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon={Laptop}
+                  title="No endpoints enrolled"
+                  description="Enroll your first device to see fleet health and OS distribution."
+                />
+              ) : (
               <div className="space-y-2">
                 {telemetryData.osDistribution.map((os) => (
                   <div key={os.name} className="space-y-1">
@@ -356,6 +456,7 @@ export function DashboardPage() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -379,6 +480,14 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="p-5 pt-4 space-y-3">
+            {telemetryData.complianceControls.length === 0 ? (
+              <EmptyState
+                compact
+                icon={ShieldCheck}
+                title="No rule evaluations yet"
+                description="Device-level results feed the Compliance Rate card. Rule-level breakdowns appear here once compliance rules emit evaluations."
+              />
+            ) : (
             <div className="space-y-2">
               {telemetryData.complianceControls.map((control) => {
                 const passRate = control.total > 0 ? ((control.compliantCount / control.total) * 100).toFixed(0) : '0';
@@ -409,6 +518,7 @@ export function DashboardPage() {
                 );
               })}
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -437,6 +547,16 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="p-5 pt-0">
+            {telemetryData.activeAlerts.length === 0 ? (
+              <EmptyState
+                compact
+                icon={ShieldAlert}
+                title="No active alerts in this range"
+                description={`No unresolved alerts in the ${
+                  timeRange === '24h' ? 'last 24 hours' : timeRange === '7d' ? 'last 7 days' : 'last 30 days'
+                }. Counts above are all-time totals.`}
+              />
+            ) : (
             <div className="divide-y divide-slate-100">
               {telemetryData.activeAlerts.map((alert) => (
                 <div key={alert.id} className="py-3 first:pt-3 last:pb-0 flex items-start justify-between gap-4">
@@ -459,7 +579,7 @@ export function DashboardPage() {
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-2">
-                    <Link href="/alerts">
+                    <Link href={`/alerts?status=UNRESOLVED&severity=${alert.severity.toUpperCase()}`}>
                       <Button
                         variant="outline"
                         size="sm"
@@ -472,6 +592,7 @@ export function DashboardPage() {
                 </div>
               ))}
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -623,6 +744,14 @@ export function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent className="p-5 pt-4">
+          {telemetryData.recentEvents.length === 0 ? (
+            <EmptyState
+              compact
+              icon={Activity}
+              title="No recent activity"
+              description="Administrator actions and endpoint events will appear here."
+            />
+          ) : (
           <div className="space-y-2.5">
             {telemetryData.recentEvents.map((evt) => (
               <div
@@ -652,6 +781,7 @@ export function DashboardPage() {
               </div>
             ))}
           </div>
+          )}
         </CardContent>
       </Card>
     </div>

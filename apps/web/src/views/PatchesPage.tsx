@@ -25,6 +25,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
+import { EmptyState } from '../components/ui/EmptyState';
 import { AlertBanner } from '../components/ui/AlertBanner';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -38,6 +39,7 @@ import {
   useUpdatePatch,
 } from '../hooks/usePatches';
 import type { PatchCoverage, PatchSeverity, PatchStatus } from '../types/patch';
+import { formatDateTime } from '../lib/format';
 
 const SEVERITY_OPTIONS = ['ALL', 'CRITICAL', 'IMPORTANT', 'OPTIONAL'] as const;
 const STATUS_OPTIONS = ['ALL', 'PENDING', 'APPROVED', 'DEPLOYED'] as const;
@@ -397,7 +399,12 @@ export function PatchesPage() {
       )}
 
       {error && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs">{error}</div>
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 shadow-xs flex flex-wrap items-center justify-between gap-2">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={() => void listQuery.refetch()} className="border-rose-200 bg-white text-rose-700 hover:bg-rose-100 gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </Button>
+        </div>
       )}
 
       {/* Summary cards */}
@@ -494,10 +501,15 @@ export function PatchesPage() {
           {loading && !response ? (
             <div className="p-4 space-y-3">{[0, 1, 2].map((row) => (<div key={row} className="h-16 rounded-lg bg-slate-100 animate-pulse" />))}</div>
           ) : patches.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">
-              {debouncedSearch || severity !== 'ALL' || status !== 'ALL'
-                ? 'No patches match the current filters.'
-                : 'No patches reported yet. Agents upload installed KBs with their next telemetry heartbeat.'}
+            <div className="p-4">
+              <EmptyState
+                title={debouncedSearch || severity !== 'ALL' || status !== 'ALL' ? 'No patches match the current filters' : 'No patches reported yet'}
+                description={
+                  debouncedSearch || severity !== 'ALL' || status !== 'ALL'
+                    ? 'Try widening the search or clearing the severity / approval filters.'
+                    : 'Agents upload installed KBs with their next telemetry heartbeat.'
+                }
+              />
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -508,7 +520,7 @@ export function PatchesPage() {
                       <Badge variant="outline" className="font-mono text-xs bg-slate-100 text-slate-800">{patch.kbNumber}</Badge>
                       {severityBadge(patch.severity)}
                       <span className="text-xs text-slate-400">• Released {formatDate(patch.releaseDate)}</span>
-                      <span className="text-xs text-slate-400">• {patch.status}</span>
+                      <span className="text-xs text-slate-400" title="Catalog approval state">• Approval: {patch.status}</span>
                     </div>
                     <h4 className="text-sm font-semibold text-slate-900">{patch.title}</h4>
                     <p className="text-xs text-slate-500">
@@ -602,8 +614,8 @@ export function PatchesPage() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="font-mono">{detail.kbNumber}</Badge>
-                    {severityBadge(detail.status as unknown as PatchSeverity)}
-                    <Badge variant="outline">{detail.status}</Badge>
+                    {severityBadge(detail.severity)}
+                    <Badge variant="outline" title="Catalog approval state">Approval: {detail.status}</Badge>
                   </div>
                   <h4 className="text-sm font-semibold text-slate-900">{detail.title}</h4>
                   <p className="text-xs text-slate-500">{detail.description || 'No description.'}</p>
@@ -614,16 +626,38 @@ export function PatchesPage() {
                 </div>
                 <div className="space-y-2">
                   {detail.devices.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 text-xs">
-                      <div>
-                        <p className="font-semibold text-slate-900">{d.deviceName || d.hostname}</p>
-                        <p className="text-slate-500 font-mono">{d.hostname} • {d.ipAddress}</p>
+                    <div key={d.id} className="p-2.5 rounded-lg border border-slate-100 text-xs space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">{d.deviceName || d.hostname}</p>
+                          <p className="text-slate-500 font-mono truncate">{d.hostname} • {d.ipAddress}</p>
+                        </div>
+                        <Badge variant="outline" className={
+                          d.patchStatus === 'INSTALLED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : d.patchStatus === 'FAILED' ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }>{d.patchStatus}{d.command ? ` • ${d.command.status}` : ''}</Badge>
                       </div>
-                      <Badge variant="outline" className={
-                        d.patchStatus === 'INSTALLED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : d.patchStatus === 'FAILED' ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }>{d.patchStatus}{d.command ? ` • ${d.command.status}` : ''}</Badge>
+                      {(d.installedAt || d.lastReportedAt) && (
+                        <p className="text-[11px] text-slate-500">
+                          {d.patchStatus === 'INSTALLED' && d.installedAt
+                            ? `Installed ${formatDateTime(d.installedAt)}`
+                            : d.lastReportedAt
+                              ? `Last reported ${formatDateTime(d.lastReportedAt)}`
+                              : null}
+                        </p>
+                      )}
+                      {d.command && (
+                        <p className="text-[11px] text-slate-500">
+                          Last attempt {formatDateTime(d.command.createdAt)}
+                          {d.command.completedAt ? ` • finished ${formatDateTime(d.command.completedAt)}` : ''}
+                        </p>
+                      )}
+                      {d.command?.errorMessage && (
+                        <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded px-2 py-1 break-words">
+                          {d.command.errorMessage}
+                        </p>
+                      )}
                     </div>
                   ))}
                   {detail.devices.length === 0 && (<p className="text-xs text-slate-500">No devices in this organization yet.</p>)}

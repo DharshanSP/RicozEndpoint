@@ -13,6 +13,8 @@ const deviceListQuerySchema = z.object({
   // Device origin: demo-seeded fleet data vs really enrolled endpoints.
   // Demo login accounts are always forced to SEEDED (see handler).
   source: z.enum(['ALL', 'SEEDED', 'ENROLLED']).optional().default('ALL'),
+  // Restrict to members of one device group (org-scoped by the join below).
+  groupId: z.string().uuid().optional(),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
   page: z.preprocess(
@@ -103,6 +105,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         os,
         manufacturer,
         source = 'ALL',
+        groupId,
         sortBy,
         sortOrder = 'asc',
         page = 1,
@@ -126,23 +129,24 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
         ...(bucket ? complianceWhere(bucket) : {}),
         ...(effectiveSource === 'SEEDED' ? { isDemoSeed: true } : {}),
         ...(effectiveSource === 'ENROLLED' ? { isDemoSeed: false } : {}),
-        ...(os ? { os: { contains: os } } : {}),
+        ...(groupId ? { deviceGroups: { some: { groupId } } } : {}),
+        ...(os ? { os: { contains: os, mode: 'insensitive' } } : {}),
         ...(manufacturer ? { manufacturer: { contains: manufacturer, mode: 'insensitive' } } : {}),
         ...(search
           ? {
               OR: [
-                { hostname: { contains: search } },
-                { deviceName: { contains: search } },
-                { serialNumber: { contains: search } },
-                { ipAddress: { contains: search } },
-                { os: { contains: search } },
+                { hostname: { contains: search, mode: 'insensitive' } },
+                { deviceName: { contains: search, mode: 'insensitive' } },
+                { serialNumber: { contains: search, mode: 'insensitive' } },
+                { ipAddress: { contains: search, mode: 'insensitive' } },
+                { os: { contains: search, mode: 'insensitive' } },
               ],
             }
           : {}),
       };
 
       const orderByClause: Record<string, 'asc' | 'desc'> = {};
-      if (sortBy && ['deviceName', 'hostname', 'status', 'os', 'serialNumber', 'lastSeenAt', 'createdAt'].includes(sortBy)) {
+      if (sortBy && ['deviceName', 'hostname', 'status', 'os', 'serialNumber', 'lastSeenAt', 'registeredAt', 'createdAt'].includes(sortBy)) {
         orderByClause[sortBy] = sortOrder;
       } else {
         orderByClause.createdAt = sortOrder;
@@ -490,6 +494,10 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       const includeCompliance = !typeFilter || ['ALL', 'COMPLIANCE'].includes(typeFilter);
       const includePatch = !typeFilter || ['ALL', 'PATCH'].includes(typeFilter);
 
+      // NOTE: each feed is capped (100 audits, 50 per other feed) before the
+      // merge, so `total` covers the capped window only — events beyond the
+      // caps are unreachable via paging. The caps keep the in-memory fan-in
+      // bounded; raise them (or add a cursor) if device timelines grow large.
       const [auditLogs, commands, alerts, compliance, devicePatches] = await Promise.all([
         includeAudit
           ? app.prisma.auditLog.findMany({

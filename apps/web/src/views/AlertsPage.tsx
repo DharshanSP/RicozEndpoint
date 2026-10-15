@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Bell,
   Check,
@@ -7,6 +8,7 @@ import {
   RefreshCw,
   Search,
   Server,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -57,8 +59,34 @@ export function AlertsPage() {
   const canResolve = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const canAcknowledge = canResolve || hasRole(['OPERATOR']);
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('UNRESOLVED');
-  const [severityFilter, setSeverityFilter] = useState<AlertSeverity | 'ALL'>('ALL');
+  const searchParams = useSearchParams();
+
+  const isValidStatus = (value: string | null): value is StatusFilter =>
+    value === 'ALL' ||
+    value === 'UNRESOLVED' ||
+    value === 'OPEN' ||
+    value === 'ACKNOWLEDGED' ||
+    value === 'RESOLVED';
+  const isValidSeverity = (value: string | null): value is AlertSeverity =>
+    value === 'CRITICAL' || value === 'WARNING' || value === 'INFO';
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isValidDeviceId = (value: string | null): value is string =>
+    typeof value === 'string' && UUID_RE.test(value);
+
+  // Deep-linkable initial filters (e.g. dashboard Triage buttons). Invalid values fall back to defaults.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const param = searchParams.get('status');
+    return isValidStatus(param) ? param : 'UNRESOLVED';
+  });
+  const [severityFilter, setSeverityFilter] = useState<AlertSeverity | 'ALL'>(() => {
+    const param = searchParams.get('severity');
+    return isValidSeverity(param) ? param : 'ALL';
+  });
+  // Optional device scope (?deviceId=) for device-context triage; invalid ids are ignored.
+  const [deviceIdFilter, setDeviceIdFilter] = useState<string | null>(() => {
+    const param = searchParams.get('deviceId');
+    return isValidDeviceId(param) ? param : null;
+  });
   const [typeFilter, setTypeFilter] = useState<AlertType | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -72,6 +100,25 @@ export function AlertsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
+  // Apply deep-linked filters when the URL changes (e.g. from dashboard Triage).
+  useEffect(() => {
+    const urlStatus = searchParams.get('status');
+    if (urlStatus && urlStatus !== statusFilter && isValidStatus(urlStatus)) {
+      setStatusFilter(urlStatus);
+      setPage(1);
+    }
+    const urlSeverity = searchParams.get('severity');
+    if (urlSeverity && urlSeverity !== severityFilter && isValidSeverity(urlSeverity)) {
+      setSeverityFilter(urlSeverity);
+      setPage(1);
+    }
+    const urlDeviceId = searchParams.get('deviceId');
+    if (urlDeviceId !== deviceIdFilter) {
+      setDeviceIdFilter(isValidDeviceId(urlDeviceId) ? urlDeviceId : null);
+      setPage(1);
+    }
+  }, [searchParams, statusFilter, severityFilter, deviceIdFilter]);
+
   const listQuery = useAlertsList({
     page,
     limit: PAGE_SIZE,
@@ -80,6 +127,7 @@ export function AlertsPage() {
     severity: severityFilter,
     type: typeFilter,
     search: search || undefined,
+    deviceId: deviceIdFilter ?? undefined,
   });
   const resolveMutation = useResolveAlert();
   const acknowledgeMutation = useAcknowledgeAlert();
@@ -164,6 +212,7 @@ export function AlertsPage() {
     setSeverityFilter('ALL');
     setTypeFilter('ALL');
     setSearch('');
+    setDeviceIdFilter(null);
     setPage(1);
     setSelected(new Set());
   };
@@ -261,7 +310,7 @@ export function AlertsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <Input
             className="pl-9"
-            placeholder="Search alert titles..."
+            placeholder="Search alert titles and messages..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -316,10 +365,30 @@ export function AlertsPage() {
         {(statusFilter !== 'UNRESOLVED' ||
           severityFilter !== 'ALL' ||
           typeFilter !== 'ALL' ||
+          deviceIdFilter !== null ||
           search !== '') && (
           <Button variant="ghost" size="sm" onClick={resetFilters}>
             Clear filters
           </Button>
+        )}
+        {deviceIdFilter !== null && (
+          <span
+            title={deviceIdFilter}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-[11px] font-medium text-blue-800"
+          >
+            <Server className="w-3 h-3" />
+            Device: {deviceIdFilter.slice(0, 8)}…
+            <button
+              onClick={() => {
+                setDeviceIdFilter(null);
+                setPage(1);
+              }}
+              aria-label="Clear device filter"
+              className="hover:text-blue-950"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
         )}
         {canResolve && selected.size > 0 && (
           <Button
@@ -553,6 +622,9 @@ function AlertRow({
               </>
             )}
           </div>
+          {alert.acknowledgedNote && (
+            <p className="text-[11px] text-slate-500 italic">Ack note: {alert.acknowledgedNote}</p>
+          )}
           {alert.resolvedNote && (
             <p className="text-[11px] text-slate-500 italic">Note: {alert.resolvedNote}</p>
           )}

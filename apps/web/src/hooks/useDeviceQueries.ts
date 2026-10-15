@@ -8,6 +8,7 @@ import {
   deleteDevice,
   type DeviceListQuery,
 } from '../lib/api/devicesApi';
+import { getDeviceGroups, type DeviceGroup } from '../lib/api/deviceGroupsApi';
 import type {
   ActivityEvent,
   DeviceDetail,
@@ -17,8 +18,7 @@ import type {
 } from '../types/device';
 
 /** Paginated, filterable device list. */
-export function useDeviceList(query: DeviceListQuery) {
-  return useQuery({
+export function useDeviceList(query: DeviceListQuery) {  return useQuery({
     queryKey: ['devices', 'list', query],
     queryFn: async (): Promise<DeviceListData> => {
       const res = await listDevices(query);
@@ -27,6 +27,21 @@ export function useDeviceList(query: DeviceListQuery) {
       }
       return { devices: res.data, pagination: res.pagination };
     },
+  });
+}
+
+/** Device groups for filter dropdowns (org-scoped, readable by VIEWER+). */
+export function useDeviceGroups() {
+  return useQuery({
+    queryKey: ['device-groups', 'list'],
+    queryFn: async (): Promise<DeviceGroup[]> => {
+      const res = await getDeviceGroups({ limit: 100 });
+      if (!res.success || !res.data) {
+        throw new Error(res.error?.message ?? 'Failed to load device groups');
+      }
+      return res.data.items ?? [];
+    },
+    staleTime: 60_000,
   });
 }
 

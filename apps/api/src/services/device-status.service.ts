@@ -3,10 +3,12 @@ import { createAlertsDedupBatch, resolveAlertsMatching } from '../modules/alerts
 
 const DEFAULT_OFFLINE_TIMEOUT_MINUTES = 15;
 const DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60;
+const DEFAULT_ALERT_RETENTION_DAYS = 30;
 
 interface OrgSettings {
   offlineTimeoutMinutes?: number;
   agentHeartbeatIntervalSeconds?: number;
+  alertRetentionDays?: number;
 }
 
 function parseSettings(raw: unknown): OrgSettings {
@@ -27,8 +29,30 @@ function offlineThreshold(raw: unknown): Date {
 }
 
 /**
+ * Deletes RESOLVED alerts older than the organization's retention window.
+ * Only terminal, already-triaged rows are purged — unresolved alerts are
+ * operational data and are never touched.
+ */
+export async function purgeResolvedAlerts(
+  prisma: PrismaClient,
+  organizationId: string,
+  retentionDays: number
+): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60_000);
+  const result = await prisma.alert.deleteMany({
+    where: {
+      organizationId,
+      status: 'RESOLVED',
+      resolvedAt: { lt: cutoff },
+    },
+  });
+  return result.count;
+}
+
+/**
  * Marks every ONLINE device that has not reported within its organization's
  * offline timeout as OFFLINE and raises a de-duplicated DEVICE_OFFLINE alert.
+ * Also enforces each organization's resolved-alert retention window.
  * Runs on a background timer (see server.ts) so device status no longer depends
  * on someone opening the device list.
  */
@@ -40,6 +64,14 @@ export async function sweepOfflineDevices(prisma: PrismaClient): Promise<number>
   let markedOffline = 0;
 
   for (const organization of organizations) {
+    const settings = parseSettings(organization.settingsJson);
+
+    const purged = await purgeResolvedAlerts(
+      prisma,
+      organization.id,
+      settings.alertRetentionDays ?? DEFAULT_ALERT_RETENTION_DAYS
+    );
+
     const cutoff = offlineThreshold(organization.settingsJson);
 
     const stale = await prisma.device.findMany({
@@ -54,7 +86,6 @@ export async function sweepOfflineDevices(prisma: PrismaClient): Promise<number>
       data: { status: 'OFFLINE' },
     });
 
-    const settings = parseSettings(organization.settingsJson);
     const timeoutMinutes = settings.offlineTimeoutMinutes ?? DEFAULT_OFFLINE_TIMEOUT_MINUTES;
 
     // One batched dedup lookup + insert for the whole org. Alerting per device
@@ -83,7 +114,7 @@ export async function sweepOfflineDevices(prisma: PrismaClient): Promise<number>
         resource: 'DEVICE',
         resourceId: stale[0]?.id ?? 'device-batch',
         ipAddress: 'scheduler',
-        metadata: JSON.stringify({ count: stale.length, timeoutMinutes }),
+        metadata: JSON.stringify({ count: stale.length, timeoutMinutes, purgedResolvedAlerts: purged }),
       },
     });
 

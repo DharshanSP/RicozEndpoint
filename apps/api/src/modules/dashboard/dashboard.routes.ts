@@ -68,6 +68,16 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
                 criticalAlertsCount: { type: 'number' },
                 warningAlertsCount: { type: 'number' },
                 failedActionsCount: { type: 'number' },
+                patchSummary: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'number' },
+                    pending: { type: 'number' },
+                    approved: { type: 'number' },
+                    deployed: { type: 'number' },
+                    failedInstalls: { type: 'number' },
+                  },
+                },
                 osDistribution: {
                   type: 'array',
                   items: {
@@ -135,11 +145,23 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const orgWhere = jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId };
 
       const unresolvedWhere = { ...orgWhere, status: { in: ['OPEN', 'ACKNOWLEDGED'] } };
+      // Demo logins only ever see demo-seeded fleet devices — real enrolled
+      // endpoints stay hidden from them, mirroring the device list.
+      const demoDeviceWhere = jwtUser.isDemoAccount ? { isDemoSeed: true } : {};
+      const demoAlertWhere = jwtUser.isDemoAccount ? { device: { isDemoSeed: true } } : {};
+      const scopedUnresolvedWhere = { ...unresolvedWhere, ...demoAlertWhere };
+      // Patches carry organizationId directly, so the fleet scope applies as-is.
+      // DevicePatch rows are scoped through their parent patch.
+      const patchScope = jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId };
       // A device is non-compliant when any stored result for it is
       // NON_COMPLIANT, compliant when it has results and none are failing,
       // untested when it has no results at all.
-      const complianceScope =
-        jwtUser.role === 'SUPER_ADMIN' ? {} : { device: { organizationId: jwtUser.organizationId } };
+      const complianceScope = {
+        device: {
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...(jwtUser.isDemoAccount ? { isDemoSeed: true } : {}),
+        },
+      };
 
       // Every aggregation below is independent, so they are issued as a single
       // round of parallel queries instead of one await per widget. This handler
@@ -152,24 +174,25 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         [testedGroups, nonCompliantGroups],
         complianceRules,
         recentAuditLogs,
+        [totalPatches, patchStatusGroups, failedInstalls],
       ] = await Promise.all([
         // Device fleet status breakdown
         Promise.all([
-          app.prisma.device.count({ where: orgWhere }),
-          app.prisma.device.count({ where: { ...orgWhere, status: 'ONLINE' } }),
-          app.prisma.device.count({ where: { ...orgWhere, status: 'OFFLINE' } }),
-          app.prisma.device.count({ where: { ...orgWhere, status: 'PENDING' } }),
+          app.prisma.device.count({ where: { ...orgWhere, ...demoDeviceWhere } }),
+          app.prisma.device.count({ where: { ...orgWhere, ...demoDeviceWhere, status: 'ONLINE' } }),
+          app.prisma.device.count({ where: { ...orgWhere, ...demoDeviceWhere, status: 'OFFLINE' } }),
+          app.prisma.device.count({ where: { ...orgWhere, ...demoDeviceWhere, status: 'PENDING' } }),
         ]),
         // Operating system distribution
         app.prisma.device.groupBy({
           by: ['osVersion'],
-          where: orgWhere,
+          where: { ...orgWhere, ...demoDeviceWhere },
           _count: { _all: true },
           orderBy: { _count: { osVersion: 'desc' } },
         }),
         // Recent unresolved alerts (the widget only renders host + address)
         app.prisma.alert.findMany({
-          where: { ...unresolvedWhere, createdAt: { gte: since } },
+          where: { ...scopedUnresolvedWhere, createdAt: { gte: since } },
           select: {
             id: true,
             severity: true,
@@ -182,9 +205,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         }),
         // Unresolved alert counts by severity + failed agent actions
         Promise.all([
-          app.prisma.alert.count({ where: unresolvedWhere }),
-          app.prisma.alert.count({ where: { ...unresolvedWhere, severity: 'CRITICAL' } }),
-          app.prisma.alert.count({ where: { ...unresolvedWhere, severity: 'WARNING' } }),
+          app.prisma.alert.count({ where: scopedUnresolvedWhere }),
+          app.prisma.alert.count({ where: { ...scopedUnresolvedWhere, severity: 'CRITICAL' } }),
+          app.prisma.alert.count({ where: { ...scopedUnresolvedWhere, severity: 'WARNING' } }),
           app.prisma.command.count({ where: { ...orgWhere, status: 'FAILED' } }),
         ]),
         // Compliance status rolled up per device
@@ -202,7 +225,10 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         ]),
         // Active compliance rules (per-rule counts are aggregated in round 2)
         app.prisma.complianceRule.findMany({
-          where: { organizationId: jwtUser.organizationId, isActive: true },
+          where: {
+            ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+            isActive: true,
+          },
           orderBy: { createdAt: 'asc' },
         }),
         // Recent environment activity
@@ -212,6 +238,22 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           orderBy: { timestamp: 'desc' },
           take: 10,
         }),
+        // Patch posture: catalog approval breakdown + failed installs
+        Promise.all([
+          app.prisma.patch.count({ where: orgWhere }),
+          app.prisma.patch.groupBy({
+            by: ['status'],
+            where: orgWhere,
+            _count: { _all: true },
+          }),
+          app.prisma.devicePatch.count({
+            where: {
+              status: 'FAILED',
+              patch: patchScope,
+              ...(jwtUser.isDemoAccount ? { device: { isDemoSeed: true } } : {}),
+            },
+          }),
+        ]),
       ]);
 
       const osDistribution = osGroups.map((group, index) => {
@@ -286,6 +328,16 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         status: eventStatusFromAction(log.action),
       }));
 
+      const patchStatusCount = (status: string) =>
+        patchStatusGroups.find((group) => group.status === status)?._count._all ?? 0;
+      const patchSummary = {
+        total: totalPatches,
+        pending: patchStatusCount('PENDING'),
+        approved: patchStatusCount('APPROVED'),
+        deployed: patchStatusCount('DEPLOYED'),
+        failedInstalls,
+      };
+
       return reply.send({
         success: true,
         data: {
@@ -301,6 +353,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           criticalAlertsCount,
           warningAlertsCount,
           failedActionsCount,
+          patchSummary,
           osDistribution,
           complianceControls,
           activeAlerts,

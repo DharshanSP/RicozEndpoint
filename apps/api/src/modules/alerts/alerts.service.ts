@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 export interface CreateAlertCommand {
   organizationId: string;
@@ -8,6 +9,11 @@ export interface CreateAlertCommand {
   title: string;
   message: string;
   dedupKey?: string;
+}
+
+/** True for unique-constraint violations (e.g. a lost dedup race). */
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 /** Statuses that still require attention; used as the de-duplication scope. */
@@ -39,21 +45,34 @@ export async function createAlertDedup(prisma: PrismaClient, input: CreateAlertC
     return { id: existing.id, deduplicated: true };
   }
 
-  const alert = await prisma.alert.create({
-    data: {
-      organizationId: input.organizationId,
-      deviceId: input.deviceId ?? null,
-      type: input.type,
-      dedupKey: input.dedupKey ?? null,
-      severity: input.severity,
-      title: input.title,
-      message: input.message,
-      status: 'OPEN',
-      resolvedAt: null,
-    },
-  });
+  try {
+    const alert = await prisma.alert.create({
+      data: {
+        organizationId: input.organizationId,
+        deviceId: input.deviceId ?? null,
+        type: input.type,
+        dedupKey: input.dedupKey ?? null,
+        severity: input.severity,
+        title: input.title,
+        message: input.message,
+        status: 'OPEN',
+        resolvedAt: null,
+      },
+    });
 
-  return { id: alert.id, deduplicated: false };
+    return { id: alert.id, deduplicated: false };
+  } catch (error) {
+    // A concurrent writer won the race (partial unique index
+    // alerts_dedup_open_uniq): return the winner instead of failing.
+    if (!isUniqueViolation(error)) throw error;
+    const raced = await prisma.alert.findFirst({
+      where: whereMatch,
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!raced) throw error;
+    return { id: raced.id, deduplicated: true };
+  }
 }
 
 /**
@@ -91,19 +110,31 @@ export async function createAlertsDedupBatch(prisma: PrismaClient, inputs: Creat
 
   const toCreate = inputs.filter((input) => !alreadyOpen(input));
   if (toCreate.length > 0) {
-    await prisma.alert.createMany({
-      data: toCreate.map((input) => ({
-        organizationId: input.organizationId,
-        deviceId: input.deviceId ?? null,
-        type: input.type,
-        dedupKey: input.dedupKey ?? null,
-        severity: input.severity,
-        title: input.title,
-        message: input.message,
-        status: 'OPEN',
-        resolvedAt: null,
-      })),
-    });
+    try {
+      await prisma.alert.createMany({
+        data: toCreate.map((input) => ({
+          organizationId: input.organizationId,
+          deviceId: input.deviceId ?? null,
+          type: input.type,
+          dedupKey: input.dedupKey ?? null,
+          severity: input.severity,
+          title: input.title,
+          message: input.message,
+          status: 'OPEN',
+          resolvedAt: null,
+        })),
+      });
+    } catch (error) {
+      // A concurrent writer won the race for at least one row: resolve each
+      // input through the single-row path, which maps conflicts to the winner.
+      if (!isUniqueViolation(error)) throw error;
+      let created = 0;
+      for (const input of toCreate) {
+        const result = await createAlertDedup(prisma, input);
+        if (!result.deduplicated) created += 1;
+      }
+      return { created, deduplicated: inputs.length - created };
+    }
   }
 
   return { created: toCreate.length, deduplicated: inputs.length - toCreate.length };
@@ -114,13 +145,16 @@ export interface ResolveAlertsCommand {
   deviceId?: string;
   type?: string;
   dedupKey?: string;
+  /** Exact title match — used to close only failures of the same command type. */
+  title?: string;
   resolvedBy: string | null;
   note?: string;
 }
 
 /**
  * Auto-resolves every unresolved alert matching the scope. Used when the
- * underlying condition recovers (device back online, policy now satisfied).
+ * underlying condition recovers (device back online, policy now satisfied,
+ * a later command of the same type completed).
  * Returns the number of alerts closed.
  */
 export async function resolveAlertsMatching(prisma: PrismaClient, cmd: ResolveAlertsCommand): Promise<number> {
@@ -129,6 +163,7 @@ export async function resolveAlertsMatching(prisma: PrismaClient, cmd: ResolveAl
     ...(cmd.deviceId ? { deviceId: cmd.deviceId } : {}),
     ...(cmd.type ? { type: cmd.type } : {}),
     ...(cmd.dedupKey ? { dedupKey: cmd.dedupKey } : {}),
+    ...(cmd.title ? { title: cmd.title } : {}),
     status: { in: UNRESOLVED },
   };
 

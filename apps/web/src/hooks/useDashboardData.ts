@@ -8,6 +8,8 @@ interface UseDashboardDataResult {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  /** True while any fetch (initial or background poll) is in flight. */
+  isFetching: boolean;
 }
 
 /**
@@ -41,5 +43,6 @@ export function useDashboardData(timeRange: '24h' | '7d' | '30d' = '24h'): UseDa
     loading: query.isLoading,
     error: query.isError ? (query.error as Error).message : null,
     refresh,
+    isFetching: query.isFetching,
   };
 }

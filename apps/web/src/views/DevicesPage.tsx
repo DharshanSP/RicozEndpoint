@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useDeviceList, useDeleteDevice } from '../hooks/useDeviceQueries';
+import { useDeviceList, useDeleteDevice, useDeviceGroups } from '../hooks/useDeviceQueries';
+import { useDashboardData } from '../hooks/useDashboardData';
 import { formatRelativeTime } from '../lib/format';
 import type { DeviceSortField, DeviceSortOrder, DeviceStatus } from '../types/device';
 import {
@@ -146,6 +147,7 @@ export function DevicesPage() {
   const [manufacturer, setManufacturer] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
   const [sortOrder, setSortOrder] = useState<DeviceSortOrder>('desc');
+  const [groupId, setGroupId] = useState<string>('ALL');
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
@@ -244,23 +246,32 @@ export function DevicesPage() {
     }
   };
 
-  // Query parameters for real TanStack Query backend hook
+  // Query parameters for real TanStack Query backend hook.
+  // Search is debounced (300 ms) so typing does not fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const query = useMemo(
     () => ({
       page,
       limit: pageSize,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       status: status !== 'ALL' ? (status as DeviceStatus) : undefined,
       complianceStatus: compliance !== 'ALL' ? compliance : undefined,
       os: os !== 'ALL' ? os : undefined,
       manufacturer: manufacturer !== 'ALL' ? manufacturer : undefined,
+      groupId: groupId !== 'ALL' ? groupId : undefined,
       sortBy,
       sortOrder,
     }),
-    [page, pageSize, search, status, compliance, os, manufacturer, sortBy, sortOrder]
+    [page, pageSize, debouncedSearch, status, compliance, os, manufacturer, groupId, sortBy, sortOrder]
   );
 
   const { data, isLoading, isFetching, error, refetch } = useDeviceList(query);
+  const groupsQuery = useDeviceGroups();
 
   const rawDevices = useMemo(() => data?.devices ?? [], [data]);
   const pagination = data?.pagination ?? {
@@ -270,18 +281,24 @@ export function DevicesPage() {
     totalPages: Math.max(1, Math.ceil(rawDevices.length / pageSize)),
   };
 
-  // Client-side manufacturer filtering fallback if needed
-  const devices = useMemo(() => {
-    if (manufacturer === 'ALL') return rawDevices;
-    return rawDevices.filter((d) =>
-      (d.manufacturer || '').toLowerCase().includes(manufacturer.toLowerCase())
-    );
-  }, [rawDevices, manufacturer]);
+  // The manufacturer filter is applied server-side (see `query` above);
+  // no client-side re-filtering, so page counts always match the server total.
+  const devices = rawDevices;
 
-  // Derived KPI metrics
+  // Fleet KPI metrics come from the shared dashboard counters (same source as
+  // DashboardPage) so the cards show fleet-wide numbers, not the current page slice.
+  const fleetQuery = useDashboardData('24h');
   const metrics = useMemo(() => {
+    if (fleetQuery.data) {
+      return {
+        totalDevices: fleetQuery.data.totalDevices,
+        onlineDevices: fleetQuery.data.onlineDevices,
+        offlineDevices: fleetQuery.data.offlineDevices,
+        pendingDevices: fleetQuery.data.pendingEnrollment,
+      };
+    }
     return {
-      totalDevices: status === 'ALL' ? pagination.total : pagination.total,
+      totalDevices: pagination.total,
       onlineDevices:
         status === 'ONLINE'
           ? pagination.total
@@ -295,14 +312,15 @@ export function DevicesPage() {
           ? pagination.total
           : rawDevices.filter((d) => d.status?.toUpperCase() === 'PENDING').length,
     };
-  }, [pagination.total, rawDevices, status]);
+  }, [fleetQuery.data, pagination.total, rawDevices, status]);
 
   const hasActiveFilters =
     search.trim() !== '' ||
     status !== 'ALL' ||
     compliance !== 'ALL' ||
     os !== 'ALL' ||
-    manufacturer !== 'ALL';
+    manufacturer !== 'ALL' ||
+    groupId !== 'ALL';
 
   const manufacturerOptions = useMemo(
     () => ['ALL', 'Dell Inc.', 'Apple', 'Lenovo', 'HP Inc.', 'Framework', 'Microsoft Corporation'],
@@ -355,6 +373,11 @@ export function DevicesPage() {
     setPage(1);
   };
 
+  const handleGroupChange = (val: string) => {
+    setGroupId(val);
+    setPage(1);
+  };
+
 const handlePageSizeChange = (val: number) => {
     setPageSize(val);
     setPage(1);
@@ -366,6 +389,10 @@ const handlePageSizeChange = (val: number) => {
     setCompliance('ALL');
     setOs('ALL');
     setManufacturer('ALL');
+    setGroupId('ALL');
+    setSortBy('lastSeenAt');
+    setSortOrder('desc');
+    setPageSize(10);
     setPage(1);
   };
 
@@ -657,14 +684,14 @@ const handlePageSizeChange = (val: number) => {
                 size="sm"
                 onClick={() => setShowMoreFilters(!showMoreFilters)}
                 className={`h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 ${
-                  manufacturer !== 'ALL' || showMoreFilters
+                  manufacturer !== 'ALL' || groupId !== 'ALL' || showMoreFilters
                     ? 'border-blue-300 text-blue-700 bg-blue-50/50'
                     : ''
                 }`}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
                 <span>Filters</span>
-                {manufacturer !== 'ALL' && (
+                {(manufacturer !== 'ALL' || groupId !== 'ALL') && (
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
                 )}
               </Button>
@@ -684,6 +711,22 @@ const handlePageSizeChange = (val: number) => {
                   {manufacturerOptions.map((mfr) => (
                     <option key={mfr} value={mfr}>
                       {mfr === 'ALL' ? 'All Manufacturers' : mfr}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-[11px] font-medium">Group:</span>
+                <Select
+                  value={groupId}
+                  onChange={(e) => handleGroupChange(e.target.value)}
+                  wrapperClassName="w-auto"
+                >
+                  <option value="ALL">All Groups</option>
+                  {(groupsQuery.data ?? []).map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name} ({group.membersCount})
                     </option>
                   ))}
                 </Select>
@@ -758,6 +801,15 @@ const handlePageSizeChange = (val: number) => {
                 </span>
               )}
 
+              {compliance !== 'ALL' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
+                  Compliance: {compliance}
+                  <button onClick={() => handleComplianceChange('ALL')} className="hover:text-red-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
               {os !== 'ALL' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
                   OS: {os}
@@ -771,6 +823,15 @@ const handlePageSizeChange = (val: number) => {
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
                   Mfr: {manufacturer}
                   <button onClick={() => handleManufacturerChange('ALL')} className="hover:text-red-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {groupId !== 'ALL' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
+                  Group: {(groupsQuery.data ?? []).find((g) => g.id === groupId)?.name ?? groupId.slice(0, 8)}
+                  <button onClick={() => handleGroupChange('ALL')} className="hover:text-red-600">
                     <X className="w-3 h-3" />
                   </button>
                 </span>

@@ -29,6 +29,7 @@ function alertDetails(alert: {
   createdAt: Date;
   acknowledgedAt?: Date | null;
   acknowledgedBy?: string | null;
+  acknowledgedNote?: string | null;
   resolvedAt: Date | null;
   resolvedBy?: string | null;
   resolvedNote?: string | null;
@@ -47,6 +48,7 @@ function alertDetails(alert: {
     createdAt: toIso(alert.createdAt),
     acknowledgedAt: toIso(alert.acknowledgedAt ?? null),
     acknowledgedBy: alert.acknowledgedBy ?? null,
+    acknowledgedNote: alert.acknowledgedNote ?? null,
     resolvedAt: toIso(alert.resolvedAt),
     resolvedBy: alert.resolvedBy ?? null,
     resolvedNote: alert.resolvedNote ?? null,
@@ -55,6 +57,11 @@ function alertDetails(alert: {
 }
 
 const UNRESOLVED_STATUSES = ['OPEN', 'ACKNOWLEDGED'];
+
+// Demo logins only ever see alerts raised for demo-seeded devices — real
+// enrolled endpoints stay hidden from them, mirroring the device list.
+const demoDeviceScope = (jwtUser: JwtPayload): Prisma.AlertWhereInput =>
+  jwtUser.isDemoAccount ? { device: { isDemoSeed: true } } : {};
 
 export async function alertsRoutes(app: FastifyInstance): Promise<void> {
   // ─── List alerts (org-scoped) ──────────────────────────────────────────────
@@ -100,7 +107,15 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
         ...(severity ? { severity } : {}),
         ...(type ? { type } : {}),
         ...(deviceId ? { deviceId } : {}),
-        ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
+        ...demoDeviceScope(jwtUser),
+        ...(search
+          ? {
+              OR: [
+                { title: { contains: search, mode: 'insensitive' } },
+                { message: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
       };
 
       const [total, alerts] = await Promise.all([
@@ -154,10 +169,11 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const alert = await app.prisma.alert.findFirst({
-        where:
-          jwtUser.role === 'SUPER_ADMIN'
-            ? { id: params.data.id }
-            : { id: params.data.id, organizationId: jwtUser.organizationId },
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...demoDeviceScope(jwtUser),
+        },
         include: { device: { select: { id: true, deviceName: true, hostname: true, ipAddress: true } } },
       });
 
@@ -206,10 +222,11 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const alert = await app.prisma.alert.findFirst({
-        where:
-          jwtUser.role === 'SUPER_ADMIN'
-            ? { id: params.data.id }
-            : { id: params.data.id, organizationId: jwtUser.organizationId },
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...demoDeviceScope(jwtUser),
+        },
       });
 
       if (!alert) {
@@ -288,10 +305,11 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const alert = await app.prisma.alert.findFirst({
-        where:
-          jwtUser.role === 'SUPER_ADMIN'
-            ? { id: params.data.id }
-            : { id: params.data.id, organizationId: jwtUser.organizationId },
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...demoDeviceScope(jwtUser),
+        },
       });
 
       if (!alert) {
@@ -322,7 +340,7 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
           status: 'ACKNOWLEDGED',
           acknowledgedAt: new Date(),
           acknowledgedBy: jwtUser.email,
-          ...(note ? { resolvedNote: note } : {}),
+          ...(note ? { acknowledgedNote: note } : {}),
         },
       });
 
@@ -379,8 +397,9 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
         where: {
           id: { in: ids },
           ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...demoDeviceScope(jwtUser),
         },
-        select: { id: true, severity: true, title: true, status: true },
+        select: { id: true, organizationId: true, severity: true, title: true, status: true },
       });
 
       const openIds = scoped.filter((a) => a.status !== 'RESOLVED').map((a) => a.id);
@@ -396,17 +415,26 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
           },
         });
 
-        await app.prisma.auditLog.create({
-          data: {
-            organizationId: jwtUser.organizationId,
-            actorId: jwtUser.sub,
-            action: 'ALERTS_BATCH_RESOLVED',
-            resource: 'ALERT',
-            resourceId: openIds[0] ?? 'alert-batch',
-            ipAddress: request.ip,
-            metadata: JSON.stringify({ count: openIds.length, note: note ?? null }),
-          },
-        });
+        // One audit row per affected organization (a SUPER_ADMIN batch can span tenants).
+        const resolvedCountByOrg = new Map<string, number>();
+        for (const alert of scoped) {
+          if (openIds.includes(alert.id)) {
+            resolvedCountByOrg.set(alert.organizationId, (resolvedCountByOrg.get(alert.organizationId) ?? 0) + 1);
+          }
+        }
+        for (const [organizationId, count] of resolvedCountByOrg) {
+          await app.prisma.auditLog.create({
+            data: {
+              organizationId,
+              actorId: jwtUser.sub,
+              action: 'ALERTS_BATCH_RESOLVED',
+              resource: 'ALERT',
+              resourceId: openIds[0] ?? 'alert-batch',
+              ipAddress: request.ip,
+              metadata: JSON.stringify({ count, note: note ?? null }),
+            },
+          });
+        }
       }
 
       return reply.send({
@@ -456,14 +484,18 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const input = body.data;
-      const targetOrgId = jwtUser.organizationId;
+      // The alert (and its audit row) belong to the device's organization,
+      // which can differ from the session org for SUPER_ADMIN callers.
+      // Demo logins can only raise alerts for demo-seeded devices.
+      let targetOrgId = jwtUser.organizationId;
 
       if (input.deviceId) {
         const device = await app.prisma.device.findFirst({
-          where:
-            jwtUser.role === 'SUPER_ADMIN'
-              ? { id: input.deviceId }
-              : { id: input.deviceId, organizationId: jwtUser.organizationId },
+          where: {
+            id: input.deviceId,
+            ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+            ...(jwtUser.isDemoAccount ? { isDemoSeed: true } : {}),
+          },
           select: { id: true, organizationId: true },
         });
         if (!device) {
@@ -472,6 +504,7 @@ export async function alertsRoutes(app: FastifyInstance): Promise<void> {
             error: { code: 'NOT_FOUND', message: 'Device not found' },
           });
         }
+        targetOrgId = device.organizationId;
       }
 
       const created = await createAlertDedup(app.prisma, {

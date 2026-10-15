@@ -231,6 +231,8 @@ describe('Policy Management API', () => {
 describe('Compliance, Alerts & Commands API', () => {
   let app: FastifyInstance;
   let adminToken: string;
+  let viewerToken: string;
+  let viewerId: string;
   let demoOrgId: string;
   let enrolledDeviceId: string;
   let agentToken: string;
@@ -251,6 +253,24 @@ describe('Compliance, Alerts & Commands API', () => {
       payload: { email: 'admin@ricoz.local', password: 'admin123' },
     });
     adminToken = (login.json() as LoginResponse).data!.token!;
+
+    // Disposable VIEWER in the same org for the RBAC assertions below.
+    const viewerUser = await app.prisma.user.create({
+      data: {
+        organizationId: demoOrgId,
+        email: `com-viewer-${runId}@ricoz.local`,
+        name: 'Compliance Viewer',
+        passwordHash: await hashPassword('viewer123'),
+        role: 'VIEWER',
+      },
+    });
+    viewerId = viewerUser.id;
+    const viewerLogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: viewerUser.email, password: 'viewer123' },
+    });
+    viewerToken = (viewerLogin.json() as LoginResponse).data!.token!;
 
     // Enroll a device to get an agent token
     const tokenRes = await app.inject({
@@ -282,6 +302,7 @@ describe('Compliance, Alerts & Commands API', () => {
   after(async () => {
     await app.prisma.device.deleteMany({ where: { id: enrolledDeviceId } }).catch(() => undefined);
     await app.prisma.policy.deleteMany({ where: { name: { contains: 'TEST-POLICY' } } }).catch(() => undefined);
+    await app.prisma.user.deleteMany({ where: { id: viewerId } }).catch(() => undefined);
     await app.close();
   });
 
@@ -408,6 +429,23 @@ describe('Compliance, Alerts & Commands API', () => {
     assert.equal(list.statusCode, 200);
     const listBody = list.json() as { data: { items: Array<{ id: string }> } };
     assert.ok(listBody.data.items.some((a) => a.id === alert.id));
+
+    // VIEWER can read the same alert…
+    const viewerList = await app.inject({
+      method: 'GET',
+      url: `/api/alerts/${alert.id}`,
+      headers: { authorization: `Bearer ${viewerToken}` },
+    });
+    assert.equal(viewerList.statusCode, 200);
+
+    // …but cannot resolve it.
+    const viewerResolve = await app.inject({
+      method: 'POST',
+      url: `/api/alerts/${alert.id}/resolve`,
+      headers: { authorization: `Bearer ${viewerToken}` },
+      payload: { note: 'tested' },
+    });
+    assert.equal(viewerResolve.statusCode, 403);
 
     const resolve = await app.inject({
       method: 'POST',

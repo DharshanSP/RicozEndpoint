@@ -21,9 +21,10 @@ import type {
  *
  * GET /api/devices?page=&limit=&search=&status=&os=&sortBy=&sortOrder=
  *   -> { success, data: DeviceSummary[], pagination: { page, limit, total, totalPages } }
- *      - status  ∈ ONLINE | OFFLINE | UNKNOWN | PENDING | NON_COMPLIANT
- *      - sortBy  ∈ deviceName | hostname | serialNumber | model | os | osVersion |
- *                 ipAddress | agentVersion | status | lastSeenAt | registeredAt | createdAt ...
+ *      - status  – ONLINE | OFFLINE | PENDING | NON_COMPLIANT (compliance bucket)
+ *      - sortBy  – deviceName | hostname | status | os | serialNumber |
+ *                  lastSeenAt | registeredAt | createdAt
+ *      - groupId – uuid of a device group (members only)
  *      - sortOrder ∈ asc | desc
  *      - Errors: 400 VALIDATION_ERROR, 401 UNAUTHORIZED
  *
@@ -49,6 +50,8 @@ export interface DeviceListQuery {
   manufacturer?: string;
   /** Device origin filter. Demo login accounts are always forced to SEEDED server-side. */
   source?: 'ALL' | 'SEEDED' | 'ENROLLED';
+  /** Restrict to members of one device group. */
+  groupId?: string;
   sortBy?: DeviceSortField;
   sortOrder?: DeviceSortOrder;
 }
@@ -90,6 +93,7 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
   if (query.os && query.os !== 'ALL') params.set('os', query.os);
   if (query.manufacturer && query.manufacturer !== 'ALL') params.set('manufacturer', query.manufacturer);
   if (query.source && query.source !== 'ALL') params.set('source', query.source);
+  if (query.groupId) params.set('groupId', query.groupId);
   if (query.sortBy) params.set('sortBy', query.sortBy);
   if (query.sortOrder) params.set('sortOrder', query.sortOrder);
 

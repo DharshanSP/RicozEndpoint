@@ -28,6 +28,7 @@ export interface AlertItem {
   resolvedAt: string | null;
   acknowledgedAt?: string | null;
   acknowledgedBy?: string | null;
+  acknowledgedNote?: string | null;
   resolvedBy?: string | null;
   resolvedNote?: string | null;
   device?: AlertDeviceRef | null;
@@ -61,4 +62,5 @@ export interface AlertListQuery {
   type?: AlertType | 'ALL';
   unresolved?: boolean;
   search?: string;
+  deviceId?: string;
 }

@@ -96,8 +96,9 @@ One-time secrets generated in **Devices → Enrollment Tokens** to register agen
 Real-time overview:
 - **Total Devices** — count by status
 - **Compliance Score** — % devices passing all assigned policies
-- **Open Alerts** — critical/warning/info counts
-- **Failed Actions** — commands that errored in last 24h
+- **Open Alerts** — unresolved alert totals (all time; the alert stream below follows the selected range)
+- **Failed Actions** — commands with status FAILED, all types, all time (not windowed)
+- **Patch Posture** — catalog approval breakdown (pending/approved/deployed) and failed install count
 
 ### 4.2 Devices
 **List** — filter by status, search by name/hostname/serial. Click a row for **Device Detail**:

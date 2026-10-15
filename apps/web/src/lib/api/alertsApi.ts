@@ -32,6 +32,7 @@ export async function listAlerts(query: AlertListQuery = {}): Promise<AlertListR
   if (query.type && query.type !== 'ALL') params.set('type', query.type);
   if (query.unresolved) params.set('unresolved', 'true');
   if (query.search) params.set('search', query.search);
+  if (query.deviceId) params.set('deviceId', query.deviceId);
 
   const qs = params.toString();
   return requestBodyEnvelope<AlertListResponse>(`/alerts${qs ? `?${qs}` : ''}`);

@@ -3,7 +3,7 @@ import { authenticateAgent } from '../../middleware/agent-auth.middleware';
 import { agentHeartbeatSchema, commandResultSchema, deviceParamsSchema } from '@ricoz/validation';
 import { evaluateDeviceCompliance } from '../compliance/compliance.service';
 import { markDeviceOnline } from '../../services/device-status.service';
-import { createAlertDedup } from '../alerts/alerts.service';
+import { createAlertDedup, resolveAlertsMatching } from '../alerts/alerts.service';
 import { loadConfig } from '../../config';
 
 function toIso(value: Date | null | undefined): string | null {
@@ -482,6 +482,22 @@ Write-Host "Installed and started agent at $target"
           dedupKey: `command:${updated.id}`,
         }).catch((error) => {
           app.log.error({ error, context: 'command_failure_alert' }, 'Failed to raise command failure alert');
+        });
+      }
+
+      // Recovery: a completed command supersedes prior failures of the same
+      // command type on this device (typically a successful retry), so those
+      // COMMAND_FAILED alerts are closed instead of lingering.
+      if (updated.status === 'COMPLETED') {
+        await resolveAlertsMatching(app.prisma, {
+          organizationId: existing.organizationId,
+          deviceId: agentDevice.id,
+          type: 'COMMAND_FAILED',
+          title: `Command failed: ${updated.type}`,
+          resolvedBy: null,
+          note: `command ${updated.id} (${updated.type}) completed successfully`,
+        }).catch((error) => {
+          app.log.error({ error, context: 'command_recovery_resolve' }, 'Failed to auto-resolve command failure alerts');
         });
       }
 

@@ -62,6 +62,8 @@ export interface PatchCommandRef {
   deviceId?: string;
   status: string;
   createdAt: string;
+  completedAt?: string | null;
+  errorMessage?: string | null;
 }
 
 export interface PatchDeviceRow {

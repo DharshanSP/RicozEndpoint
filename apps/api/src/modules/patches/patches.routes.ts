@@ -356,13 +356,29 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           select: { deviceId: true, status: true, installedAt: true, lastReportedAt: true },
         }),
         app.prisma.command.findMany({
-          where: { patchId: patch.id, status: { in: ACTIVE_COMMAND_STATUSES } },
-          select: { id: true, deviceId: true, status: true, createdAt: true },
+          // Latest command per device for this patch (terminal states included),
+          // so FAILED rows can surface the agent-reported errorMessage below.
+          where: { patchId: patch.id },
+          select: {
+            id: true,
+            deviceId: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+            errorMessage: true,
+          },
+          orderBy: { createdAt: 'desc' },
         }),
       ]);
 
       const stateByDevice = new Map(rows.map((row) => [row.deviceId, row]));
-      const commandByDevice = new Map(commands.map((row) => [row.deviceId, row]));
+      // commands arrive newest-first; keep the latest row per device.
+      const commandByDevice = new Map<string, (typeof commands)[number]>();
+      for (const row of commands) {
+        if (!commandByDevice.has(row.deviceId)) {
+          commandByDevice.set(row.deviceId, row);
+        }
+      }
 
       let installed = 0;
       let failed = 0;
@@ -376,7 +392,7 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
         if (deviceStatus === 'INSTALLED') installed += 1;
         else if (deviceStatus === 'FAILED') failed += 1;
         else missing += 1;
-        if (command) inFlight += 1;
+        if (command && ACTIVE_COMMAND_STATUSES.includes(command.status)) inFlight += 1;
 
         return {
           id: device.id,
@@ -388,7 +404,13 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           patchStatus: deviceStatus,
           installedAt: toIso(state?.installedAt),
           lastReportedAt: toIso(state?.lastReportedAt),
-          command,
+          command: command
+            ? {
+                ...command,
+                createdAt: toIso(command.createdAt),
+                completedAt: toIso(command.completedAt),
+              }
+            : null,
         };
       });
 

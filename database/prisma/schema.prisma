@@ -105,6 +105,10 @@ model Device {
   @@index([organizationId])
   @@index([status])
   @@index([lastSeenAt])
+  @@index([organizationId, status], map: "devices_org_status_idx")
+  @@index([organizationId, createdAt(sort: Desc)], map: "devices_org_created_idx")
+  @@index([organizationId, registeredAt(sort: Desc)], map: "devices_org_registered_idx")
+  @@index([organizationId, status, lastSeenAt(sort: Desc)], map: "devices_org_status_seen_idx")
   @@map("devices")
 }
 
@@ -372,6 +376,7 @@ model Alert {
   createdAt      DateTime  @default(now())
   acknowledgedAt DateTime?
   acknowledgedBy String?
+  acknowledgedNote String?
   resolvedAt     DateTime?
   resolvedBy     String?
   resolvedNote   String?
@@ -385,6 +390,7 @@ model Alert {
   @@index([status])
   @@index([organizationId, type, status])
   @@index([dedupKey])
+  @@index([organizationId, status, createdAt(sort: Desc)], map: "alerts_org_status_created_idx")
   @@map("alerts")
 }
 

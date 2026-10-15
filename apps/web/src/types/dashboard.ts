@@ -1,6 +1,8 @@
 export type AlertSeverity = 'critical' | 'warning' | 'info';
-export type EventStatus = 'success' | 'warning' | 'info' | 'error';
-export type ComplianceStatus = 'Compliant' | 'At Risk' | 'Non-Compliant';
+// eventStatusFromAction only ever returns these three (see dashboard.routes.ts).
+export type EventStatus = 'success' | 'warning' | 'error';
+// Compliance control statuses emitted by the API (see dashboard.routes.ts).
+export type ComplianceStatus = 'Compliant' | 'At Risk' | 'Not Evaluated';
 
 export interface OsDistributionItem {
   name: string;
@@ -26,6 +28,14 @@ export interface DashboardAlertItem {
   category: string;
 }
 
+export interface DashboardPatchSummary {
+  total: number;
+  pending: number;
+  approved: number;
+  deployed: number;
+  failedInstalls: number;
+}
+
 export interface DashboardEventItem {
   id: string;
   type: string;
@@ -48,6 +58,7 @@ export interface DashboardTelemetryData {
   criticalAlertsCount: number;
   warningAlertsCount: number;
   failedActionsCount: number;
+  patchSummary: DashboardPatchSummary;
   osDistribution: OsDistributionItem[];
   complianceControls: ComplianceControlItem[];
   activeAlerts: DashboardAlertItem[];
