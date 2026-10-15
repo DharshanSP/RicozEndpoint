@@ -6,11 +6,13 @@ import {
   getDeviceSoftware,
   listDevices,
   deleteDevice,
+  updateDevice,
+  type ActivityPage,
   type DeviceListQuery,
+  type UpdateDevicePayload,
 } from '../lib/api/devicesApi';
 import { getDeviceGroups, type DeviceGroup } from '../lib/api/deviceGroupsApi';
 import type {
-  ActivityEvent,
   DeviceDetail,
   DeviceHardware,
   DeviceListData,
@@ -82,7 +84,7 @@ export function useDeviceActivity(
 ) {
   return useQuery({
     queryKey: ['devices', 'activity', id, limit, page, type],
-    queryFn: async (): Promise<ActivityEvent[]> => getDeviceActivity(id ?? '', limit, page, type),
+    queryFn: async (): Promise<ActivityPage> => getDeviceActivity(id ?? '', limit, page, type),
     enabled: enabled && !!id,
   });
 }
@@ -94,6 +96,19 @@ export function useDeleteDevice() {
     mutationFn: deleteDevice,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['devices', 'list'] });
+    },
+  });
+}
+
+/** Mutation to rename a device. Refreshes detail, list and dashboard counters. */
+export function useUpdateDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateDevicePayload }) =>
+      updateDevice(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }

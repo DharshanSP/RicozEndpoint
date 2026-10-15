@@ -156,7 +156,10 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
         const installedCount = patch.devices.filter((row) => row.status === 'INSTALLED').length;
         const failedCount = patch.devices.filter((row) => row.status === 'FAILED').length;
         const totalDevices = deviceCountByOrg.get(patch.organizationId) ?? 0;
-        const missingCount = Math.max(0, totalDevices - installedCount);
+        // Devices with no install record are missing; FAILED rows are counted
+        // separately (same definition as the detail route) so the three states
+        // always sum to the fleet size.
+        const missingCount = Math.max(0, totalDevices - installedCount - failedCount);
 
         return {
           ...patchDetails(patch),
@@ -164,7 +167,9 @@ export async function patchesRoutes(app: FastifyInstance): Promise<void> {
           failedCount,
           missingCount,
           totalDevices,
-          affectedDevices: missingCount,
+          // Deploy eligibility: deploy skips only INSTALLED and in-flight
+          // devices, so both missing and failed rows require an update.
+          affectedDevices: missingCount + failedCount,
         };
       });
 

@@ -116,31 +116,53 @@ export async function getDeviceSoftware(id: string): Promise<DeviceSoftwareItem[
   return requestBody<DeviceSoftwareItem[]>(`/devices/${encodeURIComponent(id)}/software`);
 }
 
-/** Gets the merged activity feed (heartbeats, commands, alerts) for a device. */
+export interface ActivityPage {
+  events: ActivityEvent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+/** Gets the merged activity feed (heartbeats, commands, alerts) for a device, with server-side paging. */
 export async function getDeviceActivity(
   id: string,
   limit: number = 20,
   page: number = 1,
   type?: string
-): Promise<ActivityEvent[]> {
+): Promise<ActivityPage> {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
   params.set('page', String(page));
   if (type && type !== 'ALL') params.set('type', type);
-  const body = await requestBody<{ data?: ActivityEvent[] } | ActivityEvent[]>(
+  const body = await requestBodyEnvelope<{ data: ActivityEvent[]; pagination: ActivityPage['pagination'] }>(
     `/devices/${encodeURIComponent(id)}/activity?${params.toString()}`
   );
-  // Backend returns { success, data: [...], pagination } — unwrap both shapes.
-  if (Array.isArray(body)) return body;
-  if (Array.isArray((body as { data?: ActivityEvent[] }).data)) {
-    return (body as { data: ActivityEvent[] }).data;
+  return {
+    events: body.data ?? [],
+    pagination: body.pagination ?? { page, limit, total: 0, totalPages: 1 },
+  };
+}
+
+export interface UpdateDevicePayload {
+  deviceName?: string;
+  hostname?: string;
+}
+
+/** Updates a device's display name / hostname. Requires IT_ADMIN+. Writes a DEVICE_UPDATED audit row. */
+export async function updateDevice(
+  id: string,
+  payload: UpdateDevicePayload
+): Promise<{ id: string; deviceName: string; hostname: string }> {
+  const res = await fetchApi<{ id: string; deviceName: string; hostname: string }>(
+    `/devices/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(payload) }
+  );
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'Failed to update device');
   }
-  return body as unknown as ActivityEvent[];
+  return res.data;
 }
 
 /** Deletes a device and all its related data. Requires IT_ADMIN+. */
-export async function deleteDevice({ id, password }: { id: string; password?: string }): Promise<void> {
-  const res = await fetchApi<unknown>(`/devices/${encodeURIComponent(id)}`, {
+export async function deleteDevice({ id, password }: { id: string; password?: string }): Promise<void> {  const res = await fetchApi<unknown>(`/devices/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     body: JSON.stringify({ password }),
   });

@@ -15,6 +15,7 @@ interface DashboardData {
   offlineDevices: number;
   openAlertsCount: number;
   activeAlerts: Array<{ id: string; title: string }>;
+  osDistribution: Array<{ name: string; count: number; percentage: number }>;
   patchSummary: { total: number; pending: number; approved: number; deployed: number; failedInstalls: number };
 }
 
@@ -62,15 +63,15 @@ describe('Dashboard API (patch strip, range semantics, scoping)', () => {
     adminToken = await makeUser(`dash-admin-${runId}@ricoz.local`, 'ORG_ADMIN');
     demoToken = await makeUser(`dash-demo-${runId}@ricoz.local`, 'VIEWER', true);
 
-    const makeDevice = (suffix: string, status: string, demo: boolean) =>
+    const makeDevice = (suffix: string, status: string, demo: boolean, os = 'Windows', osVersion = 'Windows 11') =>
       app.prisma.device.create({
         data: {
           organizationId: orgId,
           deviceName: `${marker}-DEV-${suffix}`,
           hostname: `${marker.toLowerCase()}-host-${suffix}`,
           serialNumber: `SN-${marker}-${suffix}`,
-          os: 'Windows',
-          osVersion: 'Windows 11',
+          os,
+          osVersion,
           status,
           architecture: 'x64',
           ...(demo ? { isDemoSeed: true } : {}),
@@ -78,7 +79,7 @@ describe('Dashboard API (patch strip, range semantics, scoping)', () => {
       });
 
     demoDeviceId = (await makeDevice('DEMO', 'ONLINE', true)).id;
-    realDeviceId = (await makeDevice('REAL', 'OFFLINE', false)).id;
+    realDeviceId = (await makeDevice('REAL', 'OFFLINE', false, 'Windows Server', 'Windows Server 2022')).id;
     await app.prisma.device.create({
       data: {
         organizationId: otherOrgId,
@@ -201,8 +202,19 @@ describe('Dashboard API (patch strip, range semantics, scoping)', () => {
     assert.ok(!titles.some((t) => t.includes('stale offline')), '40-day-old alert must be outside the 24h stream');
   });
 
-  it('exposes the patch posture strip', async () => {
+  it('groups OS distribution by family and version without merging', async () => {
     const data = await dashboard(adminToken);
+    assert.equal(data.osDistribution.length, 2);
+    const byName = new Map(data.osDistribution.map((r) => [r.name, r.count]));
+    assert.equal(byName.get('Windows 11'), 1);
+    assert.equal(byName.get('Windows Server 2022'), 1);
+    assert.equal(
+      data.osDistribution.reduce((sum, r) => sum + r.count, 0),
+      data.totalDevices
+    );
+  });
+
+  it('exposes the patch posture strip', async () => {    const data = await dashboard(adminToken);
     assert.ok(data.patchSummary, 'patchSummary must be present');
     assert.ok(data.patchSummary.total >= 1);
     assert.ok(data.patchSummary.failedInstalls >= 1, 'failed DevicePatch rows must be counted');

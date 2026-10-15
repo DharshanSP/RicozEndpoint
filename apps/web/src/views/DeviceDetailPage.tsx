@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Root as TabsRoot, List as TabsList, Trigger as TabsTrigger, Content as TabsContent } from '@radix-ui/react-tabs';
 import {
@@ -24,13 +24,14 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware, useDeleteDevice } from '../hooks/useDeviceQueries';
+import { useDeviceActivity, useDeviceDetail, useDeviceHardware, useDeviceSoftware, useDeleteDevice, useUpdateDevice } from '../hooks/useDeviceQueries';
 import { useDeviceCompliance } from '../hooks/useCompliance';
 import { useDevicePatches } from '../hooks/usePatches';
 import { useCreateCommand } from '../hooks/useCommands';
 import { useAuth } from '../context/AuthContext';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { Card, CardContent } from '../components/ui/card';
+import { Pagination } from '../components/ui/Pagination';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -253,11 +254,12 @@ export function DeviceDetailPage() {
   const [policyTypeFilter, setPolicyTypeFilter] = useState('ALL');
   const [commandStatusFilter, setCommandStatusFilter] = useState('ALL');
   const [activityCategoryFilter, setActivityCategoryFilter] = useState('ALL');
+  const [activityPage, setActivityPage] = useState(1);
 
   const detail = useDeviceDetail(id);
   const hardware = useDeviceHardware(id, activeTab === 'hardware');
   const software = useDeviceSoftware(id, activeTab === 'software');
-  const activity = useDeviceActivity(id, activeTab === 'activity');
+  const activity = useDeviceActivity(id, activeTab === 'activity', 20, activityPage, activityCategoryFilter);
 
   // Command mutation and confirmation state
   const createCommand = useCreateCommand(id);
@@ -589,6 +591,8 @@ export function DeviceDetailPage() {
         <TabsContent value="actions">
           <ActionsTab
             deviceId={overview.id}
+            initialName={overview.deviceName}
+            initialHostname={overview.hostname}
             dispatch={dispatch}
             isCommandPending={createCommand.isPending}
           />
@@ -600,14 +604,29 @@ export function DeviceDetailPage() {
             <TabSkeleton rows={4} />
           ) : activity.isError ? (
             <TabError message={activity.error instanceof Error ? activity.error.message : 'Activity stream could not be loaded.'} onRetry={() => activity.refetch()} />
-          ) : !activity.data || activity.data.length === 0 ? (
+          ) : !activity.data || activity.data.events.length === 0 ? (
             <EmptyTab icon={Activity} title="No activity reported" description="No heartbeats, commands or alerts have been recorded for this device." />
           ) : (
-            <ActivitySection
-              events={activity.data}
-              filter={activityCategoryFilter}
-              onFilterChange={setActivityCategoryFilter}
-            />
+            <>
+              <ActivitySection
+                events={activity.data.events}
+                filter={activityCategoryFilter}
+                onFilterChange={(f) => {
+                  setActivityCategoryFilter(f);
+                  setActivityPage(1);
+                }}
+              />
+              {activity.data.pagination.totalPages > 1 && (
+                <Pagination
+                  currentPage={activity.data.pagination.page}
+                  totalPages={activity.data.pagination.totalPages}
+                  totalItems={activity.data.pagination.total}
+                  pageSize={activity.data.pagination.limit}
+                  onPageChange={setActivityPage}
+                  itemLabel="events"
+                />
+              )}
+            </>
           )}
         </TabsContent>
       </TabsRoot>
@@ -1068,11 +1087,8 @@ function ActivitySection({
   filter: string;
   onFilterChange: (f: string) => void;
 }) {
-  const filtered = useMemo(() => {
-    if (filter === 'ALL') return events;
-    return events.filter((e) => e.type === filter);
-  }, [events, filter]);
-
+  // Category filtering happens server-side (the `type` query param) so paging
+  // stays consistent; the timeline renders the current page as returned.
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -1095,7 +1111,7 @@ function ActivitySection({
         </div>
       </div>
 
-      <ActivityTimeline events={filtered} />
+      <ActivityTimeline events={events} />
     </div>
   );
 }
@@ -1133,18 +1149,30 @@ function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
 
 interface ActionsTabProps {
   deviceId: string;
+  initialName: string;
+  initialHostname: string;
   dispatch: (type: CommandType) => void;
   isCommandPending: boolean;
 }
 
-function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
+function ActionsTab({ deviceId, initialName, initialHostname, dispatch, isCommandPending }: ActionsTabProps) {
   const { hasRole } = useAuth();
   const canManage = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const canOperate = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN', 'OPERATOR']);
   const router = useRouter();
   const deleteDevice = useDeleteDevice();
+  const updateDevice = useUpdateDevice();
   const [pendingDelete, setPendingDelete] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
+  const [displayName, setDisplayName] = useState(initialName);
+  const [hostname, setHostname] = useState(initialHostname);
+  const [renameNotice, setRenameNotice] = useState<string | null>(null);
+
+  // Keep the form in sync if the detail payload refreshes underneath it.
+  useEffect(() => {
+    setDisplayName(initialName);
+    setHostname(initialHostname);
+  }, [initialName, initialHostname]);
 
   if (!canOperate) {
     return (
@@ -1176,11 +1204,83 @@ function ActionsTab({ deviceId, dispatch, isCommandPending }: ActionsTabProps) {
 
   const running = isCommandPending || deleteDevice.isPending;
 
+  const renameDirty =
+    displayName.trim() !== initialName.trim() || hostname.trim() !== initialHostname.trim();
+  const handleRename = () => {
+    if (!renameDirty || updateDevice.isPending) return;
+    setRenameNotice(null);
+    updateDevice.mutate(
+      {
+        id: deviceId,
+        payload: { deviceName: displayName.trim(), hostname: hostname.trim() },
+      },
+      {
+        onSuccess: (updated) => {
+          setDisplayName(updated.deviceName);
+          setHostname(updated.hostname);
+          setRenameNotice('Device identity updated.');
+        },
+      }
+    );
+  };
+
   return (
     <div className="space-y-3">
       {deleteDevice.isError && (
         <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
           {(deleteDevice.error as Error).message}
+        </div>
+      )}
+
+      {/* Device identity (IT_ADMIN+): display name and hostname shown across the console */}
+      {canManage && (
+        <div className="p-4 rounded-lg bg-white border border-slate-200 shadow-xs space-y-3">
+          <div>
+            <span className="text-xs font-semibold text-slate-900">Device identity</span>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Display name and hostname as shown across the console. Changes are audited.
+            </p>
+          </div>
+          {renameNotice && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700">
+              {renameNotice}
+            </div>
+          )}
+          {updateDevice.isError && (
+            <div className="rounded-md border border-rose-300 bg-rose-50 p-2.5 text-xs text-rose-700">
+              {(updateDevice.error as Error).message}
+            </div>
+          )}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-slate-600">Display name</label>
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                disabled={updateDevice.isPending}
+                maxLength={255}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-slate-600">Hostname</label>
+              <Input
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                disabled={updateDevice.isPending}
+                maxLength={255}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              onClick={handleRename}
+              disabled={!renameDirty || !displayName.trim() || !hostname.trim() || updateDevice.isPending}
+              className="text-xs"
+            >
+              {updateDevice.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
         </div>
       )}
 

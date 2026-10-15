@@ -183,12 +183,13 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           app.prisma.device.count({ where: { ...orgWhere, ...demoDeviceWhere, status: 'OFFLINE' } }),
           app.prisma.device.count({ where: { ...orgWhere, ...demoDeviceWhere, status: 'PENDING' } }),
         ]),
-        // Operating system distribution
+        // Operating system distribution, grouped by family + version so two
+        // OS families sharing a version string never merge into one row.
         app.prisma.device.groupBy({
-          by: ['osVersion'],
+          by: ['os', 'osVersion'],
           where: { ...orgWhere, ...demoDeviceWhere },
           _count: { _all: true },
-          orderBy: { _count: { osVersion: 'desc' } },
+          orderBy: { _count: { os: 'desc' } },
         }),
         // Recent unresolved alerts (the widget only renders host + address)
         app.prisma.alert.findMany({
@@ -256,10 +257,15 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         ]),
       ]);
 
+      // The version string usually carries the family name already
+      // ("Windows 11 Pro 23H2"); the family is prepended only when it does
+      // not, so rows stay unambiguous without redundant labels.
+      const osDisplayName = (os: string, osVersion: string) =>
+        osVersion === os || osVersion.startsWith(os) ? osVersion : `${os} ${osVersion}`;
       const osDistribution = osGroups.map((group, index) => {
         const count = group._count._all ?? 0;
         return {
-          name: group.osVersion,
+          name: osDisplayName(group.os, group.osVersion),
           count,
           percentage: totalDevices > 0 ? Math.round((count / totalDevices) * 1000) / 10 : 0,
           color: OS_COLORS[index % OS_COLORS.length],
