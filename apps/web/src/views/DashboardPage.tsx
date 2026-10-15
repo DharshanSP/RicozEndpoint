@@ -285,19 +285,27 @@ export function DashboardPage() {
               <CheckSquare className="w-4 h-4 text-blue-600" />
             </div>
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">{telemetryData.complianceScore}%</span>
+              <span className="text-2xl font-bold text-slate-900 tracking-tight">{
+                telemetryData.compliantDevices + telemetryData.nonCompliantDevices > 0
+                  ? `${telemetryData.complianceScore}%`
+                  : '—'
+              }</span>
               <span className="text-[11px] text-slate-500 font-medium">
-                {telemetryData.compliantDevices}/{telemetryData.compliantDevices + telemetryData.nonCompliantDevices} evaluated
+                {telemetryData.compliantDevices}/{telemetryData.compliantDevices + telemetryData.nonCompliantDevices} evaluated · {telemetryData.untestedDevices} untested
               </span>
             </div>
             <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
               <span className="text-slate-500">Security Baseline</span>
               <span
                 className={
-                  telemetryData.complianceScore >= 90 ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'
+                  telemetryData.compliantDevices + telemetryData.nonCompliantDevices === 0
+                    ? 'text-slate-500 font-semibold'
+                    : telemetryData.complianceScore >= 90 ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'
                 }
               >
-                {telemetryData.complianceScore >= 90 ? 'Passing' : 'Below target'}
+                {telemetryData.compliantDevices + telemetryData.nonCompliantDevices === 0
+                  ? 'Not evaluated'
+                  : telemetryData.complianceScore >= 90 ? 'Passing' : 'Below target'}
               </span>
             </div>
           </CardContent>
@@ -315,7 +323,7 @@ export function DashboardPage() {
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-bold text-red-600 tracking-tight">{telemetryData.openAlertsCount}</span>
                 <span className="text-[11px] text-red-700 font-medium">
-                  {telemetryData.criticalAlertsCount} Critical
+                  {telemetryData.criticalAlertsCount} Critical · {telemetryData.warningAlertsCount} Warning
                 </span>
               </div>
               <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
@@ -327,53 +335,57 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {/* Patch Posture Strip (catalog approval + failed installs, all-time) */}
-      <Link href="/patches" className="block group">
-        <Card className="border-slate-200 bg-white shadow-xs group-hover:border-blue-300 group-hover:shadow-sm transition-all">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-                <Wrench className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-blue-600 transition-colors">
-                  Patch Posture
-                </div>
-                <div className="text-[11px] text-slate-500">Catalog approval and install failures</div>
-              </div>
+      {/* Patch & Action Posture Strip (catalog approval, install failures, failed commands — all-time) */}
+      <Card className="border-slate-200 bg-white shadow-xs">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
+              <Wrench className="w-4 h-4" />
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1">
-              <div>
-                <div className="text-[11px] text-slate-500 font-medium">Catalog patches</div>
-                <div className="text-xl font-bold text-slate-900 tracking-tight">
-                  {telemetryData.patchSummary.total}
-                </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Patch & Action Posture
               </div>
-              <div>
-                <div className="text-[11px] text-slate-500 font-medium">Pending approval</div>
-                <div className="text-xl font-bold text-amber-600 tracking-tight">
-                  {telemetryData.patchSummary.pending}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] text-slate-500 font-medium">Failed installs</div>
-                <div className="text-xl font-bold text-rose-600 tracking-tight">
-                  {telemetryData.patchSummary.failedInstalls}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] text-slate-500 font-medium">Deployed</div>
-                <div className="text-xl font-bold text-emerald-600 tracking-tight">
-                  {telemetryData.patchSummary.deployed}
-                </div>
-              </div>
+              <div className="text-[11px] text-slate-500">Catalog approval, install failures, failed commands</div>
             </div>
-            <span className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-600 font-medium shrink-0">
-              Open patch management <ArrowUpRight className="w-3.5 h-3.5" />
-            </span>
-          </CardContent>
-        </Card>
-      </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 flex-1">
+            <Link href="/patches" className="block group/stat rounded-md">
+              <div className="text-[11px] text-slate-500 font-medium group-hover/stat:text-blue-600">Catalog patches</div>
+              <div className="text-xl font-bold text-slate-900 tracking-tight">
+                {telemetryData.patchSummary.total}
+              </div>
+            </Link>
+            <Link href="/patches" className="block group/stat rounded-md">
+              <div className="text-[11px] text-slate-500 font-medium group-hover/stat:text-blue-600">Pending approval</div>
+              <div className="text-xl font-bold text-amber-600 tracking-tight">
+                {telemetryData.patchSummary.pending}
+              </div>
+            </Link>
+            <Link href="/patches" className="block group/stat rounded-md">
+              <div className="text-[11px] text-slate-500 font-medium group-hover/stat:text-blue-600">Failed installs</div>
+              <div className="text-xl font-bold text-rose-600 tracking-tight">
+                {telemetryData.patchSummary.failedInstalls}
+              </div>
+            </Link>
+            <Link href="/patches" className="block group/stat rounded-md">
+              <div className="text-[11px] text-slate-500 font-medium group-hover/stat:text-blue-600">Deployed</div>
+              <div className="text-xl font-bold text-emerald-600 tracking-tight">
+                {telemetryData.patchSummary.deployed}
+              </div>
+            </Link>
+            <Link href="/alerts?type=COMMAND_FAILED" className="block group/stat rounded-md" title="Failed commands of all types — triage as alerts">
+              <div className="text-[11px] text-slate-500 font-medium group-hover/stat:text-blue-600">Failed actions</div>
+              <div className="text-xl font-bold text-orange-600 tracking-tight">
+                {telemetryData.failedActionsCount}
+              </div>
+            </Link>
+          </div>
+          <Link href="/patches" className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-600 font-medium shrink-0 hover:underline">
+            Open patch management <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Main Operational Section: Health Distribution & Compliance Posture */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">        {/* Device Fleet Health & Status */}

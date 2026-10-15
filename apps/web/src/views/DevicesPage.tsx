@@ -125,8 +125,40 @@ function getComplianceBadge(complianceStatus?: string) {
   );
 }
 
-export function DevicesPage() {
-  const router = useRouter();
+const MANUFACTURER_VALUES = [
+  'ALL',
+  'Dell Inc.',
+  'Apple',
+  'Lenovo',
+  'HP Inc.',
+  'Framework',
+  'Microsoft Corporation',
+];
+
+const DEVICE_SORT_FIELDS: DeviceSortField[] = [
+  'deviceName',
+  'hostname',
+  'serialNumber',
+  'manufacturer',
+  'model',
+  'os',
+  'osVersion',
+  'ipAddress',
+  'agentVersion',
+  'status',
+  'lastSeenAt',
+  'registeredAt',
+  'createdAt',
+  'updatedAt',
+];
+
+function isDeviceSortField(value: string | null): value is DeviceSortField {
+  return (
+    typeof value === 'string' && (DEVICE_SORT_FIELDS as string[]).includes(value)
+  );
+}
+
+export function DevicesPage() {  const router = useRouter();
   const searchParams = useSearchParams();
   const { hasRole, user } = useAuth();
   const isDemoView = user?.isDemoAccount === true;
@@ -137,19 +169,44 @@ export function DevicesPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
-  // Filter & pagination state
+  // Filter & pagination state — initialized from shareable URL params (invalid values fall back to defaults).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const paramStatus = searchParams.get('status') || 'ALL';
   const paramSearch = searchParams.get('search') || '';
+  const paramCompliance = searchParams.get('compliance');
+  const paramOs = searchParams.get('os');
+  const paramManufacturer = searchParams.get('manufacturer');
+  const paramGroupId = searchParams.get('groupId');
+  const paramSortBy = searchParams.get('sortBy');
+  const paramSortOrder = searchParams.get('sortOrder');
+  const paramPage = Number(searchParams.get('page'));
+  const paramPageSize = Number(searchParams.get('pageSize'));
   const [search, setSearch] = useState<string>(paramSearch);
   const [status, setStatus] = useState<string>(paramStatus);
-  const [compliance, setCompliance] = useState<string>('ALL');
-  const [os, setOs] = useState<string>('ALL');
-  const [manufacturer, setManufacturer] = useState<string>('ALL');
-  const [sortBy, setSortBy] = useState<DeviceSortField>('lastSeenAt');
-  const [sortOrder, setSortOrder] = useState<DeviceSortOrder>('desc');
-  const [groupId, setGroupId] = useState<string>('ALL');
-  const [page, setPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  const [compliance, setCompliance] = useState<string>(
+    paramCompliance === 'COMPLIANT' || paramCompliance === 'NON_COMPLIANT' || paramCompliance === 'UNTESTED'
+      ? paramCompliance
+      : 'ALL'
+  );
+  const [os, setOs] = useState<string>(
+    paramOs === 'Windows' || paramOs === 'macOS' || paramOs === 'Linux' ? paramOs : 'ALL'
+  );
+  const [manufacturer, setManufacturer] = useState<string>(
+    MANUFACTURER_VALUES.includes(paramManufacturer ?? '') ? (paramManufacturer as string) : 'ALL'
+  );
+  const [sortBy, setSortBy] = useState<DeviceSortField>(
+    isDeviceSortField(paramSortBy) ? paramSortBy : 'lastSeenAt'
+  );
+  const [sortOrder, setSortOrder] = useState<DeviceSortOrder>(
+    paramSortOrder === 'asc' || paramSortOrder === 'desc' ? paramSortOrder : 'desc'
+  );
+  const [groupId, setGroupId] = useState<string>(
+    paramGroupId && UUID_RE.test(paramGroupId) ? paramGroupId : 'ALL'
+  );
+  const [page, setPage] = useState<number>(Number.isInteger(paramPage) && paramPage > 0 ? paramPage : 1);
+  const [pageSize, setPageSize] = useState<number>(
+    paramPageSize === 10 || paramPageSize === 20 || paramPageSize === 50 ? paramPageSize : 10
+  );
 
   // Sync state if URL query params change
   useEffect(() => {
@@ -163,7 +220,31 @@ export function DevicesPage() {
       setSearch(urlSearch);
       setPage(1);
     }
-  }, [searchParams, search, status]);
+    const urlCompliance = searchParams.get('compliance');
+    if (
+      urlCompliance &&
+      urlCompliance !== compliance &&
+      (urlCompliance === 'COMPLIANT' || urlCompliance === 'NON_COMPLIANT' || urlCompliance === 'UNTESTED' || urlCompliance === 'ALL')
+    ) {
+      setCompliance(urlCompliance);
+      setPage(1);
+    }
+    const urlOs = searchParams.get('os');
+    if (urlOs && urlOs !== os && (urlOs === 'Windows' || urlOs === 'macOS' || urlOs === 'Linux' || urlOs === 'ALL')) {
+      setOs(urlOs);
+      setPage(1);
+    }
+    const urlManufacturer = searchParams.get('manufacturer');
+    if (urlManufacturer && urlManufacturer !== manufacturer && MANUFACTURER_VALUES.includes(urlManufacturer)) {
+      setManufacturer(urlManufacturer);
+      setPage(1);
+    }
+    const urlGroupId = searchParams.get('groupId');
+    if (urlGroupId !== null && urlGroupId !== groupId && (urlGroupId === 'ALL' || UUID_RE.test(urlGroupId))) {
+      setGroupId(urlGroupId);
+      setPage(1);
+    }
+  }, [searchParams, search, status, compliance, os, manufacturer, groupId]);
 
   // UI state
   const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);
@@ -322,10 +403,7 @@ export function DevicesPage() {
     manufacturer !== 'ALL' ||
     groupId !== 'ALL';
 
-  const manufacturerOptions = useMemo(
-    () => ['ALL', 'Dell Inc.', 'Apple', 'Lenovo', 'HP Inc.', 'Framework', 'Microsoft Corporation'],
-    []
-  );
+  const manufacturerOptions = MANUFACTURER_VALUES;
 
   const handleSortClick = (field: DeviceSortField) => {
     if (sortBy === field) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../server';
-import { purgeResolvedAlerts } from './device-status.service';
+import { purgeOldAuditLogs, purgeResolvedAlerts } from './device-status.service';
 
 /**
  * alertRetentionDays enforcement: only RESOLVED alerts older than the window
@@ -103,5 +103,38 @@ describe('Alert retention purge (purgeResolvedAlerts)', () => {
     assert.equal(await purgeResolvedAlerts(prisma, orgId, 30), 0);
     assert.equal(await purgeResolvedAlerts(prisma, orgId, 7), 1);
     await prisma.alert.delete({ where: { id: extra.id } }).catch(() => undefined);
+  });
+
+  it('purges audit rows older than the retention window', async () => {
+    await prisma.auditLog.createMany({
+      data: [
+        {
+          organizationId: orgId,
+          action: 'TEST_OLD',
+          resource: 'TEST',
+          resourceId: `old-${runId}`,
+          timestamp: new Date(Date.now() - 400 * DAY),
+        },
+        {
+          organizationId: orgId,
+          action: 'TEST_FRESH',
+          resource: 'TEST',
+          resourceId: `fresh-${runId}`,
+          timestamp: new Date(),
+        },
+      ],
+    });
+
+    assert.equal(await purgeOldAuditLogs(prisma, orgId, 365), 1);
+
+    const remaining = await prisma.auditLog.findMany({
+      where: { organizationId: orgId, resource: 'TEST' },
+      select: { action: true },
+    });
+    assert.deepEqual(
+      remaining.map((r) => r.action),
+      ['TEST_FRESH']
+    );
+    await prisma.auditLog.deleteMany({ where: { organizationId: orgId, resource: 'TEST' } });
   });
 });

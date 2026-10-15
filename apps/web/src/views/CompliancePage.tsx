@@ -170,13 +170,13 @@ export function CompliancePage() {
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Compliance Score</span>
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
             </div>
-            <div className={`text-2xl font-bold tracking-tight ${complianceScore >= 90 ? 'text-emerald-600' : complianceScore >= 70 ? 'text-amber-600' : 'text-rose-600'}`}>
-              {complianceScore}%
+            <div className={`text-2xl font-bold tracking-tight ${compliantDevices + nonCompliantDevices === 0 ? 'text-slate-400' : complianceScore >= 90 ? 'text-emerald-600' : complianceScore >= 70 ? 'text-amber-600' : 'text-rose-600'}`}>
+              {compliantDevices + nonCompliantDevices === 0 ? '—' : `${complianceScore}%`}
             </div>
             <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
               <span>{untestedDevices} not yet evaluated</span>
-              <span className={complianceScore >= 90 ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'}>
-                {complianceScore >= 90 ? 'Passing' : 'Review Needed'}
+              <span className={compliantDevices + nonCompliantDevices === 0 ? 'text-slate-500 font-semibold' : complianceScore >= 90 ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                {compliantDevices + nonCompliantDevices === 0 ? 'Not evaluated' : complianceScore >= 90 ? 'Passing' : 'Review Needed'}
               </span>
             </div>
           </CardContent>

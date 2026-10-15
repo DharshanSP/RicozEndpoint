@@ -4,11 +4,13 @@ import { createAlertsDedupBatch, resolveAlertsMatching } from '../modules/alerts
 const DEFAULT_OFFLINE_TIMEOUT_MINUTES = 15;
 const DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60;
 const DEFAULT_ALERT_RETENTION_DAYS = 30;
+const DEFAULT_AUDIT_RETENTION_DAYS = 365;
 
 interface OrgSettings {
   offlineTimeoutMinutes?: number;
   agentHeartbeatIntervalSeconds?: number;
   alertRetentionDays?: number;
+  auditRetentionDays?: number;
 }
 
 function parseSettings(raw: unknown): OrgSettings {
@@ -50,6 +52,26 @@ export async function purgeResolvedAlerts(
 }
 
 /**
+ * Deletes audit-log rows older than the organization's audit retention
+ * window. Audit rows are append-only history with no dependents, so expiry
+ * is a plain date-bounded delete.
+ */
+export async function purgeOldAuditLogs(
+  prisma: PrismaClient,
+  organizationId: string,
+  retentionDays: number
+): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60_000);
+  const result = await prisma.auditLog.deleteMany({
+    where: {
+      organizationId,
+      timestamp: { lt: cutoff },
+    },
+  });
+  return result.count;
+}
+
+/**
  * Marks every ONLINE device that has not reported within its organization's
  * offline timeout as OFFLINE and raises a de-duplicated DEVICE_OFFLINE alert.
  * Also enforces each organization's resolved-alert retention window.
@@ -70,6 +92,12 @@ export async function sweepOfflineDevices(prisma: PrismaClient): Promise<number>
       prisma,
       organization.id,
       settings.alertRetentionDays ?? DEFAULT_ALERT_RETENTION_DAYS
+    );
+
+    const purgedAudits = await purgeOldAuditLogs(
+      prisma,
+      organization.id,
+      settings.auditRetentionDays ?? DEFAULT_AUDIT_RETENTION_DAYS
     );
 
     const cutoff = offlineThreshold(organization.settingsJson);
@@ -114,7 +142,7 @@ export async function sweepOfflineDevices(prisma: PrismaClient): Promise<number>
         resource: 'DEVICE',
         resourceId: stale[0]?.id ?? 'device-batch',
         ipAddress: 'scheduler',
-        metadata: JSON.stringify({ count: stale.length, timeoutMinutes, purgedResolvedAlerts: purged }),
+        metadata: JSON.stringify({ count: stale.length, timeoutMinutes, purgedResolvedAlerts: purged, purgedAuditLogs: purgedAudits }),
       },
     });
 

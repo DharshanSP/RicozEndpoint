@@ -69,6 +69,13 @@ export function AlertsPage() {
     value === 'RESOLVED';
   const isValidSeverity = (value: string | null): value is AlertSeverity =>
     value === 'CRITICAL' || value === 'WARNING' || value === 'INFO';
+  const isValidType = (value: string | null): value is AlertType =>
+    value === 'DEVICE_OFFLINE' ||
+    value === 'COMMAND_FAILED' ||
+    value === 'COMPLIANCE_VIOLATION' ||
+    value === 'SECURITY' ||
+    value === 'POLICY' ||
+    value === 'INFO';
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const isValidDeviceId = (value: string | null): value is string =>
     typeof value === 'string' && UUID_RE.test(value);
@@ -87,7 +94,10 @@ export function AlertsPage() {
     const param = searchParams.get('deviceId');
     return isValidDeviceId(param) ? param : null;
   });
-  const [typeFilter, setTypeFilter] = useState<AlertType | 'ALL'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<AlertType | 'ALL'>(() => {
+    const param = searchParams.get('type');
+    return isValidType(param) ? param : 'ALL';
+  });
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -117,7 +127,12 @@ export function AlertsPage() {
       setDeviceIdFilter(isValidDeviceId(urlDeviceId) ? urlDeviceId : null);
       setPage(1);
     }
-  }, [searchParams, statusFilter, severityFilter, deviceIdFilter]);
+    const urlType = searchParams.get('type');
+    if (urlType && urlType !== typeFilter && isValidType(urlType)) {
+      setTypeFilter(urlType);
+      setPage(1);
+    }
+  }, [searchParams, statusFilter, severityFilter, deviceIdFilter, typeFilter]);
 
   const listQuery = useAlertsList({
     page,

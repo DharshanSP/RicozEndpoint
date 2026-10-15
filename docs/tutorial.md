@@ -95,24 +95,28 @@ One-time secrets generated in **Devices → Enrollment Tokens** to register agen
 ### 4.1 Dashboard
 Real-time overview:
 - **Total Devices** — count by status
-- **Compliance Score** — % devices passing all assigned policies
-- **Open Alerts** — unresolved alert totals (all time; the alert stream below follows the selected range)
-- **Failed Actions** — commands with status FAILED, all types, all time (not windowed)
-- **Patch Posture** — catalog approval breakdown (pending/approved/deployed) and failed install count
+- **Compliance Score** — % devices passing all assigned policies; shows "Not evaluated" until the first evaluation lands (never a fake 100%)
+- **Open Alerts** — unresolved alert totals (all time; the alert stream below follows the selected range), with critical/warning split
+- **Patch & Action Posture** — catalog approval breakdown (pending/approved/deployed), failed install count, and failed commands of all types (drills into `COMMAND_FAILED` alerts)
+- **OS Distribution** — grouped by OS family + version, so families sharing a version string never merge
 
 ### 4.2 Devices
-**List** — filter by status, search by name/hostname/serial. Click a row for **Device Detail**:
+**List** — filter by status, compliance, OS, manufacturer and **device group**; search by
+name/hostname/serial/IP (case-insensitive, debounced). Sort includes registered date.
+Filters are shareable via URL query params. Click a row for **Device Detail**:
 - Hardware (CPU, RAM, storage)
 - Installed software (version, publisher, install date)
+- Per-KB patch state (installed / missing / failed)
 - Policy assignments & compliance results
 - Command history
-- Audit trail for this device
+- Audit trail for this device (paged, filterable by category)
 
 **Actions** (IT_ADMIN+):
 - `Refresh` — force check-in
 - `Lock` — immediate screen lock
 - `Sync` — full state sync
 - `Restart` / `Shutdown` — **disabled on production** (safety)
+- **Device identity** — rename display name / hostname (audited as `DEVICE_UPDATED`)
 
 ### 4.3 Device Groups
 Organize devices for bulk policy assignment.
@@ -143,10 +147,12 @@ Aggregated view of all software across the fleet, plus the remote deployment eng
 ### 4.5 Patch Management
 Tracks missing OS/security patches per device (populated by agent scans).
 - Agents report installed KBs on every telemetry heartbeat (`Get-HotFix`); those reports upsert the catalog and the device's install state
-- Filter by severity (Critical / Important / Optional) and status (Pending / Approved / Deployed)
-- Per-patch coverage: installed / failed / missing across the organization's devices, plus a fleet up-to-date percentage
-- **Approve** moves a patch `PENDING → APPROVED`; **Deploy** (IT Admin+) queues an `INSTALL_PATCH` command on every device missing it and marks it `DEPLOYED`
+- Filter by severity (Critical / Important / Optional) and approval status (Pending / Approved / Deployed)
+- Per-patch coverage: installed / failed / missing across the organization's devices (the three always sum to the fleet size), plus a fleet up-to-date percentage
+- **Approve** moves a patch `PENDING → APPROVED`; **Deploy** (IT Admin+) queues an `INSTALL_PATCH` command on every device missing it (failed devices are retried too) and marks it `DEPLOYED`
 - Devices already up to date, or with a command already in flight, are skipped and reported back
+- **Failure troubleshooting:** the patch detail drawer shows, per device, the agent-reported error text, last attempt / completion timestamps, and install / last-reported timestamps — the latest terminal command wins over stale in-flight rows
+- "Approval" (catalog workflow) and device install state (`MISSING` / `INSTALLED` / `FAILED`) are labeled separately everywhere
 - Drill into a device: **Devices → detail → Patches** shows installed / missing / failed per KB
 - Agents pull commands on their next heartbeat; installs run through the Windows Update Agent and never force a reboot
 
@@ -170,8 +176,11 @@ Per-device, per-rule evaluation results.
 Agent- and policy-generated alerts.
 - Severities: `CRITICAL`, `WARNING`, `INFO`
 - Status: `OPEN`, `ACKNOWLEDGED`, `RESOLVED`
-- Actions: Acknowledge, Resolve, Add Note
-- Filter by severity, status, device, time range
+- Actions: Acknowledge (with optional note, stored separately from the resolution note), Resolve (with note), bulk resolve
+- Filter by severity, status, type, device (`?deviceId=` deep link supported) and time range; search covers titles **and** messages
+- De-duplication: repeated violations collapse into one unresolved alert per scope (DB-enforced for exact scopes)
+- Auto-recovery closes alerts without manual triage: device back online, policy passing again, or a later command of the same type completing (supersedes `COMMAND_FAILED`)
+- Resolved alerts older than **Alert Retention** are purged by the background sweeper; audit rows older than **Audit Retention** likewise
 
 ### 4.9 Audit Logs (Operations → Audit Logs)
 Immutable trail of all privileged actions.
