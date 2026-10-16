@@ -60,14 +60,16 @@ Multi-tenancy root. All devices, users, policies, and data belong to an organiza
 | **SUPER_ADMIN** | Full platform access, manage organizations, all org data |
 | **ORG_ADMIN** | Manage users, settings, enrollment tokens within org |
 | **IT_ADMIN** | Device groups, policies, commands, software deployment |
-| **OPERATOR** | Remote actions (lock, refresh, sync), view dashboards |
-| **VIEWER** | Read-only dashboards, reports, audit logs |
+| **OPERATOR** | Remote actions (lock, refresh, sync), view dashboards, request enrollment tokens |
+| **VIEWER** | Read-only dashboards, reports, audit logs; may request enrollment tokens |
 
 ### Devices
 Endpoints running the Ricoz agent. Statuses: `ONLINE`, `OFFLINE`, `PENDING` (awaiting enrollment), `NON_COMPLIANT`.
 
 ### Enrollment Tokens
 One-time secrets generated in **Devices → Enrollment Tokens** to register agents securely.
+Operators and viewers cannot generate tokens directly; they submit a request, an IT administrator
+approves it, and the approved token is revealed exactly once.
 
 ---
 
@@ -289,7 +291,7 @@ log_level = "info"
 1. **Admin → Users → Create** → email, name, password, role=IT_ADMIN
 2. Share credentials securely (password manager)
 3. Operator logs in → sees Devices, Device Groups, Policies, Software, Commands
-4. Operator **cannot** manage users, settings, enrollment tokens
+4. Operator **cannot** manage users, settings, or generate enrollment tokens directly, but can request one for administrator approval
 
 ### Generate Compliance Report for Audit
 1. **Operations → Reports** → select "Compliance"

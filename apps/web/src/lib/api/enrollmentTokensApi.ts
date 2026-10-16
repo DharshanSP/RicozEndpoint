@@ -1,10 +1,16 @@
 import { fetchApi } from '../api';
 import type {
   CreateEnrollmentTokenPayload,
+  CreateEnrollmentTokenRequestPayload,
   CreatedEnrollmentToken,
+  DecideEnrollmentTokenRequestPayload,
   EnrollmentHistoryEntry,
   EnrollmentTokenListQuery,
   EnrollmentTokenListResponse,
+  EnrollmentTokenRequestListQuery,
+  EnrollmentTokenRequestListResponse,
+  EnrollmentTokenRequestSummary,
+  IssuedEnrollmentTokenRequestToken,
 } from '../../types/enrollment';
 
 async function requestBody<T>(endpoint: string, init?: RequestInit): Promise<T> {
@@ -60,4 +66,66 @@ export async function listEnrollmentHistory(
   if (query.limit) params.set('limit', String(query.limit));
   const qs = params.toString();
   return requestBody<EnrollmentHistoryEntry[]>(`/enrollment-history${qs ? `?${qs}` : ''}`);
+}
+
+/** Lists token requests visible to the caller (own requests for operators/viewers). */
+export async function listEnrollmentTokenRequests(
+  query: EnrollmentTokenRequestListQuery = {}
+): Promise<EnrollmentTokenRequestListResponse> {
+  const params = new URLSearchParams();
+  if (query.page) params.set('page', String(query.page));
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.status) params.set('status', query.status);
+  const qs = params.toString();
+  return requestBodyEnvelope<EnrollmentTokenRequestListResponse>(
+    `/enrollment-token-requests${qs ? `?${qs}` : ''}`
+  );
+}
+
+/** Submits an enrollment token request for administrator approval. */
+export async function createEnrollmentTokenRequest(
+  payload: CreateEnrollmentTokenRequestPayload
+): Promise<EnrollmentTokenRequestSummary> {
+  return requestBody<EnrollmentTokenRequestSummary>('/enrollment-token-requests', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Approves a request; the secret is returned only through the reveal endpoint. */
+export async function approveEnrollmentTokenRequest(
+  id: string,
+  payload: DecideEnrollmentTokenRequestPayload = {}
+): Promise<EnrollmentTokenRequestSummary> {
+  return requestBody<EnrollmentTokenRequestSummary>(`/enrollment-token-requests/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Denies a pending request with an explanatory note. */
+export async function denyEnrollmentTokenRequest(
+  id: string,
+  payload: DecideEnrollmentTokenRequestPayload
+): Promise<EnrollmentTokenRequestSummary> {
+  return requestBody<EnrollmentTokenRequestSummary>(`/enrollment-token-requests/${encodeURIComponent(id)}/deny`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Cancels the caller’s own pending request. */
+export async function cancelEnrollmentTokenRequest(id: string): Promise<EnrollmentTokenRequestSummary> {
+  return requestBody<EnrollmentTokenRequestSummary>(`/enrollment-token-requests/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+  });
+}
+
+/** Reveals an approved request’s token exactly once. */
+export async function revealEnrollmentTokenRequestToken(
+  id: string
+): Promise<IssuedEnrollmentTokenRequestToken> {
+  return requestBody<IssuedEnrollmentTokenRequestToken>(
+    `/enrollment-token-requests/${encodeURIComponent(id)}/token`
+  );
 }

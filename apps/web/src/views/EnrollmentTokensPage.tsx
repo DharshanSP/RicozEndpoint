@@ -1,19 +1,26 @@
 import { useState } from 'react';
 import Link from 'next/link';
-import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, History } from 'lucide-react';
+import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, History, Send, Eye } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import {
+  useApproveEnrollmentTokenRequest,
+  useCancelEnrollmentTokenRequest,
   useCreateEnrollmentToken,
+  useCreateEnrollmentTokenRequest,
+  useDenyEnrollmentTokenRequest,
   useEnrollmentHistory,
   useEnrollmentTokenList,
+  useEnrollmentTokenRequests,
+  useRevealEnrollmentTokenRequestToken,
   useRevokeEnrollmentToken,
 } from '../hooks/useEnrollmentTokens';
-import type { EnrollmentTokenSummary } from '../types/enrollment';
+import type { EnrollmentTokenRequestStatus, EnrollmentTokenSummary } from '../types/enrollment';
 
 function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: 'success' | 'warning' | 'secondary' } {
   if (!token.isActive) return { label: 'Revoked', variant: 'secondary' };
@@ -22,6 +29,15 @@ function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: '
   }
   if (token.uses >= token.maxUses) return { label: 'Consumed', variant: 'warning' };
   return { label: 'Active', variant: 'success' };
+}
+
+function requestStatusBadge(status: EnrollmentTokenRequestStatus): {
+  label: string;
+  variant: 'success' | 'warning' | 'secondary';
+} {
+  if (status === 'APPROVED') return { label: 'Approved', variant: 'success' };
+  if (status === 'PENDING') return { label: 'Pending', variant: 'warning' };
+  return { label: status === 'DENIED' ? 'Denied' : 'Cancelled', variant: 'secondary' };
 }
 
 function formatDate(value: string | null, fallback = 'Never'): string {
@@ -36,7 +52,7 @@ function formatDate(value: string | null, fallback = 'Never'): string {
 }
 
 export function EnrollmentTokensPage() {
-  const { hasRole } = useAuth();
+  const { user, hasRole } = useAuth();
   const canManageTokens = hasRole(['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN']);
   const [showCreate, setShowCreate] = useState(false);
   const [label, setLabel] = useState('');
@@ -48,9 +64,24 @@ export function EnrollmentTokensPage() {
   const [tokenToRevoke, setTokenToRevoke] = useState<EnrollmentTokenSummary | null>(null);
   const [revokeNotice, setRevokeNotice] = useState<string | null>(null);
 
-  const listQuery = useEnrollmentTokenList({ page: 1, limit: 50 });
+  const listQuery = useEnrollmentTokenList({ page: 1, limit: 50 }, canManageTokens);
+  const requestsQuery = useEnrollmentTokenRequests({ page: 1, limit: 50 });
   const createMutation = useCreateEnrollmentToken();
+  const createRequestMutation = useCreateEnrollmentTokenRequest();
+  const approveMutation = useApproveEnrollmentTokenRequest();
+  const denyMutation = useDenyEnrollmentTokenRequest();
+  const cancelMutation = useCancelEnrollmentTokenRequest();
+  const revealMutation = useRevealEnrollmentTokenRequestToken();
   const revokeMutation = useRevokeEnrollmentToken();
+  const [showRequest, setShowRequest] = useState(false);
+  const [requestLabel, setRequestLabel] = useState('');
+  const [requestNote, setRequestNote] = useState('');
+  const [requestMaxUses, setRequestMaxUses] = useState(1);
+  const [requestExpiresAt, setRequestExpiresAt] = useState('');
+  const [revealedRequestTokens, setRevealedRequestTokens] = useState<Record<string, string>>({});
+  const [decisionTarget, setDecisionTarget] = useState<{ id: string; action: 'approve' | 'deny' } | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [requestToCancel, setRequestToCancel] = useState<string | null>(null);
 
   const tokens = listQuery.data?.data ?? [];
   const total = listQuery.data?.pagination.total ?? 0;
@@ -86,6 +117,61 @@ export function EnrollmentTokensPage() {
     await navigator.clipboard.writeText(createdToken);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCreateRequest = () => {
+    if (!requestNote.trim() || requestMaxUses < 1 || requestMaxUses > 1000) return;
+    createRequestMutation.mutate(
+      {
+        label: requestLabel.trim() || undefined,
+        requestNote: requestNote.trim(),
+        maxUses: requestMaxUses,
+        ...(requestExpiresAt ? { expiresAt: new Date(requestExpiresAt).toISOString() } : {}),
+      },
+      {
+        onSuccess: () => {
+          setRequestLabel('');
+          setRequestNote('');
+          setRequestMaxUses(1);
+          setRequestExpiresAt('');
+          setShowRequest(false);
+        },
+      }
+    );
+  };
+
+  const openDecision = (id: string, action: 'approve' | 'deny') => {
+    setDecisionTarget({ id, action });
+    setDecisionNote('');
+  };
+
+  const handleDecisionConfirm = () => {
+    if (!decisionTarget) return;
+    if (decisionTarget.action === 'approve') {
+      approveMutation.mutate(
+        { id: decisionTarget.id, adminNote: decisionNote.trim() || undefined },
+        { onSuccess: () => setDecisionTarget(null) }
+      );
+    } else {
+      if (!decisionNote.trim()) return;
+      denyMutation.mutate(
+        { id: decisionTarget.id, adminNote: decisionNote.trim() },
+        { onSuccess: () => setDecisionTarget(null) }
+      );
+    }
+  };
+
+  const handleRevealRequestToken = (id: string) => {
+    revealMutation.mutate(id, {
+      onSuccess: (issued) => {
+        setRevealedRequestTokens((previous) => ({ ...previous, [id]: issued.token }));
+      },
+    });
+  };
+
+  const handleConfirmCancel = () => {
+    if (!requestToCancel) return;
+    cancelMutation.mutate(requestToCancel, { onSuccess: () => setRequestToCancel(null) });
   };
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -142,7 +228,7 @@ export function EnrollmentTokensPage() {
             <span>{listQuery.isFetching ? 'Refreshing...' : 'Refresh'}</span>
           </Button>
 
-          {canManageTokens && (
+          {canManageTokens ? (
             <Button
               size="sm"
               onClick={() => setShowCreate((value) => !value)}
@@ -150,6 +236,15 @@ export function EnrollmentTokensPage() {
             >
               {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               <span>{showCreate ? 'Cancel' : 'Generate Token'}</span>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => setShowRequest((value) => !value)}
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs"
+            >
+              {showRequest ? <X className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+              <span>{showRequest ? 'Cancel' : 'Request Token'}</span>
             </Button>
           )}
         </div>
@@ -289,7 +384,289 @@ export function EnrollmentTokensPage() {
       )}
 
       {/* List */}
+      {!canManageTokens && showRequest && (
+        <Card className="border-slate-200 bg-white shadow-xs animate-in fade-in duration-150">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <CardTitle className="text-base font-bold text-slate-900">Request Enrollment Token</CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Operators and viewers can request a token. An administrator reviews the request and releases the token once.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-4">
+            {createRequestMutation.isError && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">
+                Failed to submit request: {(createRequestMutation.error as Error).message}
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Token Label</label>
+                <Input
+                  placeholder="e.g. Field laptops"
+                  value={requestLabel}
+                  onChange={(event) => setRequestLabel(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Max Device Enrollments</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={requestMaxUses}
+                  onChange={(event) => setRequestMaxUses(Number(event.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Expiration (Optional)</label>
+                <Input
+                  type="datetime-local"
+                  value={requestExpiresAt}
+                  onChange={(event) => setRequestExpiresAt(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700">Why is this token needed?</label>
+              <Textarea
+                placeholder="e.g. Two replacement laptops need enrollment this week."
+                value={requestNote}
+                onChange={(event) => setRequestNote(event.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowRequest(false)}
+                className="text-xs border-slate-200 text-slate-600"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleCreateRequest}
+                disabled={createRequestMutation.isPending || !requestNote.trim() || requestMaxUses < 1 || requestMaxUses > 1000}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {createRequestMutation.isPending ? 'Submitting...' : 'Submit Request'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Requests */}
       <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-bold text-slate-900">
+              {canManageTokens ? 'Token Requests' : 'My Token Requests'}
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              {canManageTokens
+                ? 'Review operator and viewer requests. Approved tokens are revealed exactly once.'
+                : 'Track your requests. Approved tokens can be viewed and copied exactly once.'}
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void requestsQuery.refetch()}
+            disabled={requestsQuery.isFetching}
+            className="h-7 text-xs border-slate-200 text-slate-600"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${requestsQuery.isFetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {requestsQuery.isLoading && (
+            <div className="p-6 space-y-3">
+              {[0, 1].map((row) => (
+                <div key={row} className="h-12 rounded-lg bg-slate-100 animate-pulse border border-slate-200" />
+              ))}
+            </div>
+          )}
+          {requestsQuery.isError && (
+            <div className="p-6 text-xs text-rose-600">
+              Failed to load token requests: {(requestsQuery.error as Error).message}
+            </div>
+          )}
+          {requestsQuery.isSuccess && (requestsQuery.data?.data ?? []).length === 0 && (
+            <div className="py-8 text-center p-6 text-xs text-slate-500">No token requests yet.</div>
+          )}
+          {requestsQuery.isSuccess && (requestsQuery.data?.data ?? []).length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+                    <th className="px-5 py-3 font-semibold">Request</th>
+                    <th className="px-5 py-3 font-semibold">Requested By</th>
+                    <th className="px-5 py-3 font-semibold">Uses</th>
+                    <th className="px-5 py-3 font-semibold">Expires</th>
+                    <th className="px-5 py-3 font-semibold">Status</th>
+                    <th className="px-5 py-3 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(requestsQuery.data?.data ?? []).map((request) => {
+                    const badge = requestStatusBadge(request.status);
+                    const isOwn = request.requestedBy?.id === user?.id;
+                    const revealedToken = revealedRequestTokens[request.id];
+                    const canReveal =
+                      request.status === 'APPROVED' && !request.tokenRevealed && (canManageTokens || isOwn);
+                    return (
+                      <tr key={request.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <span className="text-slate-900 font-semibold block">{request.label || 'Untitled request'}</span>
+                          <span className="text-[11px] text-slate-500 block mt-0.5 max-w-xs">{request.requestNote}</span>
+                          {request.adminNote && (
+                            <span className="text-[11px] text-slate-500 block mt-1">
+                              Admin note: {request.adminNote}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-600 text-xs">
+                          {request.requestedBy?.name ?? request.requestedBy?.email ?? 'Unknown'}
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-700 font-mono font-medium">
+                          0 / {request.maxUses}
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-600 font-mono text-[11px]">
+                          {formatDate(request.expiresAt)}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <Badge variant={badge.variant} className="text-[11px] font-medium">
+                            {badge.label}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex justify-end gap-1.5 flex-wrap">
+                            {request.status === 'PENDING' && canManageTokens && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openDecision(request.id, 'approve')}
+                                  className="h-7 text-[11px]"
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openDecision(request.id, 'deny')}
+                                  className="h-7 text-[11px] text-slate-600 hover:text-rose-600 hover:bg-rose-50"
+                                >
+                                  Deny
+                                </Button>
+                              </>
+                            )}
+                            {request.status === 'PENDING' && isOwn && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setRequestToCancel(request.id)}
+                                className="h-7 text-[11px] text-slate-600 hover:text-rose-600 hover:bg-rose-50"
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                            {canReveal && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRevealRequestToken(request.id)}
+                                disabled={revealMutation.isPending}
+                                className="h-7 text-[11px]"
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-1" /> View token
+                              </Button>
+                            )}
+                          </div>
+                          {revealedToken && (
+                            <div className="mt-2 flex items-center justify-end gap-1.5">
+                              <code className="text-[11px] font-mono bg-emerald-50 border border-emerald-200 rounded px-2 py-1 break-all">
+                                {revealedToken}
+                              </code>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void navigator.clipboard.writeText(revealedToken)}
+                                className="h-7 text-[11px]"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          )}
+                          {request.status === 'APPROVED' && request.tokenRevealed && !revealedToken && (
+                            <p className="mt-2 text-[11px] text-slate-500">Already revealed.</p>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {revealMutation.isError && (
+            <p className="p-4 text-xs text-rose-600">Could not reveal that token: {(revealMutation.error as Error).message}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={Boolean(decisionTarget)}
+        onOpenChange={(open) => {
+          if (!open && !approveMutation.isPending && !denyMutation.isPending) {
+            setDecisionTarget(null);
+          }
+        }}
+        title={decisionTarget?.action === 'deny' ? 'Deny Token Request' : 'Approve Token Request'}
+        description={
+          decisionTarget?.action === 'deny'
+            ? 'The requester will see your explanatory note. Denied requests cannot be approved later.'
+            : 'Approval makes the request eligible for a one-time token reveal. The raw token is never stored in the request list.'
+        }
+        icon={decisionTarget?.action === 'deny' ? Trash2 : CheckCircle2}
+        variant={decisionTarget?.action === 'deny' ? 'danger' : 'warning'}
+        confirmLabel={decisionTarget?.action === 'deny' ? 'Deny Request' : 'Approve Request'}
+        loading={approveMutation.isPending || denyMutation.isPending}
+        confirmDisabled={decisionTarget?.action === 'deny' && !decisionNote.trim()}
+        onConfirm={handleDecisionConfirm}
+      >
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-700">
+            {decisionTarget?.action === 'deny' ? 'Denial reason (required)' : 'Admin note (optional)'}
+          </label>
+          <Textarea
+            value={decisionNote}
+            onChange={(event) => setDecisionNote(event.target.value)}
+            placeholder={decisionTarget?.action === 'deny' ? 'Explain why this request cannot be approved.' : 'Optional context for the requester.'}
+          />
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={Boolean(requestToCancel)}
+        onOpenChange={(open) => {
+          if (!open && !cancelMutation.isPending) setRequestToCancel(null);
+        }}
+        title="Cancel Token Request"
+        description="Cancelled requests cannot be approved later. You can submit a new request if needed."
+        icon={X}
+        variant="warning"
+        confirmLabel="Cancel Request"
+        loading={cancelMutation.isPending}
+        onConfirm={handleConfirmCancel}
+      />
+
+      {/* List */}
+      {canManageTokens && (
+        <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
         <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base font-bold text-slate-900">Active & Historical Tokens</CardTitle>
@@ -406,6 +783,7 @@ export function EnrollmentTokensPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Revoke Token Confirmation Dialog */}
       <ConfirmDialog
@@ -428,7 +806,7 @@ export function EnrollmentTokensPage() {
         onConfirm={handleConfirmRevoke}
       />
 
-      <EnrollmentHistoryCard />
+      {canManageTokens && <EnrollmentHistoryCard />}
     </div>
   );
 }

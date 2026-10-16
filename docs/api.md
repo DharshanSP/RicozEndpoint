@@ -91,6 +91,13 @@ recent devices, active alerts and recent commands.
 | GET | /api/enrollment-tokens | List enrollment tokens | IT_ADMIN |
 | POST | /api/enrollment-tokens | Create an enrollment token | IT_ADMIN |
 | DELETE | /api/enrollment-tokens/:id | Revoke a token | IT_ADMIN |
+| GET | /api/enrollment-token-requests | List visible token requests | VIEWER |
+| POST | /api/enrollment-token-requests | Request an enrollment token | VIEWER |
+| GET | /api/enrollment-token-requests/:id | Get one visible request | VIEWER |
+| POST | /api/enrollment-token-requests/:id/approve | Approve a request | IT_ADMIN |
+| POST | /api/enrollment-token-requests/:id/deny | Deny a request | IT_ADMIN |
+| POST | /api/enrollment-token-requests/:id/cancel | Cancel your pending request | VIEWER |
+| GET | /api/enrollment-token-requests/:id/token | Reveal an approved token once | VIEWER |
 | POST | /api/enroll | Agent registration with a one-time token | agent token |
 
 ## Agent

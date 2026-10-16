@@ -28,6 +28,7 @@ model Organization {
   agentTokens        AgentToken[]
   deviceGroups       DeviceGroup[]
   enrollmentTokens   EnrollmentToken[]
+  enrollmentTokenRequests EnrollmentTokenRequest[]
 
   @@map("organizations")
 }
@@ -53,6 +54,8 @@ model User {
   requestedCommands     Command[]    @relation("RequestedBy")
   requestedDeployments  Deployment[] @relation("RequestedDeployments")
   createdEnrollmentTokens EnrollmentToken[] @relation("CreatedEnrollmentTokens")
+  requestedTokenRequests  EnrollmentTokenRequest[] @relation("RequestedTokenRequests")
+  decidedTokenRequests    EnrollmentTokenRequest[] @relation("DecidedTokenRequests")
   createdPolicies       Policy[]
   createdPatches        Patch[]        @relation("CreatedPatches")
 
@@ -441,10 +444,42 @@ model EnrollmentToken {
   organization Organization @relation(fields: [organizationId], references: [id])
   createdBy    User?        @relation("CreatedEnrollmentTokens", fields: [createdById], references: [id])
   device       Device?      @relation(fields: [deviceId], references: [id])
+  tokenRequest EnrollmentTokenRequest?
 
   @@index([organizationId])
   @@index([tokenHash])
   @@map("enrollment_tokens")
+}
+
+// ─── Enrollment token request ──────────────────────────────────────────────
+// Operators and viewers cannot mint enrollment tokens directly. They submit a
+// request; an IT admin (or higher) approves it, which links the issued token.
+
+model EnrollmentTokenRequest {
+  id             String    @id @default(uuid())
+  organizationId String
+  requestedById  String
+  label          String    @default("")
+  requestNote    String    @default("")
+  maxUses        Int       @default(1)
+  expiresAt      DateTime?
+  status         String    @default("PENDING")
+  adminNote      String    @default("")
+  issuedTokenId  String?   @unique
+  decidedById    String?
+  decidedAt      DateTime?
+  tokenRevealedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  requestedBy  User            @relation("RequestedTokenRequests", fields: [requestedById], references: [id], onDelete: Cascade)
+  decidedBy    User?           @relation("DecidedTokenRequests", fields: [decidedById], references: [id], onDelete: SetNull)
+  issuedToken  EnrollmentToken? @relation(fields: [issuedTokenId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("enrollment_token_requests")
 }
 
 // ─── Agent Token ─────────────────────────────────────────────────────────────

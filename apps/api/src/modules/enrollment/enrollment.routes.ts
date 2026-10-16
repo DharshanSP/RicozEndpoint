@@ -4,7 +4,10 @@ import { Prisma } from '@prisma/client';
 import { authenticate, requireMinRole, JwtPayload } from '../../middleware/rbac.middleware';
 import {
   createEnrollmentTokenSchema,
+  createEnrollmentTokenRequestSchema,
+  decideEnrollmentTokenRequestSchema,
   enrollmentTokenListQuerySchema,
+  enrollmentTokenRequestListQuerySchema,
   enrollmentParamsSchema,
   enrollDeviceSchema,
 } from '@ricoz/validation';
@@ -15,6 +18,68 @@ import { writeAudit } from '../../utils/audit';
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
+
+function canManageEnrollmentTokens(role: JwtPayload['role']): boolean {
+  return role === 'SUPER_ADMIN' || role === 'ORG_ADMIN' || role === 'IT_ADMIN';
+}
+
+function auditActorFor(jwtUser: JwtPayload, organizationId: string): JwtPayload {
+  return { ...jwtUser, organizationId };
+}
+
+function serializeTokenRequest(request: {
+  id: string;
+  label: string;
+  requestNote: string;
+  maxUses: number;
+  expiresAt: Date | null;
+  status: string;
+  adminNote: string;
+  tokenRevealedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  requestedBy?: { id: string; email: string; name: string } | null;
+  decidedBy?: { id: string; email: string; name: string } | null;
+  issuedToken?: {
+    id: string;
+    label: string;
+    expiresAt: Date | null;
+    maxUses: number;
+    uses: number;
+    isActive: boolean;
+  } | null;
+}) {
+  return {
+    id: request.id,
+    label: request.label,
+    requestNote: request.requestNote,
+    maxUses: request.maxUses,
+    expiresAt: toIso(request.expiresAt),
+    status: request.status,
+    adminNote: request.adminNote,
+    tokenRevealed: request.tokenRevealedAt !== null,
+    requestedBy: request.requestedBy,
+    decidedBy: request.decidedBy ?? null,
+    issuedToken: request.issuedToken ?? null,
+    createdAt: toIso(request.createdAt),
+    updatedAt: toIso(request.updatedAt),
+  };
+}
+
+const tokenRequestInclude = {
+  requestedBy: { select: { id: true, email: true, name: true } },
+  decidedBy: { select: { id: true, email: true, name: true } },
+  issuedToken: {
+    select: {
+      id: true,
+      label: true,
+      expiresAt: true,
+      maxUses: true,
+      uses: true,
+      isActive: true,
+    },
+  },
+};
 
 export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
   // ─── Admin: list enrollment tokens ───────────────────────────────────────────
@@ -258,6 +323,486 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
           isActive: token.isActive,
         },
       });
+    },
+  });
+
+  // ─── Token requests: operators/viewers request, IT admins approve ─────────────
+  app.get('/enrollment-token-requests', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'List enrollment token requests visible to the caller',
+      tags: ['Enrollment'],
+      querystring: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          page: { type: 'string' },
+          limit: { type: 'string' },
+          status: { type: 'string', enum: ['PENDING', 'APPROVED', 'DENIED', 'CANCELLED'] },
+        },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const parsed = enrollmentTokenRequestListQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid query parameters',
+          },
+        });
+      }
+
+      const { page, limit, status } = parsed.data;
+      const where: Prisma.EnrollmentTokenRequestWhereInput = {
+        ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+        ...(!canManageEnrollmentTokens(jwtUser.role) ? { requestedById: jwtUser.sub } : {}),
+        ...(status ? { status } : {}),
+      };
+      const [total, requests] = await Promise.all([
+        app.prisma.enrollmentTokenRequest.count({ where }),
+        app.prisma.enrollmentTokenRequest.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+          include: tokenRequestInclude,
+        }),
+      ]);
+
+      return reply.send({
+        success: true,
+        data: requests.map(serializeTokenRequest),
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    },
+  });
+
+  app.post('/enrollment-token-requests', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Request an enrollment token approval from an IT administrator',
+      tags: ['Enrollment'],
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          label: { type: 'string' },
+          requestNote: { type: 'string' },
+          maxUses: { type: 'integer', minimum: 1, maximum: 1000 },
+          expiresAt: { type: 'string' },
+        },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const parsed = createEnrollmentTokenRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.issues[0]?.message ?? 'Invalid request body',
+          },
+        });
+      }
+
+      const expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+      if (expiresAt.getTime() <= Date.now()) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'expiresAt must be in the future' },
+        });
+      }
+
+      const tokenRequest = await app.prisma.enrollmentTokenRequest.create({
+        data: {
+          organizationId: jwtUser.organizationId,
+          requestedById: jwtUser.sub,
+          label: parsed.data.label?.trim() || 'Token request',
+          requestNote: parsed.data.requestNote,
+          maxUses: parsed.data.maxUses,
+          expiresAt,
+        },
+        include: tokenRequestInclude,
+      });
+
+      await writeAudit(
+        app.prisma,
+        auditActorFor(jwtUser, tokenRequest.organizationId),
+        'ENROLLMENT_TOKEN_REQUESTED',
+        'ENROLLMENT_TOKEN_REQUEST',
+        tokenRequest.id,
+        { label: tokenRequest.label, maxUses: tokenRequest.maxUses },
+        request,
+      ).catch(() => undefined);
+
+      return reply.status(201).send({ success: true, data: serializeTokenRequest(tokenRequest) });
+    },
+  });
+
+  app.get('/enrollment-token-requests/:id', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Get one enrollment token request visible to the caller',
+      tags: ['Enrollment'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = enrollmentParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid enrollment token request id' },
+        });
+      }
+
+      const tokenRequest = await app.prisma.enrollmentTokenRequest.findFirst({
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...(!canManageEnrollmentTokens(jwtUser.role) ? { requestedById: jwtUser.sub } : {}),
+        },
+        include: tokenRequestInclude,
+      });
+      if (!tokenRequest) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Enrollment token request not found' },
+        });
+      }
+
+      return reply.send({ success: true, data: serializeTokenRequest(tokenRequest) });
+    },
+  });
+
+  app.post('/enrollment-token-requests/:id/approve', {
+    preHandler: [authenticate, requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Approve an enrollment token request without returning its secret yet',
+      tags: ['Enrollment'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: { adminNote: { type: 'string' } },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = enrollmentParamsSchema.safeParse(request.params);
+      const body = decideEnrollmentTokenRequestSchema.safeParse(request.body ?? {});
+      if (!params.success || !body.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid approval payload' },
+        });
+      }
+
+      const tokenRequest = await app.prisma.enrollmentTokenRequest.findFirst({
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+        },
+      });
+      if (!tokenRequest) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Enrollment token request not found' },
+        });
+      }
+      if (tokenRequest.status !== 'PENDING') {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'CONFLICT', message: 'Only pending requests can be approved' },
+        });
+      }
+      if (tokenRequest.expiresAt && tokenRequest.expiresAt.getTime() <= Date.now()) {
+        return reply.status(410).send({
+          success: false,
+          error: { code: 'GONE', message: 'This request has expired' },
+        });
+      }
+
+      const approved = await app.prisma.enrollmentTokenRequest.update({
+        where: { id: tokenRequest.id },
+        data: {
+          status: 'APPROVED',
+          adminNote: body.data.adminNote,
+          decidedById: jwtUser.sub,
+          decidedAt: new Date(),
+        },
+        include: tokenRequestInclude,
+      });
+
+      await writeAudit(
+        app.prisma,
+        auditActorFor(jwtUser, approved.organizationId),
+        'ENROLLMENT_TOKEN_REQUEST_APPROVED',
+        'ENROLLMENT_TOKEN_REQUEST',
+        approved.id,
+        { requestedById: approved.requestedById },
+        request,
+      ).catch(() => undefined);
+
+      return reply.send({ success: true, data: serializeTokenRequest(approved) });
+    },
+  });
+
+  app.post('/enrollment-token-requests/:id/deny', {
+    preHandler: [authenticate, requireMinRole(UserRole.IT_ADMIN)],
+    schema: {
+      description: 'Deny a pending enrollment token request',
+      tags: ['Enrollment'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: { adminNote: { type: 'string' } },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = enrollmentParamsSchema.safeParse(request.params);
+      const body = decideEnrollmentTokenRequestSchema.safeParse(request.body ?? {});
+      if (!params.success || !body.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid denial payload' },
+        });
+      }
+      if (!body.data.adminNote) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'An admin note is required to deny a request' },
+        });
+      }
+
+      const tokenRequest = await app.prisma.enrollmentTokenRequest.findFirst({
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+        },
+      });
+      if (!tokenRequest) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Enrollment token request not found' },
+        });
+      }
+      if (tokenRequest.status !== 'PENDING') {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'CONFLICT', message: 'Only pending requests can be denied' },
+        });
+      }
+
+      const denied = await app.prisma.enrollmentTokenRequest.update({
+        where: { id: tokenRequest.id },
+        data: {
+          status: 'DENIED',
+          adminNote: body.data.adminNote,
+          decidedById: jwtUser.sub,
+          decidedAt: new Date(),
+        },
+        include: tokenRequestInclude,
+      });
+
+      await writeAudit(
+        app.prisma,
+        auditActorFor(jwtUser, denied.organizationId),
+        'ENROLLMENT_TOKEN_REQUEST_DENIED',
+        'ENROLLMENT_TOKEN_REQUEST',
+        denied.id,
+        { requestedById: denied.requestedById },
+        request,
+      ).catch(() => undefined);
+
+      return reply.send({ success: true, data: serializeTokenRequest(denied) });
+    },
+  });
+
+  app.post('/enrollment-token-requests/:id/cancel', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Cancel your own pending enrollment token request',
+      tags: ['Enrollment'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = enrollmentParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid enrollment token request id' },
+        });
+      }
+
+      const tokenRequest = await app.prisma.enrollmentTokenRequest.findFirst({
+        where: { id: params.data.id, organizationId: jwtUser.organizationId, requestedById: jwtUser.sub },
+      });
+      if (!tokenRequest) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Enrollment token request not found' },
+        });
+      }
+      if (tokenRequest.status !== 'PENDING') {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'CONFLICT', message: 'Only pending requests can be cancelled' },
+        });
+      }
+
+      const cancelled = await app.prisma.enrollmentTokenRequest.update({
+        where: { id: tokenRequest.id },
+        data: { status: 'CANCELLED' },
+        include: tokenRequestInclude,
+      });
+
+      await writeAudit(
+        app.prisma,
+        auditActorFor(jwtUser, cancelled.organizationId),
+        'ENROLLMENT_TOKEN_REQUEST_CANCELLED',
+        'ENROLLMENT_TOKEN_REQUEST',
+        cancelled.id,
+        {},
+        request,
+      ).catch(() => undefined);
+
+      return reply.send({ success: true, data: serializeTokenRequest(cancelled) });
+    },
+  });
+
+  app.get('/enrollment-token-requests/:id/token', {
+    preHandler: [authenticate],
+    schema: {
+      description: 'Reveal the one-time enrollment token for an approved request',
+      tags: ['Enrollment'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const jwtUser = request.user as JwtPayload;
+      const params = enrollmentParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid enrollment token request id' },
+        });
+      }
+
+      const tokenRequest = await app.prisma.enrollmentTokenRequest.findFirst({
+        where: {
+          id: params.data.id,
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...(!canManageEnrollmentTokens(jwtUser.role) ? { requestedById: jwtUser.sub } : {}),
+        },
+      });
+      if (!tokenRequest || tokenRequest.status !== 'APPROVED') {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Approved enrollment token not available' },
+        });
+      }
+      if (tokenRequest.tokenRevealedAt || tokenRequest.issuedTokenId) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Approved enrollment token was already revealed' },
+        });
+      }
+      if (tokenRequest.expiresAt && tokenRequest.expiresAt.getTime() <= Date.now()) {
+        return reply.status(410).send({
+          success: false,
+          error: { code: 'GONE', message: 'This request has expired' },
+        });
+      }
+
+      const revealedAt = new Date();
+      try {
+        const issued = await app.prisma.$transaction(async (tx) => {
+          const claimed = await tx.enrollmentTokenRequest.updateMany({
+            where: {
+              id: tokenRequest.id,
+              status: 'APPROVED',
+              issuedTokenId: null,
+              tokenRevealedAt: null,
+            },
+            data: { tokenRevealedAt: revealedAt },
+          });
+          if (claimed.count !== 1) {
+            throw new Error('TOKEN_ALREADY_CLAIMED');
+          }
+
+          const rawToken = generateToken();
+          const token = await tx.enrollmentToken.create({
+            data: {
+              organizationId: tokenRequest.organizationId,
+              tokenHash: hashToken(rawToken),
+              label: tokenRequest.label || 'Approved token request',
+              createdById: jwtUser.sub,
+              expiresAt: tokenRequest.expiresAt,
+              maxUses: tokenRequest.maxUses,
+            },
+          });
+          await tx.enrollmentTokenRequest.update({
+            where: { id: tokenRequest.id },
+            data: { issuedTokenId: token.id },
+          });
+          return { rawToken, token };
+        });
+
+        await writeAudit(
+          app.prisma,
+          auditActorFor(jwtUser, tokenRequest.organizationId),
+          'ENROLLMENT_TOKEN_ISSUED',
+          'ENROLLMENT_TOKEN',
+          issued.token.id,
+          { requestId: tokenRequest.id },
+          request,
+        ).catch(() => undefined);
+
+        return reply.send({
+          success: true,
+          data: {
+            requestId: tokenRequest.id,
+            id: issued.token.id,
+            token: issued.rawToken,
+            label: issued.token.label,
+            expiresAt: toIso(issued.token.expiresAt),
+            maxUses: issued.token.maxUses,
+            isActive: issued.token.isActive,
+          },
+        });
+      } catch {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Approved enrollment token was already revealed' },
+        });
+      }
     },
   });
 
