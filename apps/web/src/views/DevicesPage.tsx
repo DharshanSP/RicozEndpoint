@@ -26,6 +26,7 @@ import {
   Copy,
   Check,
   Download,
+  Send,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Modal } from '../components/ui/Modal';
@@ -564,7 +565,7 @@ const handlePageSizeChange = (val: number) => {
               </p>
             </div>
 
-            {canManageDevices && (
+            {canManageDevices ? (
               <Button
                 size="sm"
                 onClick={() => setShowEnrollModal(true)}
@@ -573,16 +574,33 @@ const handlePageSizeChange = (val: number) => {
                 <PlusCircle className="w-3.5 h-3.5" />
                 Start enrollment
               </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => router.push('/enrollment-tokens')}
+                className="h-8.5 px-3.5 shrink-0 bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700 gap-1.5 shadow-xs self-start sm:self-auto"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Request enrollment token
+              </Button>
             )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 pt-2 border-t border-blue-100/70">
-            {[
-              { num: 1, title: 'Open Enroll Device', desc: 'Launch the token generator' },
-              { num: 2, title: 'Generate Token', desc: 'Create a secure one-time key' },
-              { num: 3, title: 'Download Agent', desc: 'Get the Windows installer (.exe)' },
-              { num: 4, title: 'Run & Paste Token', desc: 'Endpoint registers automatically' },
-            ].map((step) => (
+            {(canManageDevices
+              ? [
+                  { num: 1, title: 'Open Enroll Device', desc: 'Launch the token generator' },
+                  { num: 2, title: 'Generate Token', desc: 'Create a secure one-time key' },
+                  { num: 3, title: 'Download Agent', desc: 'Get the Windows installer (.exe)' },
+                  { num: 4, title: 'Run & Paste Token', desc: 'Endpoint registers automatically' },
+                ]
+              : [
+                  { num: 1, title: 'Open Enrollment Tokens', desc: 'Go to the request workflow' },
+                  { num: 2, title: 'Request Token', desc: 'Submit details for approval' },
+                  { num: 3, title: 'Download Agent', desc: 'Get the Windows installer (.exe)' },
+                  { num: 4, title: 'Run & Paste Token', desc: 'Endpoint registers automatically' },
+                ]
+            ).map((step) => (
               <div
                 key={step.num}
                 className="flex items-center gap-2.5 rounded-lg border border-blue-100/90 bg-white/90 px-3 py-2 shadow-2xs hover:border-blue-200 transition-colors"

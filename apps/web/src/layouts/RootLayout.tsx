@@ -150,7 +150,7 @@ export function RootLayout({ children }: { children: ReactNode }) {
           name: 'Enrollment Tokens',
           to: '/enrollment-tokens',
           icon: KeyRound,
-          roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN'],
+          roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN', 'OPERATOR', 'VIEWER'],
         },
         { name: 'Device Groups', to: '/devices/groups', icon: Layers },
       ],
@@ -283,7 +283,7 @@ export function RootLayout({ children }: { children: ReactNode }) {
         path: '/enrollment-tokens',
         icon: KeyRound,
         category: 'Devices',
-        roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN'],
+        roles: ['SUPER_ADMIN', 'ORG_ADMIN', 'IT_ADMIN', 'OPERATOR', 'VIEWER'],
         keywords: ['tokens', 'enrollment', 'provisioning', 'keys', 'agent'],
       },
       {
