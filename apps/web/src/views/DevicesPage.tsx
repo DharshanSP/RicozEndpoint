@@ -1222,7 +1222,7 @@ const handlePageSizeChange = (val: number) => {
       >
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Admin password</label>
+            <label className="text-xs font-semibold text-slate-700">Your password</label>
             <PasswordInput
               autoFocus
               value={deletePassword}

@@ -1306,10 +1306,10 @@ function ActionsTab({ deviceId, initialName, initialHostname, dispatch, isComman
       >
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-slate-700">
-            Admin Password:
+            Your password:
           </label>
           <PasswordInput
-            placeholder="Enter admin password to confirm"
+            placeholder="Enter your password to confirm"
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
             disabled={deleteDevice.isPending}

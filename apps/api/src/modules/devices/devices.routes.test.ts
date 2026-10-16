@@ -362,6 +362,40 @@ describe('Device Management API', () => {
     assert.ok(body.data.every((event) => typeof event.id === 'string' && typeof event.timestamp === 'string'));
   });
 
+  it('verifies the current account password before deleting a device', async () => {
+    const token = await loginAdmin();
+    const target = await app.prisma.device.create({
+      data: {
+        organizationId: demoOrgId,
+        deviceName: `DELETE-FIXTURE-${runId}`,
+        hostname: `DELETE-FIXTURE-${runId}`,
+        serialNumber: `SN-DELETE-${runId}`,
+        os: 'Windows',
+        osVersion: 'Windows 11',
+        status: 'ONLINE',
+        architecture: 'x64',
+      },
+    });
+
+    const wrong = await app.inject({
+      method: 'DELETE',
+      url: `/api/devices/${target.id}`,
+      headers: authHeaders(token),
+      payload: { password: 'not-the-admin-password' },
+    });
+    assert.equal(wrong.statusCode, 403);
+    assert.equal(wrong.json().error.message, 'Invalid password');
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/devices/${target.id}`,
+      headers: authHeaders(token),
+      payload: { password: 'admin123' },
+    });
+    assert.equal(deleted.statusCode, 200);
+    assert.equal(await app.prisma.device.findUnique({ where: { id: target.id } }), null);
+  });
+
   it('scopes device list to the caller organization', async () => {
     const res = await app.inject({
       method: 'GET',

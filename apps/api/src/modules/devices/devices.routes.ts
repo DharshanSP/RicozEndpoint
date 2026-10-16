@@ -772,7 +772,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       if (!password) {
         return reply.status(400).send({
           success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Admin password is required to delete a device' },
+          error: { code: 'VALIDATION_ERROR', message: 'Your password is required to delete a device' },
         });
       }
 
@@ -803,7 +803,7 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
       if (!isValid) {
         return reply.status(403).send({
           success: false,
-          error: { code: 'FORBIDDEN', message: 'Invalid admin password' },
+          error: { code: 'FORBIDDEN', message: 'Invalid password' },
         });
       }
 
