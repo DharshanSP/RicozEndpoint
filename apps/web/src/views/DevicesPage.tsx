@@ -40,6 +40,7 @@ import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ErrorState';
 import { useAuth } from '../context/AuthContext';
 import { fetchApi, apiBaseUrl } from '../lib/api';
+import { resolveAgentDownloadUrl } from '../lib/agent-download';
 
 // OS Badge Icon & Label helper
 function getOsVisual(os: string) {
@@ -286,10 +287,12 @@ export function DevicesPage() {  const router = useRouter();
     ? `curl -X POST ${apiBaseUrl}/enroll -H "Content-Type: application/json" -d '{"enrollmentToken":"${generatedToken}","hostname":"my-device","serialNumber":"SN-001","os":"Windows","osVersion":"11","architecture":"x64","agentVersion":"1.0.0"}'`
     : '';
 
-  // Release asset URL (GitHub Releases) when configured; falls back to the
-  // locally built exe served from web/public/downloads (pnpm build:agent:exe).
-  const agentDownloadUrl =
-    process.env.NEXT_PUBLIC_AGENT_DOWNLOAD_URL || '/downloads/RicozEndpointAgent.exe';
+  // Release asset URL (GitHub Releases) for deployed builds; local development
+  // still uses the freshly built exe served from web/public/downloads.
+  const agentDownloadUrl = resolveAgentDownloadUrl(
+    process.env.NEXT_PUBLIC_AGENT_DOWNLOAD_URL,
+    typeof window === 'undefined' ? undefined : window.location.hostname,
+  );
 
   const handleDownloadAgentFile = () => {
     const link = document.createElement('a');
