@@ -212,6 +212,40 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  // Fleet status summary. DevicesPage uses this lightweight rollup for its KPI
+  // cards instead of the full dashboard payload. One grouped query keeps the
+  // inventory view responsive without changing the dashboard contract.
+  app.get('/summary', {
+    preHandler: [requireMinRole(UserRole.VIEWER)],
+    schema: {
+      description: 'Get fleet-wide device status counts for the caller organization',
+      tags: ['Devices'],
+    },
+    handler: async (request, reply) => {
+      const jwtUser = request.user as JwtPayload;
+      const groups = await app.prisma.device.groupBy({
+        by: ['status'],
+        where: {
+          ...(jwtUser.role === 'SUPER_ADMIN' ? {} : { organizationId: jwtUser.organizationId }),
+          ...(jwtUser.isDemoAccount ? { isDemoSeed: true } : {}),
+        },
+        _count: { _all: true },
+      });
+      const countFor = (status: string): number =>
+        groups.find((group) => group.status === status)?._count._all ?? 0;
+
+      return reply.send({
+        success: true,
+        data: {
+          totalDevices: groups.reduce((sum, group) => sum + group._count._all, 0),
+          onlineDevices: countFor('ONLINE'),
+          offlineDevices: countFor('OFFLINE'),
+          pendingDevices: countFor('PENDING'),
+        },
+      });
+    },
+  });
+
   // Get single device detail
   app.get('/:id', {
     preHandler: [requireMinRole(UserRole.VIEWER)],

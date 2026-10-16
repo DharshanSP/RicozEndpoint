@@ -15,6 +15,7 @@ describe('Policy Management API', () => {
   let adminToken: string;
   let demoOrgId: string;
   let demoDeviceId: string;
+  let fixtureDeviceId: string;
   let viewerToken: string;
   let viewerId: string;
   const runId = Date.now();
@@ -28,11 +29,20 @@ describe('Policy Management API', () => {
     });
     demoOrgId = org.id;
 
-    const device = await app.prisma.device.findFirstOrThrow({
-      where: { organizationId: demoOrgId, serialNumber: 'SN-DEMO-001' },
-      select: { id: true },
+    const fixture = await app.prisma.device.create({
+      data: {
+        organizationId: demoOrgId,
+        deviceName: `POLICY-FIXTURE-${runId}`,
+        hostname: `POLICY-FIXTURE-${runId}`,
+        serialNumber: `SN-POLICY-${runId}`,
+        os: 'Windows',
+        osVersion: 'Windows 11',
+        status: 'ONLINE',
+        architecture: 'x64',
+      },
     });
-    demoDeviceId = device.id;
+    demoDeviceId = fixture.id;
+    fixtureDeviceId = fixture.id;
 
     const login = await app.inject({
       method: 'POST',
@@ -61,6 +71,7 @@ describe('Policy Management API', () => {
   });
 
   after(async () => {
+    await app.prisma.device.delete({ where: { id: fixtureDeviceId } }).catch(() => undefined);
     await app.prisma.user.deleteMany({ where: { id: viewerId } }).catch(() => undefined);
     await app.prisma.policy.deleteMany({ where: { name: { contains: 'TEST-POLICY' } } }).catch(() => undefined);
     await app.close();

@@ -22,6 +22,8 @@ describe('Device Management API', () => {
   let tenantSeed: TenantSeed;
   let demoOrgId: string;
   let demoDeviceId: string;
+  let fixtureDeviceId: string;
+  const runId = `${Date.now()}-${process.pid}`;
 
   before(async () => {
     app = await buildApp();
@@ -33,11 +35,63 @@ describe('Device Management API', () => {
     });
     demoOrgId = org.id;
 
-    const device = await app.prisma.device.findFirstOrThrow({
-      where: { organizationId: demoOrgId, serialNumber: 'SN-DEMO-001' },
-      select: { id: true },
+    // Create a self-contained fixture device instead of relying on seeded demo data.
+    const fixtureSerial = `SN-FIXTURE-${runId}`;
+    const fixtureHostname = `FIXTURE-HOST-${runId}`;
+    const fixture = await app.prisma.device.create({
+      data: {
+        organizationId: demoOrgId,
+        deviceName: fixtureHostname,
+        hostname: fixtureHostname,
+        serialNumber: fixtureSerial,
+        manufacturer: 'Fixture',
+        model: 'VM-FIXTURE',
+        os: 'Windows',
+        osVersion: 'Windows 11 Pro 23H2',
+        architecture: 'x64',
+        ipAddress: '10.9.8.7',
+        agentVersion: '0.1.0',
+        status: 'ONLINE',
+        lastSeenAt: new Date(),
+      },
     });
-    demoDeviceId = device.id;
+    demoDeviceId = fixture.id;
+    fixtureDeviceId = fixture.id;
+
+    await app.prisma.deviceHardware.create({
+      data: {
+        deviceId: fixture.id,
+        cpu: 'Intel Core i7-12700',
+        cpuCores: 12,
+        ramBytes: BigInt(16) * BigInt(1024) * BigInt(1024) * BigInt(1024),
+        storageBytes: BigInt(512) * BigInt(1024) * BigInt(1024) * BigInt(1024),
+        manufacturer: 'Fixture',
+        model: 'VM-FIXTURE',
+        serialNumber: fixtureSerial,
+        biosVersion: '1.5.0',
+      },
+    });
+
+    await app.prisma.deviceSoftware.createMany({
+      data: [
+        {
+          deviceId: fixture.id,
+          name: `Fixture Office ${runId}`,
+          version: '1.0.0',
+          publisher: 'Fixture Publisher',
+          installDate: new Date('2024-01-15'),
+          architecture: 'x64',
+        },
+        {
+          deviceId: fixture.id,
+          name: `Fixture Browser ${runId}`,
+          version: '2.0.0',
+          publisher: 'Fixture Publisher',
+          installDate: new Date('2024-02-01'),
+          architecture: 'x64',
+        },
+      ],
+    });
 
     // Create an isolated tenant: second organization with a device + user
     const tenantOrg = await app.prisma.organization.create({
@@ -91,6 +145,7 @@ describe('Device Management API', () => {
   after(async () => {
     // Clean up isolated tenant (audit logs reference the org, so remove them first)
     await app.prisma.auditLog.deleteMany({ where: { organizationId: tenantSeed.organizationId } });
+    await app.prisma.device.delete({ where: { id: fixtureDeviceId } }).catch(() => undefined);
     await app.prisma.user.delete({ where: { id: tenantSeed.userId } });
     await app.prisma.device.delete({ where: { id: tenantSeed.deviceId } });
     await app.prisma.organization.delete({ where: { id: tenantSeed.organizationId } });
@@ -155,7 +210,7 @@ describe('Device Management API', () => {
     assert.equal(body.data.length, 2);
     assert.equal(body.pagination.page, 1);
     assert.equal(body.pagination.limit, 2);
-    assert.ok(body.pagination.total >= 6, 'SUPER_ADMIN should see devices across all organizations');
+    assert.ok(body.pagination.total >= 2, 'SUPER_ADMIN should see devices across all organizations');
     assert.equal(body.pagination.totalPages, Math.ceil(body.pagination.total / 2));
 
     const first = body.data[0] as Record<string, unknown>;
@@ -200,22 +255,22 @@ describe('Device Management API', () => {
     const token = await loginAdmin();
     const res = await app.inject({
       method: 'GET',
-      url: '/api/devices?search=SN-DEMO-002&limit=100',
+      url: `/api/devices?search=SN-FIXTURE-${runId}&limit=100`,
       headers: authHeaders(token),
     });
     assert.equal(res.statusCode, 200);
     const body = res.json() as { data: { serialNumber: string; hostname: string }[] };
     assert.ok(body.data.length >= 1);
-    assert.ok(body.data.some((device) => device.serialNumber === 'SN-DEMO-002'));
+    assert.ok(body.data.some((device) => device.serialNumber === `SN-FIXTURE-${runId}`));
 
     const res2 = await app.inject({
       method: 'GET',
-      url: '/api/devices?search=DESKTOP-WKS&limit=100',
+      url: `/api/devices?search=FIXTURE-HOST-${runId}&limit=100`,
       headers: authHeaders(token),
     });
     const body2 = res2.json() as { data: { hostname: string }[] };
     assert.ok(body2.data.length >= 1);
-    assert.ok(body2.data.every((device) => device.hostname.toLowerCase().includes('desktop-wks')));
+    assert.ok(body2.data.every((device) => device.hostname.toLowerCase().includes(`fixture-host-${runId}`.toLowerCase())));
   });
 
   it('sorts devices by the requested field', async () => {
@@ -290,7 +345,7 @@ describe('Device Management API', () => {
     assert.equal(res.statusCode, 200);
     const body = res.json() as { data: { id: string; name: string; version: string; publisher: string }[] };
     assert.ok(Array.isArray(body.data));
-    assert.ok(body.data.length >= 1);
+    assert.ok(body.data.some((item) => item.name === `Fixture Office ${runId}`));
     assert.ok(body.data.every((item) => typeof item.name === 'string' && typeof item.version === 'string'));
   });
 
@@ -367,6 +422,7 @@ describe('Device Management API', () => {
     assert.equal(res.statusCode, 200);
     const swagger = res.json() as { paths: Record<string, unknown> };
     assert.ok(swagger.paths['/api/devices/']);
+    assert.ok(swagger.paths['/api/devices/summary']);
     assert.ok(swagger.paths['/api/devices/{id}']);
     assert.ok(swagger.paths['/api/devices/{id}/hardware']);
     assert.ok(swagger.paths['/api/devices/{id}/software']);
@@ -374,10 +430,129 @@ describe('Device Management API', () => {
   });
 });
 
+describe('Device Summary API', () => {
+  let app: FastifyInstance;
+  let orgId: string;
+  let adminToken: string;
+  let demoToken: string;
+  const runId = `${Date.now()}-${process.pid}`;
+
+  async function login(email: string, password: string): Promise<string> {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email, password },
+    });
+    const body = res.json() as LoginResponse;
+    assert.ok(res.statusCode === 200 && body.data?.token, `${email} should log in`);
+    return body.data!.token as string;
+  }
+
+  before(async () => {
+    app = await buildApp();
+    const org = await app.prisma.organization.create({ data: { name: `Device-Summary-${runId}` } });
+    orgId = org.id;
+
+    const admin = await app.prisma.user.create({
+      data: {
+        organizationId: orgId,
+        email: `summary-admin-${runId}@ricoz.local`,
+        name: 'Summary Admin',
+        passwordHash: await hashPassword('summary123'),
+        role: 'ORG_ADMIN',
+      },
+    });
+    const demo = await app.prisma.user.create({
+      data: {
+        organizationId: orgId,
+        email: `summary-demo-${runId}@ricoz.local`,
+        name: 'Summary Demo',
+        passwordHash: await hashPassword('summary123'),
+        role: 'VIEWER',
+        isDemoAccount: true,
+      },
+    });
+    adminToken = await login(admin.email, 'summary123');
+    demoToken = await login(demo.email, 'summary123');
+
+    await app.prisma.device.createMany({
+      data: [
+        {
+          organizationId: orgId,
+          deviceName: `SUMMARY-ONLINE-${runId}`,
+          hostname: `SUMMARY-ONLINE-${runId}`,
+          serialNumber: `SN-SUMMARY-ONLINE-${runId}`,
+          os: 'Windows',
+          osVersion: 'Windows 11',
+          status: 'ONLINE',
+          architecture: 'x64',
+        },
+        {
+          organizationId: orgId,
+          deviceName: `SUMMARY-OFFLINE-${runId}`,
+          hostname: `SUMMARY-OFFLINE-${runId}`,
+          serialNumber: `SN-SUMMARY-OFFLINE-${runId}`,
+          os: 'Windows',
+          osVersion: 'Windows 11',
+          status: 'OFFLINE',
+          architecture: 'x64',
+        },
+        {
+          organizationId: orgId,
+          deviceName: `SUMMARY-PENDING-${runId}`,
+          hostname: `SUMMARY-PENDING-${runId}`,
+          serialNumber: `SN-SUMMARY-PENDING-${runId}`,
+          os: 'Windows',
+          osVersion: 'Windows 11',
+          status: 'PENDING',
+          architecture: 'x64',
+          isDemoSeed: true,
+        },
+      ],
+    });
+  });
+
+  after(async () => {
+    await app.prisma.auditLog.deleteMany({ where: { organizationId: orgId } }).catch(() => undefined);
+    await app.prisma.device.deleteMany({ where: { organizationId: orgId } }).catch(() => undefined);
+    await app.prisma.user.deleteMany({ where: { organizationId: orgId } }).catch(() => undefined);
+    await app.prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
+    await app.close();
+  });
+
+  it('returns fleet status counts in one lightweight response', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/devices/summary',
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), {
+      success: true,
+      data: { totalDevices: 3, onlineDevices: 1, offlineDevices: 1, pendingDevices: 1 },
+    });
+  });
+
+  it('scopes demo logins to seeded devices', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/devices/summary',
+      headers: { authorization: `Bearer ${demoToken}` },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), {
+      success: true,
+      data: { totalDevices: 1, onlineDevices: 0, offlineDevices: 0, pendingDevices: 1 },
+    });
+  });
+});
+
 describe('Device Management API: demo login scope', () => {
   let app: FastifyInstance;
   let demoOrgId: string;
   let enrolledDeviceId: string;
+  let seededDeviceIds: string[] = [];
+  const scopeRunId = `${Date.now()}-${process.pid}`;
 
   interface DeviceListBody {
     success: boolean;
@@ -425,9 +600,36 @@ describe('Device Management API: demo login scope', () => {
       },
     });
     enrolledDeviceId = enrolled.id;
+
+    // Fixture scoped devices for demo-login assertions. Production seed data no
+    // longer includes a demo fleet, so these tests bring their own fixtures.
+    seededDeviceIds = await Promise.all(
+      ['SCOPE-A', 'SCOPE-B'].map(async (suffix) => {
+        const scoped = await app.prisma.device.create({
+          data: {
+            organizationId: demoOrgId,
+            deviceName: `SCOPE-${suffix}-${scopeRunId}`,
+            hostname: `SCOPE-${suffix}-${scopeRunId}`,
+            serialNumber: `SN-SCOPE-${suffix}-${scopeRunId}`,
+            manufacturer: 'Test',
+            model: 'VM-1',
+            os: 'Windows',
+            osVersion: 'Windows 11 Pro 23H2',
+            architecture: 'x64',
+            ipAddress: '10.9.9.8',
+            agentVersion: '0.1.0',
+            status: 'ONLINE',
+            lastSeenAt: new Date(),
+            isDemoSeed: true,
+          },
+        });
+        return scoped.id;
+      })
+    );
   });
 
   after(async () => {
+    await app.prisma.device.deleteMany({ where: { id: { in: seededDeviceIds } } }).catch(() => undefined);
     await app.prisma.device.delete({ where: { id: enrolledDeviceId } }).catch(() => undefined);
     await app.close();
   });
@@ -446,7 +648,7 @@ describe('Device Management API: demo login scope', () => {
       });
       assert.equal(res.statusCode, 200);
       const body = res.json() as DeviceListBody;
-      assert.ok(body.data.length >= 5, `${email} should see the seeded fleet`);
+      assert.ok(body.data.length >= 2, `${email} should see the scoped demo fixtures`);
       assert.ok(
         body.data.every((device) => device.isDemoSeed === true),
         `${email} should only see demo-seeded devices`

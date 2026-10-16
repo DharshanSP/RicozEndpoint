@@ -40,10 +40,12 @@ pnpm dev
 | Role | Email | Password |
 |------|-------|----------|
 | Super Admin | admin@ricoz.local | admin123 |
+| Org Admin | orgadmin@ricoz.local | orgadmin123 |
+| IT Admin | itadmin@ricoz.local | itadmin123 |
 | Operator | operator@ricoz.local | operator123 |
 | Viewer | viewer@ricoz.local | viewer123 |
 
-> **Security:** Change all passwords immediately after first login. The seed creates a `Ricoz Demo Organization` — rename it in **Settings → Organization**.
+> **Security:** Change all passwords immediately after first login. The seed creates an empty `Ricoz Demo Organization` with one account for each role and no demo devices, policies, alerts, or audit entries — rename it in **Settings → Organization**.
 
 ---
 
@@ -298,14 +300,14 @@ log_level = "info"
 
 ## 8. Production Hardening Checklist
 
-- [ ] **Change all default passwords** (admin, operator, viewer)
+- [ ] **Change all default passwords** (admin, org admin, IT admin, operator, viewer)
 - [ ] **Rotate JWT_SECRET** in `.env` (32+ random chars)
 - [ ] **Enable HTTPS** — terminate TLS at reverse proxy (nginx/Traefik/Caddy)
 - [ ] **Set CORS_ORIGIN** to your exact domain(s)
 - [ ] **Configure PostgreSQL** — dedicated user, restricted network access
 - [ ] **Run `pnpm db:migrate deploy`** on prod DB (not `dev`)
 - [ ] **Set `NODE_ENV=production`**
-- [ ] **Disable demo seed** — `SKIP_DEMO_SEED=true pnpm db:seed`
+- [ ] **Seed only role accounts on prod** — the seed creates an empty organization plus five role logins.
 - [ ] **Backup strategy** — daily PG dumps, test restores
 - [ ] **Monitor** — API `/health`, agent heartbeat lag, disk space
 - [ ] **Log aggregation** — ship API + agent logs to Loki/ELK

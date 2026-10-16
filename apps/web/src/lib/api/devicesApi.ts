@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   DeviceComplianceStatus,
   DeviceDetail,
+  DeviceFleetSummary,
   DeviceHardware,
   DeviceListResponse,
   DeviceSoftwareItem,
@@ -27,6 +28,9 @@ import type {
  *      - groupId – uuid of a device group (members only)
  *      - sortOrder ∈ asc | desc
  *      - Errors: 400 VALIDATION_ERROR, 401 UNAUTHORIZED
+ *
+ * GET /api/devices/summary
+ *   -> { success, data: { totalDevices, onlineDevices, offlineDevices, pendingDevices } }
  *
  * GET /api/devices/:id
  *   -> { success, data: { overview, hardware, software, policies, compliance, commands, activity } }
@@ -99,6 +103,11 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
 
   const qs = params.toString();
   return requestBodyEnvelope<DeviceListResponse>(`/devices${qs ? `?${qs}` : ''}`);
+}
+
+/** Gets fleet-wide device status counts without the full dashboard payload. */
+export async function getDeviceFleetSummary(): Promise<DeviceFleetSummary> {
+  return requestBody<DeviceFleetSummary>('/devices/summary');
 }
 
 /** Gets full device detail (overview + hardware, software, policies, compliance, commands, activity). */

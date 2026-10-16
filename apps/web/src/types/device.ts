@@ -66,6 +66,13 @@ export interface DeviceListData {
   pagination: DevicePagination;
 }
 
+export interface DeviceFleetSummary {
+  totalDevices: number;
+  onlineDevices: number;
+  offlineDevices: number;
+  pendingDevices: number;
+}
+
 export interface DeviceListResponse {
   success: boolean;
   data?: DeviceSummary[];

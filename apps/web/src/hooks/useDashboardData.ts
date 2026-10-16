@@ -30,6 +30,8 @@ export function useDashboardData(timeRange: '24h' | '7d' | '30d' = '24h'): UseDa
       return res.data;
     },
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
     staleTime: 15_000,
     retry: 1,
   });

@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useDeviceList, useDeleteDevice, useDeviceGroups } from '../hooks/useDeviceQueries';
-import { useDashboardData } from '../hooks/useDashboardData';
+import { useDeviceFleetSummary, useDeviceList, useDeleteDevice, useDeviceGroups } from '../hooks/useDeviceQueries';
 import { formatRelativeTime } from '../lib/format';
 import type { DeviceSortField, DeviceSortOrder, DeviceStatus } from '../types/device';
 import {
@@ -369,16 +368,16 @@ export function DevicesPage() {  const router = useRouter();
   // no client-side re-filtering, so page counts always match the server total.
   const devices = rawDevices;
 
-  // Fleet KPI metrics come from the shared dashboard counters (same source as
-  // DashboardPage) so the cards show fleet-wide numbers, not the current page slice.
-  const fleetQuery = useDashboardData('24h');
+  // Fleet KPI metrics come from a lightweight summary endpoint rather than the
+  // full dashboard payload, so the cards stay fleet-wide without slowing this page.
+  const fleetQuery = useDeviceFleetSummary();
   const metrics = useMemo(() => {
     if (fleetQuery.data) {
       return {
         totalDevices: fleetQuery.data.totalDevices,
         onlineDevices: fleetQuery.data.onlineDevices,
         offlineDevices: fleetQuery.data.offlineDevices,
-        pendingDevices: fleetQuery.data.pendingEnrollment,
+        pendingDevices: fleetQuery.data.pendingDevices,
       };
     }
     return {

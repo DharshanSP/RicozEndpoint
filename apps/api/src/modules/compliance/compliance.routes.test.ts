@@ -87,6 +87,7 @@ describe('Compliance REST API', () => {
   let violationPolicyId: string;
   let ruleId: string;
   let foreignDeviceId: string;
+  let extraDeviceIds: string[] = [];
   const runId = Date.now();
 
   before(async () => {
@@ -215,6 +216,26 @@ describe('Compliance REST API', () => {
     });
     assert.equal(heartbeat.statusCode, 200);
 
+    // Pagination fixtures: the clean seed no longer provides a background
+    // fleet, so pagination assertions use devices owned by this suite.
+    extraDeviceIds = await Promise.all(
+      ['PAGINATION-A', 'PAGINATION-B'].map(async (suffix) => {
+        const extra = await app.prisma.device.create({
+          data: {
+            organizationId: demoOrgId,
+            deviceName: `COMPLIANCE-${suffix}-${runId}`,
+            hostname: `COMPLIANCE-${suffix}-${runId}`,
+            serialNumber: `SN-COMPLIANCE-${suffix}-${runId}`,
+            os: 'Windows',
+            osVersion: 'Windows 11',
+            status: 'ONLINE',
+            architecture: 'x64',
+          },
+        });
+        return extra.id;
+      })
+    );
+
     // A compliance rule exists for control rollups (rule results are not
     // produced by any engine today, so it should surface as NOT_EVALUATED).
     const rule = await app.prisma.complianceRule.create({
@@ -258,7 +279,7 @@ describe('Compliance REST API', () => {
     if (violationPolicyId) {
       await app.prisma.policy.delete({ where: { id: violationPolicyId } }).catch(() => undefined);
     }
-    const deviceIds = [violatingDeviceId, foreignDeviceId].filter(Boolean);
+    const deviceIds = [violatingDeviceId, foreignDeviceId, ...extraDeviceIds].filter(Boolean);
     if (deviceIds.length > 0) {
       await app.prisma.device.deleteMany({ where: { id: { in: deviceIds } } }).catch(() => undefined);
     }
@@ -565,7 +586,7 @@ describe('Compliance REST API', () => {
           patches: { items: [{ kbNumber: requiredKb, title: 'Required compliance update', installedAt: null }] },
         },
       });
-      assert.equal(heartbeat.statusCode, 200);
+    assert.equal(heartbeat.statusCode, 200);
 
       const passingControl = await detail();
       assert.equal(passingControl.status, 'COMPLIANT');

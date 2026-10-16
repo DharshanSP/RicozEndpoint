@@ -67,6 +67,7 @@ authenticated user's organization (`SUPER_ADMIN` may bypass organization scope).
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | /api/devices | List devices (filter: q, status, complianceStatus, page, limit) |
+| GET | /api/devices/summary | Fleet status counts for inventory KPI cards |
 | GET | /api/devices/:id | Get device details plus hardware/software summary |
 | GET | /api/devices/:id/hardware | Hardware inventory |
 | GET | /api/devices/:id/software | Software inventory |

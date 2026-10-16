@@ -17,6 +17,7 @@ describe('Device Groups API', () => {
   let viewerId: string;
   let demoOrgId: string;
   let demoDeviceId: string;
+  let fixtureDeviceId: string;
   const runId = Date.now();
 
   before(async () => {
@@ -28,11 +29,20 @@ describe('Device Groups API', () => {
     });
     demoOrgId = org.id;
 
-    const device = await app.prisma.device.findFirstOrThrow({
-      where: { organizationId: demoOrgId, serialNumber: 'SN-DEMO-001' },
-      select: { id: true },
+    const fixture = await app.prisma.device.create({
+      data: {
+        organizationId: demoOrgId,
+        deviceName: `EXTRAS-FIXTURE-${runId}`,
+        hostname: `EXTRAS-FIXTURE-${runId}`,
+        serialNumber: `SN-EXTRAS-${runId}`,
+        os: 'Windows',
+        osVersion: 'Windows 11',
+        status: 'ONLINE',
+        architecture: 'x64',
+      },
     });
-    demoDeviceId = device.id;
+    demoDeviceId = fixture.id;
+    fixtureDeviceId = fixture.id;
 
     const login = await app.inject({
       method: 'POST',
@@ -60,6 +70,7 @@ describe('Device Groups API', () => {
   });
 
   after(async () => {
+    await app.prisma.device.delete({ where: { id: fixtureDeviceId } }).catch(() => undefined);
     await app.prisma.user.deleteMany({ where: { id: viewerId } }).catch(() => undefined);
     await app.prisma.deviceGroup.deleteMany({ where: { name: { contains: `GRP-TEST-${runId}` } } }).catch(() => undefined);
     await app.close();
@@ -136,9 +147,17 @@ describe('Device Groups API', () => {
       g.name === `GRP-TEST-${runId}-A`
     );
 
-    const device2 = await app.prisma.device.findFirstOrThrow({
-      where: { organizationId: demoOrgId, serialNumber: 'SN-DEMO-002' },
-      select: { id: true },
+    const device2 = await app.prisma.device.create({
+      data: {
+        organizationId: demoOrgId,
+        deviceName: `EXTRAS-FIXTURE-2-${runId}`,
+        hostname: `EXTRAS-FIXTURE-2-${runId}`,
+        serialNumber: `SN-EXTRAS-2-${runId}`,
+        os: 'Windows',
+        osVersion: 'Windows 11',
+        status: 'ONLINE',
+        architecture: 'x64',
+      },
     });
 
     const addRes = await app.inject({
@@ -157,6 +176,8 @@ describe('Device Groups API', () => {
     });
     assert.equal(removeRes.statusCode, 200);
     assert.equal(removeRes.json().data.removed, true);
+
+    await app.prisma.device.delete({ where: { id: device2.id } }).catch(() => undefined);
   });
 
   it('rejects devices from another organization with 403', async () => {
@@ -277,6 +298,9 @@ describe('Organization Settings API', () => {
 describe('Audit Logs API', () => {
   let app: FastifyInstance;
   let adminToken: string;
+  const auditRunId = `${Date.now()}-${process.pid}`;
+  const auditAction = `TEST-AUDIT-${auditRunId}`;
+  const auditResource = `TEST-RESOURCE-${auditRunId}`;
 
   before(async () => {
     app = await buildApp();
@@ -285,22 +309,43 @@ describe('Audit Logs API', () => {
       url: '/api/auth/login',
       payload: { email: 'admin@ricoz.local', password: 'admin123' },
     });
-    adminToken = (login.json() as LoginResponse).data!.token!;
+    const loginBody = login.json() as LoginResponse;
+    adminToken = loginBody.data!.token!;
+    const admin = await app.prisma.user.findUniqueOrThrow({
+      where: { email: 'admin@ricoz.local' },
+      select: { id: true, organizationId: true },
+    });
+
+    // Self-contained audit fixtures: production seed data no longer includes
+    // audit entries, so these assertions use rows created by this suite.
+    await app.prisma.auditLog.createMany({
+      data: [0, 1, 2].map((index) => ({
+        organizationId: admin.organizationId,
+        actorId: admin.id,
+        action: auditAction,
+        resource: auditResource,
+        resourceId: `${auditResource}-${index}`,
+        ipAddress: '127.0.0.1',
+        timestamp: new Date(Date.now() - index * 60_000),
+        metadata: JSON.stringify({ fixture: true, runId: auditRunId }),
+      })),
+    });
   });
 
   after(async () => {
+    await app.prisma.auditLog.deleteMany({ where: { action: auditAction } }).catch(() => undefined);
     await app.close();
   });
 
   it('lists audit log entries ordered by timestamp desc', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: `/api/audit-logs?page=1&limit=25`,
+      url: `/api/audit-logs?page=1&limit=25&action=${auditAction}`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.statusCode, 200);
     const payload = res.json();
-    assert.ok(payload.data.total >= 6, 'seed audit entries should exist');
+    assert.equal(payload.data.total, 3, 'fixture audit entries should exist');
 
     const items = payload.data.items as Array<{ timestamp: string; actor: { email: string } | null }>;
     for (let i = 1; i < items.length; i += 1) {
@@ -321,24 +366,24 @@ describe('Audit Logs API', () => {
   it('filters by action', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: `/api/audit-logs?action=POLICY_CREATED`,
+      url: `/api/audit-logs?action=${auditAction}`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.statusCode, 200);
     const items = res.json().data.items as Array<{ action: string }>;
-    assert.ok(items.length > 0);
-    assert.ok(items.every((item) => item.action.includes('POLICY_CREATED')));
+    assert.equal(items.length, 3);
+    assert.ok(items.every((item) => item.action.includes(auditAction)));
   });
 
   it('searches across actor email', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: `/api/audit-logs?search=admin@ricoz.local`,
+      url: `/api/audit-logs?search=admin@ricoz.local&action=${auditAction}`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.statusCode, 200);
     const items = res.json().data.items as Array<{ actor?: { email: string } }>;
-    assert.ok(items.length > 0);
+    assert.equal(items.length, 3);
     assert.ok(items.every((item) => item.actor?.email.includes('admin@ricoz.local')));
   });
 });
@@ -346,6 +391,9 @@ describe('Audit Logs API', () => {
 describe('Software Catalog API', () => {
   let app: FastifyInstance;
   let adminToken: string;
+  let fixtureDeviceId: string;
+  const softwareRunId = `${Date.now()}-${process.pid}`;
+  const softwareName = `Fixture Catalog App ${softwareRunId}`;
 
   before(async () => {
     app = await buildApp();
@@ -355,29 +403,67 @@ describe('Software Catalog API', () => {
       payload: { email: 'admin@ricoz.local', password: 'admin123' },
     });
     adminToken = (login.json() as LoginResponse).data!.token!;
+    const admin = await app.prisma.user.findUniqueOrThrow({
+      where: { email: 'admin@ricoz.local' },
+      select: { organizationId: true },
+    });
+    const fixture = await app.prisma.device.create({
+      data: {
+        organizationId: admin.organizationId,
+        deviceName: `SOFTWARE-FIXTURE-${softwareRunId}`,
+        hostname: `SOFTWARE-FIXTURE-${softwareRunId}`,
+        serialNumber: `SN-SOFTWARE-${softwareRunId}`,
+        os: 'Windows',
+        osVersion: 'Windows 11',
+        status: 'ONLINE',
+        architecture: 'x64',
+      },
+    });
+    fixtureDeviceId = fixture.id;
+    await app.prisma.deviceSoftware.createMany({
+      data: [
+        {
+          deviceId: fixture.id,
+          name: softwareName,
+          version: '3.2.1',
+          publisher: 'Fixture Publisher',
+          installDate: new Date('2024-04-01'),
+          architecture: 'x64',
+        },
+        {
+          deviceId: fixture.id,
+          name: `${softwareName} Helper`,
+          version: '1.0.0',
+          publisher: 'Fixture Publisher',
+          installDate: new Date('2024-04-02'),
+          architecture: 'x64',
+        },
+      ],
+    });
   });
 
   after(async () => {
+    await app.prisma.device.delete({ where: { id: fixtureDeviceId } }).catch(() => undefined);
     await app.close();
   });
 
-  it('aggregates seeded software into a catalog', async () => {
+  it('aggregates fixture software into a catalog', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/software?limit=100',
+      url: `/api/software?limit=100&search=${encodeURIComponent(softwareName)}`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.statusCode, 200);
     const payload = res.json();
-    assert.ok(payload.data.total >= 4, 'seeded software names should be cataloged');
-    const chrome = payload.data.items as Array<{
+    const items = payload.data.items as Array<{
       name: string;
       deviceCount: number;
       versions: Array<{ version: string; count: number }>;
       latestVersion: string;
     }>;
-    assert.ok(chrome.length > 0);
-    const first = chrome[0];
+    assert.ok(items.length >= 1);
+    assert.ok(items.every((item) => item.name.includes(softwareName)));
+    const first = items[0];
     assert.ok(first);
     assert.ok(first.versions.length > 0);
     assert.ok(first.latestVersion);
@@ -386,11 +472,12 @@ describe('Software Catalog API', () => {
   it('searches the catalog by name', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/software?search=chrome',
+      url: `/api/software?search=${encodeURIComponent(softwareName.toLowerCase())}`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.statusCode, 200);
     const items = res.json().data.items as Array<{ name: string }>;
-    assert.ok(items.every((item) => item.name.toLowerCase().includes('chrome')));
+    assert.ok(items.length >= 1);
+    assert.ok(items.every((item) => item.name.toLowerCase().includes(softwareName.toLowerCase())));
   });
 });

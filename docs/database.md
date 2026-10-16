@@ -70,7 +70,5 @@ pnpm db:seed
 
 Development seed includes:
 - 1 organization (Ricoz Demo Organization)
-- 3 users (admin, operator, viewer)
-- 5 demo devices with hardware and software
-- 1 security policy
-- 1 audit log entry
+- 5 users, one for each role (admin, org admin, IT admin, operator, viewer)
+- No demo devices, hardware/software inventory, policies, alerts, or audit entries

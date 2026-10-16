@@ -1,7 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getDevice,
   getDeviceActivity,
+  getDeviceFleetSummary,
   getDeviceHardware,
   getDeviceSoftware,
   listDevices,
@@ -29,6 +30,17 @@ export function useDeviceList(query: DeviceListQuery) {  return useQuery({
       }
       return { devices: res.data, pagination: res.pagination };
     },
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Fleet-wide status counts for the inventory KPI cards. */
+export function useDeviceFleetSummary() {
+  return useQuery({
+    queryKey: ['devices', 'summary'],
+    queryFn: getDeviceFleetSummary,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 
