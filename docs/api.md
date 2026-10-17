@@ -100,6 +100,20 @@ recent devices, active alerts and recent commands.
 | GET | /api/enrollment-token-requests/:id/token | Reveal an approved token once | VIEWER |
 | POST | /api/enroll | Agent registration with a one-time token | agent token |
 
+`POST /api/enroll` responses:
+
+| Status | `error.code` | Meaning |
+|--------|--------------|---------|
+| 201 | – | Device registered; returns `deviceId` and a per-device `agentToken` |
+| 401 | `INVALID_ENROLLMENT_TOKEN` | Unknown or revoked token |
+| 401 | `ENROLLMENT_TOKEN_EXPIRED` | Past its `expiresAt` |
+| 429 | `ENROLLMENT_TOKEN_EXHAUSTED` | Reached `maxUses` (still listed as *Consumed*, not *Revoked*) |
+
+A multi-use token registers each machine as a **separate** device: enrollment resolves an
+existing device by `(organization, serialNumber)`, or by a `deviceId` the token was
+pre-provisioned with at creation. Tokens are never re-bound to a device as a side effect of
+enrollment, so a rollout token cannot overwrite an already-registered machine.
+
 ## Agent
 
 Agent endpoints use an agent JWT obtained during registration (`/api/enroll`).

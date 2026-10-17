@@ -1014,10 +1014,13 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
         where: { id: token.id },
         data: {
           uses: { increment: 1 },
-          isActive: token.uses + 1 >= token.maxUses ? false : true,
           lastUsedAt: usedAt,
-          // Pin the token to the device it enrolled so usage history is traceable.
-          deviceId: device.id,
+          // A token may be pre-bound to a device at creation; never rebind it.
+          // Single-use tokens pin to the device they enrolled so usage history
+          // stays traceable. Multi-use tokens stay unbound on purpose: pinning
+          // them would make every later enrollment attach to (and overwrite)
+          // the first device instead of registering its own.
+          ...(token.deviceId || token.maxUses > 1 ? {} : { deviceId: device.id }),
         },
       });
 

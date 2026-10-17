@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
-import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, History, Send, Eye } from 'lucide-react';
+import { KeyRound, Plus, Copy, Check, Trash2, RefreshCw, X, CheckCircle2, History, Send, Eye, Download } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -21,6 +21,8 @@ import {
   useRevokeEnrollmentToken,
 } from '../hooks/useEnrollmentTokens';
 import type { EnrollmentTokenRequestStatus, EnrollmentTokenSummary } from '../types/enrollment';
+import { API_BASE_URL } from '../lib/api';
+import { resolveAgentDownloadUrl } from '../lib/agent-download';
 
 function statusBadge(token: EnrollmentTokenSummary): { label: string; variant: 'success' | 'warning' | 'secondary' } {
   if (!token.isActive) return { label: 'Revoked', variant: 'secondary' };
@@ -174,12 +176,32 @@ export function EnrollmentTokensPage() {
     cancelMutation.mutate(requestToCancel, { onSuccess: () => setRequestToCancel(null) });
   };
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-  const windowsCommand = `$env:API_URL='${apiUrl.replace(/'/g, "''")}'; npx tsx src/index.ts`;
+  // Same base the rest of the app talks to. Relying on a raw env read here would
+  // fall back to localhost on deployed builds and hand operators a dead command.
+  const apiUrl = API_BASE_URL;
+  const windowsCommand = createdToken
+    ? `$env:RICOZ_ENROLL_TOKEN='${createdToken.replace(/'/g, "''")}'; $env:RICOZ_API_URL='${apiUrl.replace(/'/g, "''")}'; iwr -useb '${apiUrl.replace(/'/g, "''")}/agent/install.ps1' | iex`
+    : '';
   const handleCopyCommand = async () => {
+    if (!windowsCommand) return;
     await navigator.clipboard.writeText(windowsCommand);
     setCopiedCommand(true);
     setTimeout(() => setCopiedCommand(false), 2000);
+  };
+
+  // Release asset for deployed builds; local dev uses the freshly built exe.
+  const agentDownloadUrl = resolveAgentDownloadUrl(
+    process.env.NEXT_PUBLIC_AGENT_DOWNLOAD_URL,
+    typeof window === 'undefined' ? undefined : window.location.hostname,
+  );
+
+  const handleDownloadAgentFile = () => {
+    const link = document.createElement('a');
+    link.href = agentDownloadUrl;
+    // The `download` attribute only applies to same-origin URLs; harmless otherwise.
+    link.download = 'RicozEndpointAgent.exe';
+    link.rel = 'noopener';
+    link.click();
   };
 
   const handleRevokeClick = (token: EnrollmentTokenSummary) => {
@@ -217,6 +239,16 @@ export function EnrollmentTokensPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadAgentFile}
+            className="h-9 text-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs"
+          >
+            <Download className="w-3.5 h-3.5 text-blue-600" />
+            <span>Download Agent</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -320,7 +352,19 @@ export function EnrollmentTokensPage() {
                     </Button>
                   </div>
                   <code className="block text-xs text-slate-800 font-mono bg-white p-2.5 rounded-lg border border-emerald-200 break-all select-all">{windowsCommand}</code>
-                  <p className="text-[11px] text-emerald-800">Run from the agent folder on a machine with Node.js 20+ and the agent dependencies installed. The agent will prompt for the token and enroll the device automatically.</p>
+                  <p className="text-[11px] text-emerald-800">
+                    Paste into an elevated PowerShell window on the target Windows machine. It downloads the agent,
+                    stores the token machine-wide and starts the service — no Node.js required.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadAgentFile}
+                    className="w-full h-8 text-xs border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download RicozEndpoint Agent (.exe)
+                  </Button>
                 </div>
               </div>
             )}

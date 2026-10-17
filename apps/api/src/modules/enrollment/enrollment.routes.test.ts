@@ -174,8 +174,9 @@ describe('Device Enrollment API', () => {
       agentVersion: '0.1.0',
     });
     assert.equal(first.statusCode, 201);
-    await cleanupDevice(`SN-${runId}-SINGLE`);
 
+    // Assert exhaustion before cleanup: a consumed token stays bound to the
+    // device it enrolled, so the cleanup helper would delete it first.
     const second = await enroll({
       enrollmentToken: token.data!.token,
       hostname: 'SINGLE-USE-HOST-2',
@@ -184,7 +185,87 @@ describe('Device Enrollment API', () => {
       osVersion: 'Windows 10',
       agentVersion: '0.1.0',
     });
-    assert.equal(second.statusCode, 401, 'consumed token must be rejected');
+    assert.equal(second.statusCode, 429, 'exhausted token must report usage exhaustion');
+    assert.equal(second.error?.code, 'ENROLLMENT_TOKEN_EXHAUSTED');
+
+    await cleanupDevice(`SN-${runId}-SINGLE`);
+    await cleanupDevice(`SN-${runId}-SINGLE-2`);
+  });
+
+  it('registers each device separately for a multi-use token', async () => {
+    const token = await createToken(adminToken, { label: 'multi-use', maxUses: 3 });
+
+    const first = await enroll({
+      enrollmentToken: token.data!.token,
+      hostname: 'MULTI-HOST-1',
+      serialNumber: `SN-${runId}-MULTI-1`,
+      os: 'Windows',
+      osVersion: 'Windows 11',
+      agentVersion: '0.1.0',
+    });
+    assert.equal(first.statusCode, 201);
+
+    const second = await enroll({
+      enrollmentToken: token.data!.token,
+      hostname: 'MULTI-HOST-2',
+      serialNumber: `SN-${runId}-MULTI-2`,
+      os: 'Windows',
+      osVersion: 'Windows 11',
+      agentVersion: '0.1.0',
+    });
+    assert.equal(second.statusCode, 201);
+
+    assert.ok(first.data?.deviceId && second.data?.deviceId, 'both enrollments return a device');
+    assert.notEqual(
+      second.data?.deviceId,
+      first.data?.deviceId,
+      'multi-use token must not pin later enrollments onto the first device',
+    );
+
+    const secondDevice = await app.prisma.device.findUniqueOrThrow({
+      where: { id: second.data!.deviceId! },
+      select: { hostname: true, serialNumber: true },
+    });
+    assert.equal(secondDevice.hostname, 'MULTI-HOST-2');
+    assert.equal(secondDevice.serialNumber, `SN-${runId}-MULTI-2`);
+
+    // The multi-use token stays unbound so a third machine can still register.
+    const stored = await app.prisma.enrollmentToken.findUniqueOrThrow({
+      where: { id: token.data!.id! },
+      select: { deviceId: true, uses: true, isActive: true },
+    });
+    assert.equal(stored.deviceId, null, 'multi-use token must stay device-unbound');
+    assert.equal(stored.uses, 2);
+    assert.equal(stored.isActive, true, 'partially used token stays active');
+
+    await cleanupDevice(`SN-${runId}-MULTI-1`);
+    await cleanupDevice(`SN-${runId}-MULTI-2`);
+  });
+
+  it('keeps a consumed multi-use token listed as exhausted rather than revoked', async () => {
+    const token = await createToken(adminToken, { label: 'exhaust-me', maxUses: 2 });
+
+    for (const index of [1, 2]) {
+      const res = await enroll({
+        enrollmentToken: token.data!.token,
+        hostname: `EXHAUST-HOST-${index}`,
+        serialNumber: `SN-${runId}-EXHAUST-${index}`,
+        os: 'Windows',
+        osVersion: 'Windows 11',
+        agentVersion: '0.1.0',
+      });
+      assert.equal(res.statusCode, 201);
+    }
+
+    const stored = await app.prisma.enrollmentToken.findUniqueOrThrow({
+      where: { id: token.data!.id! },
+      select: { uses: true, isActive: true },
+    });
+    assert.equal(stored.uses, 2);
+    assert.equal(stored.isActive, true, 'exhaustion must not masquerade as revocation');
+
+    await cleanupDevice(`SN-${runId}-EXHAUST-1`);
+    await cleanupDevice(`SN-${runId}-EXHAUST-2`);
   });
 
   it('rejects expired enrollment tokens', async () => {
